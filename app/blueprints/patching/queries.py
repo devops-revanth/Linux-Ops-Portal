@@ -30,11 +30,10 @@ SORTABLE_COLUMNS: dict[str, object] = {
     "location":           Location.name,
     "operating_system":   Server.operating_system,
     "current_kernel":     Patching.current_kernel,
+    "pending_updates":    Patching.pending_updates,
     "patch_status":       Patching.patch_status,
     "last_patch_date":    Patching.last_patch_date,
     "last_reboot_date":   Patching.last_reboot_date,
-    "last_ansible_sync":  Server.last_ansible_sync,
-    "owner":              Owner.name,
 }
 
 DEFAULT_SORT  = "hostname"

@@ -84,6 +84,14 @@
     color: var(--lop-muted);
   }
 
+  /* ── Row-select checkboxes ──────────────────────────────────────────── */
+  .lop-cb { width: 36px; padding-left: .5rem !important; padding-right: .5rem !important; vertical-align: middle; text-align: center; }
+  input[type="checkbox"].lop-row-cb,
+  input[type="checkbox"]#select-all {
+    width: 15px; height: 15px; cursor: pointer;
+    accent-color: #3fb950;
+  }
+
   /* ── Empty state ───────────────────────────────────────────────────── */
   .lop-empty-state {
     padding: 4rem 2rem;
@@ -311,6 +319,7 @@
               </a>
             {% endmacro %}
 
+            <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
             <th>{{ sort_link('ip_address',       'IP Address') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
@@ -319,7 +328,6 @@
             <th>{{ sort_link('cpu_count',        'CPU') }}</th>
             <th>{{ sort_link('ram_gb',           'RAM') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
-            <th>{{ sort_link('owner',            'Owner') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
           </tr>
         </thead>
@@ -327,6 +335,9 @@
           {% if inv.servers %}
             {% for srv in inv.servers %}
             <tr>
+
+              {# Checkbox #}
+              <td class="lop-cb"><input type="checkbox" class="lop-row-cb" value="{{ srv.id }}"></td>
 
               {# Hostname #}
               <td>
@@ -403,11 +414,6 @@
                 {% else %}
                   <span class="text-secondary">—</span>
                 {% endif %}
-              </td>
-
-              {# Owner #}
-              <td>
-                {% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
 
               {# Status badge #}
@@ -665,6 +671,24 @@
         form.querySelector('[name="page"]').value = "1";
         form.submit();
       }, 400);
+    });
+  }
+
+  /* ── Select All checkboxes ─────────────────────────────────────── */
+  const selectAll = document.getElementById("select-all");
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
+        cb.checked = selectAll.checked;
+      });
+    });
+    document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        const all  = document.querySelectorAll(".lop-row-cb");
+        const done = document.querySelectorAll(".lop-row-cb:checked");
+        selectAll.indeterminate = done.length > 0 && done.length < all.length;
+        selectAll.checked       = done.length === all.length;
+      });
     });
   }
 

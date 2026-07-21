@@ -126,6 +126,23 @@
     border-radius: 6px;
     border: 1px solid;
   }
+
+  /* ── Row-select checkboxes ──────────────────────────────────────────── */
+  .lop-cb { width: 36px; padding-left: .5rem !important; padding-right: .5rem !important; vertical-align: middle; text-align: center; }
+  input[type="checkbox"].lop-row-cb,
+  input[type="checkbox"]#select-all {
+    width: 15px; height: 15px; cursor: pointer;
+    accent-color: #3fb950;
+  }
+
+  /* ── Updates-available badge ────────────────────────────────────────── */
+  .lop-updates-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .15rem .5rem;
+    border-radius: 12px;
+    background: rgba(210,153,34,.15); color: #d4a017;
+    border: 1px solid rgba(210,153,34,.35);
+  }
 </style>
 {% endblock %}
 
@@ -303,16 +320,17 @@
               </a>
             {% endmacro %}
 
+            <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>{{ sort_link('hostname',          'Hostname') }}</th>
             <th>{{ sort_link('environment',       'Environment') }}</th>
             <th>{{ sort_link('location',          'Location') }}</th>
             <th>{{ sort_link('operating_system',  'OS') }}</th>
             <th>{{ sort_link('current_kernel',    'Current Kernel') }}</th>
+            <th>Latest Avail. Kernel</th>
+            <th>{{ sort_link('pending_updates',   'Updates Avail.') }}</th>
             <th>{{ sort_link('patch_status',      'Patch Status') }}</th>
             <th>{{ sort_link('last_patch_date',   'Last Patched') }}</th>
             <th>{{ sort_link('last_reboot_date',  'Last Reboot') }}</th>
-            <th>{{ sort_link('last_ansible_sync', 'Last Sync') }}</th>
-            <th>{{ sort_link('owner',             'Owner') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -321,6 +339,9 @@
             {# Convenience alias for patching sub-record (may be None) #}
             {% set p = srv.patching %}
             <tr>
+
+              {# Checkbox #}
+              <td class="lop-cb"><input type="checkbox" class="lop-row-cb" value="{{ srv.id }}"></td>
 
               {# Hostname — links to Server Detail with Patching tab active #}
               <td>
@@ -378,25 +399,32 @@
                 {% endif %}
               </td>
 
+              {# Latest Available Kernel (populated by Ansible — shows — until synced) #}
+              <td><span class="text-secondary lop-mono" style="font-size:.78rem;">—</span></td>
+
+              {# Updates Available #}
+              <td>
+                {% if p and p.pending_updates is not none and p.pending_updates > 0 %}
+                  <span class="lop-updates-badge">
+                    <i class="bi bi-box-arrow-in-down"></i>{{ p.pending_updates }}
+                  </span>
+                {% elif p and p.pending_updates == 0 %}
+                  <span class="text-success" style="font-size:.78rem;">
+                    <i class="bi bi-check2"></i> 0
+                  </span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
               {# Patch Status badge #}
               <td>
-                {% if p %}
-                  {% set ps = p.patch_status %}
-                {% else %}
-                  {% set ps = 'unknown' %}
-                {% endif %}
+                {% set ps = p.patch_status if p else 'unknown' %}
                 <span class="lop-patch-badge lop-patch-{{ ps }}">
-                  {% if ps == 'up-to-date' %}
-                    <i class="bi bi-check-circle-fill"></i>Up-to-date
-                  {% elif ps == 'pending' %}
-                    <i class="bi bi-exclamation-circle-fill"></i>Pending
-                    {% if p and p.pending_updates %}
-                      <span class="opacity-75">({{ p.pending_updates }})</span>
-                    {% endif %}
-                  {% elif ps == 'failed' %}
-                    <i class="bi bi-x-circle-fill"></i>Failed
-                  {% else %}
-                    <i class="bi bi-question-circle-fill"></i>Unknown
+                  {% if ps == 'up-to-date' %}<i class="bi bi-check-circle-fill"></i>Up-to-date
+                  {% elif ps == 'pending'   %}<i class="bi bi-exclamation-circle-fill"></i>Pending
+                  {% elif ps == 'failed'    %}<i class="bi bi-x-circle-fill"></i>Failed
+                  {% else                   %}<i class="bi bi-question-circle-fill"></i>Unknown
                   {% endif %}
                 </span>
               </td>
@@ -423,27 +451,11 @@
                 {% endif %}
               </td>
 
-              {# Last Inventory Sync #}
-              <td>
-                {% if srv.last_ansible_sync %}
-                  <span class="text-secondary" style="font-size:.82rem;">
-                    {{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}
-                  </span>
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# Owner #}
-              <td>
-                {% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}
-              </td>
-
             </tr>
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="10">
+              <td colspan="11">
                 <div class="lop-empty-state">
                   <i class="bi bi-shield-check"></i>
                   {% if f.search or f.location_id or f.env_id or f.patch_status %}
@@ -549,6 +561,24 @@
         form.querySelector('[name="page"]').value = "1";
         form.submit();
       }, 400);
+    });
+  }
+
+  /* ── Select All checkboxes ─────────────────────────────────────── */
+  const selectAll = document.getElementById("select-all");
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
+        cb.checked = selectAll.checked;
+      });
+    });
+    document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
+      cb.addEventListener("change", function () {
+        const all  = document.querySelectorAll(".lop-row-cb");
+        const done = document.querySelectorAll(".lop-row-cb:checked");
+        selectAll.indeterminate = done.length > 0 && done.length < all.length;
+        selectAll.checked       = done.length === all.length;
+      });
     });
   }
 })();
