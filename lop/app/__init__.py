@@ -1,0 +1,137 @@
+"""
+Linux Operations Portal – Application Factory.
+
+Usage:
+    from app import create_app
+    app = create_app("development")
+"""
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+from flask import Flask
+
+from .config import config
+from .extensions import csrf, db, migrate
+
+
+def create_app(config_name: str | None = None) -> Flask:
+    """
+    Create and configure the Flask application.
+
+    Args:
+        config_name: One of 'development', 'production', 'testing'.
+                     Falls back to the FLASK_ENV environment variable,
+                     then to 'development'.
+
+    Returns:
+        A fully configured Flask application instance.
+    """
+    if config_name is None:
+        config_name = os.environ.get("FLASK_ENV", "development")
+
+    app = Flask(__name__, instance_relative_config=False)
+    app.config.from_object(config[config_name])
+
+    # ------------------------------------------------------------------ #
+    # Logging (must happen before anything that uses app.logger)
+    # ------------------------------------------------------------------ #
+    _configure_logging(app)
+
+    # ------------------------------------------------------------------ #
+    # Extensions
+    # ------------------------------------------------------------------ #
+    db.init_app(app)
+    migrate.init_app(app, db)
+    csrf.init_app(app)
+
+    # ------------------------------------------------------------------ #
+    # Models – import so Alembic / Flask-Migrate can detect them
+    # ------------------------------------------------------------------ #
+    with app.app_context():
+        from .models import (  # noqa: F401
+            environment,
+            location,
+            note,
+            owner,
+            package,
+            patching,
+            server,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Blueprints
+    # ------------------------------------------------------------------ #
+    from .blueprints.main import main_bp  # noqa: E402
+
+    app.register_blueprint(main_bp)
+
+    # ------------------------------------------------------------------ #
+    # Error handlers
+    # ------------------------------------------------------------------ #
+    _register_error_handlers(app)
+
+    app.logger.info(
+        "LOP started  env=%s  debug=%s", config_name, app.debug
+    )
+
+    return app
+
+
+# --------------------------------------------------------------------------- #
+# Private helpers
+# --------------------------------------------------------------------------- #
+
+def _configure_logging(app: Flask) -> None:
+    """
+    Set up structured logging.
+
+    - Console handler: always active.
+    - Rotating file handler: active in non-testing environments.
+    """
+    log_level = getattr(logging, app.config.get("LOG_LEVEL", "INFO"), logging.INFO)
+    fmt = logging.Formatter(
+        app.config["LOG_FORMAT"],
+        datefmt=app.config["LOG_DATE_FORMAT"],
+    )
+
+    # Console
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(fmt)
+    console_handler.setLevel(log_level)
+
+    # File (skip during tests to avoid creating log files)
+    handlers: list[logging.Handler] = [console_handler]
+    if not app.config.get("TESTING"):
+        log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, "lop.log"),
+            maxBytes=5 * 1024 * 1024,  # 5 MB
+            backupCount=5,
+        )
+        file_handler.setFormatter(fmt)
+        file_handler.setLevel(log_level)
+        handlers.append(file_handler)
+
+    logging.basicConfig(level=log_level, handlers=handlers)
+    app.logger.setLevel(log_level)
+
+
+def _register_error_handlers(app: Flask) -> None:
+    """Register custom HTTP error pages."""
+    from flask import render_template
+
+    @app.errorhandler(404)
+    def not_found(exc):  # noqa: ANN001
+        app.logger.warning("404  path=%s", exc)
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def server_error(exc):  # noqa: ANN001
+        app.logger.error("500  error=%s", exc, exc_info=True)
+        return render_template("errors/500.html"), 500
+
+    @app.errorhandler(403)
+    def forbidden(exc):  # noqa: ANN001
+        return render_template("errors/403.html"), 403

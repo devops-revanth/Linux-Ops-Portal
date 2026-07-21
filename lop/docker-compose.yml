@@ -1,0 +1,69 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# Linux Operations Portal – Docker Compose
+#
+# Services:
+#   db    – PostgreSQL 16
+#   app   – Flask / Gunicorn
+#
+# Usage:
+#   cp .env.example .env        # fill in values
+#   docker compose up -d        # start both services
+#   docker compose logs -f app  # follow application logs
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: lop_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-lop_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-lop_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lop_pass}
+    volumes:
+      - lop_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"           # expose for local tools (e.g. DBeaver)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lop_user} -d ${POSTGRES_DB:-lop_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Flask Application ─────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: lop_app
+    restart: unless-stopped
+    environment:
+      FLASK_ENV:   ${FLASK_ENV:-production}
+      SECRET_KEY:  ${SECRET_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lop_user}:${POSTGRES_PASSWORD:-lop_pass}@db:5432/${POSTGRES_DB:-lop_db}
+      LOG_LEVEL:   ${LOG_LEVEL:-INFO}
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - lop_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  lop_pgdata:
+    driver: local
+  lop_logs:
+    driver: local

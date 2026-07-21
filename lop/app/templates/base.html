@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{{ app_name | default('Linux Operations Portal') }}{% endblock %}</title>
+
+  <!-- Bootstrap 5 (CDN) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  />
+
+  <!-- Bootstrap Icons -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+  />
+
+  <!-- Portal custom styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/lop.css') }}" />
+
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+
+  <!-- ═══════════════════════════════════════ Top Navbar ═══════════════════ -->
+  <nav class="navbar navbar-expand-lg lop-navbar fixed-top">
+    <div class="container-fluid">
+
+      <!-- Brand -->
+      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('main.index') }}">
+        <i class="bi bi-terminal-fill text-success"></i>
+        <span class="fw-bold">LOP</span>
+        <span class="d-none d-md-inline text-secondary small">Linux Operations Portal</span>
+      </a>
+
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#topNav"
+        aria-controls="topNav"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="topNav">
+        <!-- Right-side controls -->
+        <ul class="navbar-nav ms-auto align-items-center gap-1">
+          <li class="nav-item">
+            <span class="badge bg-success-subtle text-success border border-success-subtle">
+              <i class="bi bi-circle-fill me-1" style="font-size:.5rem;"></i>Online
+            </span>
+          </li>
+          <li class="nav-item ms-2">
+            <a
+              class="btn btn-sm btn-outline-secondary"
+              href="{{ url_for('main.health') }}"
+              target="_blank"
+              title="Health check"
+            >
+              <i class="bi bi-activity"></i>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════ Page Layout ════════════════════════ -->
+  <div class="lop-wrapper">
+
+    <!-- Sidebar -->
+    <nav id="sidebar" class="lop-sidebar d-flex flex-column">
+      <ul class="nav nav-pills flex-column gap-1 px-2 pt-3">
+
+        <li class="nav-item">
+          <a
+            class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}"
+            href="{{ url_for('main.index') }}"
+          >
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+
+        <!-- Placeholder items – activated in later modules -->
+        <li class="nav-item">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+            <i class="bi bi-server"></i>
+            <span>Inventory</span>
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+            <i class="bi bi-shield-check"></i>
+            <span>Patching</span>
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+            <i class="bi bi-search"></i>
+            <span>Search</span>
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+            <i class="bi bi-file-earmark-bar-graph"></i>
+            <span>Reports</span>
+          </a>
+        </li>
+
+        <li class="nav-item mt-auto">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+            <i class="bi bi-gear"></i>
+            <span>Settings</span>
+          </a>
+        </li>
+
+      </ul>
+
+      <!-- Sidebar footer -->
+      <div class="lop-sidebar-footer px-3 py-2 mt-auto">
+        <small class="text-secondary">
+          v{{ app_version | default('1.0.0') }}
+        </small>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="lop-main">
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="container-fluid pt-3">
+            {% for category, message in messages %}
+              <div
+                class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+                role="alert"
+              >
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Page content -->
+      {% block content %}{% endblock %}
+
+    </main>
+  </div><!-- /.lop-wrapper -->
+
+  <!-- Bootstrap 5 JS bundle -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc4s9bIOgUxi8T/jzmz2ZE3IuCqEm/NkOhHKBHPSFQhP"
+    crossorigin="anonymous"
+  ></script>
+
+  <!-- Portal JS -->
+  <script src="{{ url_for('static', filename='js/lop.js') }}"></script>
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

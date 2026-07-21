@@ -1,0 +1,171 @@
+/* =========================================================
+   Linux Operations Portal – Custom Stylesheet
+   Theme: Dark / Bootstrap 5.3 data-bs-theme="dark"
+   ========================================================= */
+
+/* ── Variables ─────────────────────────────────────────── */
+:root {
+  --lop-navbar-height: 56px;
+  --lop-sidebar-width: 220px;
+  --lop-sidebar-collapsed-width: 0px;
+  --lop-bg:       #0d1117;
+  --lop-surface:  #161b22;
+  --lop-border:   #30363d;
+  --lop-accent:   #238636;
+  --lop-text:     #c9d1d9;
+  --lop-muted:    #8b949e;
+}
+
+/* ── Base ───────────────────────────────────────────────── */
+html, body {
+  height: 100%;
+  background-color: var(--lop-bg);
+  color: var(--lop-text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Navbar ─────────────────────────────────────────────── */
+.lop-navbar {
+  height: var(--lop-navbar-height);
+  background-color: var(--lop-surface);
+  border-bottom: 1px solid var(--lop-border);
+  z-index: 1030;
+}
+
+.lop-navbar .navbar-brand {
+  font-size: 1rem;
+  color: var(--lop-text);
+}
+
+/* ── Wrapper (sidebar + main) ───────────────────────────── */
+.lop-wrapper {
+  display: flex;
+  min-height: 100vh;
+  padding-top: var(--lop-navbar-height);
+}
+
+/* ── Sidebar ────────────────────────────────────────────── */
+.lop-sidebar {
+  width: var(--lop-sidebar-width);
+  min-height: calc(100vh - var(--lop-navbar-height));
+  background-color: var(--lop-surface);
+  border-right: 1px solid var(--lop-border);
+  flex-shrink: 0;
+  position: sticky;
+  top: var(--lop-navbar-height);
+  height: calc(100vh - var(--lop-navbar-height));
+  overflow-y: auto;
+}
+
+.lop-sidebar .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--lop-muted);
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lop-sidebar .nav-link:hover:not(.disabled) {
+  color: var(--lop-text);
+  background-color: rgba(255,255,255,0.05);
+}
+
+.lop-sidebar .nav-link.active {
+  background-color: rgba(35, 134, 54, 0.15);
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.lop-sidebar .nav-link.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lop-sidebar-footer {
+  border-top: 1px solid var(--lop-border);
+  font-size: 0.75rem;
+}
+
+/* ── Main content area ──────────────────────────────────── */
+.lop-main {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--lop-bg);
+  min-width: 0;  /* prevent overflow in flex child */
+}
+
+/* ── Cards ──────────────────────────────────────────────── */
+.card {
+  border-color: var(--lop-border) !important;
+  background-color: var(--lop-surface) !important;
+}
+
+.card-header {
+  background-color: transparent;
+  border-color: var(--lop-border) !important;
+}
+
+/* Icon wrapper used in stat cards */
+.lop-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Tables ─────────────────────────────────────────────── */
+.lop-table {
+  font-size: 0.875rem;
+}
+
+.lop-table thead th {
+  color: var(--lop-muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-color: var(--lop-border);
+  padding: 0.6rem 1rem;
+}
+
+.lop-table tbody td {
+  border-color: var(--lop-border);
+  padding: 0.65rem 1rem;
+  vertical-align: middle;
+}
+
+.lop-table tbody tr:hover {
+  background-color: rgba(255,255,255,0.03);
+}
+
+/* ── Badges ─────────────────────────────────────────────── */
+.badge {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ── Alerts ─────────────────────────────────────────────── */
+.alert-info {
+  background-color: rgba(31, 111, 235, 0.1);
+  border-color: rgba(31, 111, 235, 0.3);
+  color: #79c0ff;
+}
+
+/* ── Scrollbar (WebKit) ─────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--lop-bg); }
+::-webkit-scrollbar-thumb { background: var(--lop-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--lop-muted); }
+
+/* ── Responsive: collapse sidebar on small screens ──────── */
+@media (max-width: 767.98px) {
+  .lop-sidebar {
+    display: none !important;
+  }
+}
