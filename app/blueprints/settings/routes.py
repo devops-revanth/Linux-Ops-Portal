@@ -18,7 +18,9 @@ from .queries import (
     edit_environment,
     edit_location,
     edit_owner,
+    generate_api_token,
     get_settings_data,
+    revoke_api_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,13 +28,15 @@ logger = logging.getLogger(__name__)
 
 # ── Helpers ───────────────────────────────────────────────────────────────── #
 
-def _render_settings():
+def _render_settings(new_token: str | None = None):
     data = get_settings_data()
     return render_template(
         "settings/index.html",
         locations=data.locations,
         environments=data.environments,
         owners=data.owners,
+        api_token=data.api_token,
+        new_token=new_token,
         valid_colors=VALID_COLORS,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
@@ -167,3 +171,28 @@ def delete_owner_route(owner_id: int):
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#owners")
+
+
+# ── API Token ──────────────────────────────────────────────────────────── #
+
+@settings_bp.route("/settings/api-token/generate", methods=["POST"])
+def generate_api_token_route():
+    """Generate (or regenerate) the API bearer token."""
+    result, raw_token = generate_api_token()
+    if result.success:
+        flash("API token generated. Copy it now — it will not be shown again.", "success")
+        return _render_settings(new_token=raw_token)
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#api-settings")
+
+
+@settings_bp.route("/settings/api-token/revoke", methods=["POST"])
+def revoke_api_token_route():
+    """Revoke the active API token."""
+    result = revoke_api_token()
+    if result.success:
+        flash("API token revoked. Ansible pushes will be rejected until a new token is generated.", "warning")
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#api-settings")

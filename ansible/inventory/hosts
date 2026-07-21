@@ -1,0 +1,26 @@
+# ============================================================
+# Linux Operations Portal — Example Ansible Inventory
+# ============================================================
+#
+# Set lop_location, lop_environment, and lop_owner per host
+# or group to have LOP automatically classify servers.
+#
+# lop_api_url and lop_api_token are set in group_vars/all.yml
+# ============================================================
+
+[production]
+web01.example.com   lop_location="USEG" lop_environment="Production" lop_owner="Platform Engineering"
+web02.example.com   lop_location="USEG" lop_environment="Production" lop_owner="Platform Engineering"
+db01.example.com    lop_location="USEG" lop_environment="Production" lop_owner="DBA Team"
+
+[staging]
+stg-web01.example.com  lop_location="USEG" lop_environment="Staging" lop_owner="Platform Engineering"
+stg-db01.example.com   lop_location="USEG" lop_environment="Staging" lop_owner="DBA Team"
+
+[development]
+dev01.example.com   lop_location="USEG" lop_environment="Development" lop_owner="Dev Team"
+
+[all:vars]
+# Override these in group_vars/all.yml or pass via -e
+lop_api_url=http://localhost:5000
+lop_api_token=REPLACE_WITH_TOKEN_FROM_LOP_SETTINGS

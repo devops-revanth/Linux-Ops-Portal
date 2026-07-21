@@ -30,7 +30,7 @@ Linux-Ops-Portal/
 │   ├── extensions.py       # db, migrate, csrf singletons
 │   ├── seeder.py           # Idempotent reference data seeder
 │   ├── models/             # SQLAlchemy models
-│   ├── blueprints/         # main, dashboard, inventory, settings
+│   ├── blueprints/         # main, dashboard, inventory, settings, api (v1 REST)
 │   ├── templates/          # Jinja2 HTML (extends base.html)
 │   └── static/             # lop.css · lop.js
 ├── migrations/             # Alembic migration files
@@ -68,9 +68,9 @@ The following are required for the Replit workspace and must not be deleted:
 | Inventory | ✅ | Server list, search, filters, sorting, pagination, Add/Edit/Delete |
 | Server Detail | ✅ | Overview, hardware, identity, patching, packages, notes tabs |
 | Settings | ✅ | CRUD for Locations, Environments, Owners with Bootstrap 5 modals |
-| Patching | ⏳ | Next module |
+| Patching | ✅ | Patch status, kernel, last patch date, last reboot, per-server tracking |
+| Ansible Integration | ✅ | REST API, bearer token auth, upsert logic, Settings UI, Ansible playbook |
 | Reports | ⏳ | Planned |
-| Ansible API | ⏳ | Planned |
 
 ## Database Migrations
 

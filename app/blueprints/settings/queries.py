@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass, field
 
 from ...extensions import db
+from ...models.api_token import ApiToken
 from ...models.environment import Environment
 from ...models.location import Location
 from ...models.owner import Owner
@@ -24,6 +25,7 @@ class SettingsData:
     locations:    list = field(default_factory=list)
     environments: list = field(default_factory=list)
     owners:       list = field(default_factory=list)
+    api_token:    "ApiToken | None" = None
 
 
 @dataclass
@@ -35,12 +37,13 @@ class QueryResult:
 # ── Read helpers ──────────────────────────────────────────────────────────── #
 
 def get_settings_data() -> SettingsData:
-    """Return all locations, environments, and owners (active + inactive)."""
+    """Return all locations, environments, owners, and the active API token."""
     data = SettingsData()
     try:
         data.locations    = Location.query.order_by(Location.name).all()
         data.environments = Environment.query.order_by(Environment.id).all()
         data.owners       = Owner.query.order_by(Owner.name).all()
+        data.api_token    = ApiToken.get_active()
     except Exception:
         logger.exception("Failed to load settings data")
     return data
@@ -328,3 +331,41 @@ def delete_owner(owner_id: int) -> QueryResult:
         db.session.rollback()
         logger.exception("Failed to delete owner id=%d", owner_id)
         return QueryResult(success=False, error="Database error — could not delete owner.")
+
+
+# ── API Token management ───────────────────────────────────────────────── #
+
+def generate_api_token() -> "tuple[QueryResult, str]":
+    """
+    Deactivate any existing token and create a new active one.
+
+    Returns (QueryResult, raw_token_string).  The raw token is only
+    available here; it is stored in plain-text so the admin can copy it.
+    """
+    raw_token = ApiToken.generate_token()
+    try:
+        # Deactivate all existing tokens
+        ApiToken.query.filter_by(is_active=True).update({"is_active": False})
+        # Create the new token
+        token_obj = ApiToken(token=raw_token, is_active=True)
+        db.session.add(token_obj)
+        db.session.commit()
+        logger.info("API token generated/regenerated")
+        return QueryResult(), raw_token
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to generate API token")
+        return QueryResult(success=False, error="Database error — could not generate token."), ""
+
+
+def revoke_api_token() -> QueryResult:
+    """Deactivate all active API tokens."""
+    try:
+        count = ApiToken.query.filter_by(is_active=True).update({"is_active": False})
+        db.session.commit()
+        logger.info("API token(s) revoked: count=%d", count)
+        return QueryResult()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to revoke API token")
+        return QueryResult(success=False, error="Database error — could not revoke token.")

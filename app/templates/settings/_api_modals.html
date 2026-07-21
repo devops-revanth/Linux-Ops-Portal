@@ -1,0 +1,57 @@
+{# ── Regenerate Token confirmation ─────────────────────────────────────── #}
+<div class="modal fade" id="modalRegenerateToken" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.generate_api_token_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-warning">
+            <i class="bi bi-arrow-repeat me-2"></i>Regenerate Token
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            The current token will be <strong>immediately invalidated</strong>.
+            Any Ansible playbooks using the old token will fail until updated.
+          </p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-arrow-repeat me-1"></i>Regenerate
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Revoke Token confirmation ──────────────────────────────────────────── #}
+<div class="modal fade" id="modalRevokeToken" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.revoke_api_token_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-danger">
+            <i class="bi bi-x-circle me-2"></i>Revoke Token
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            Revoke the active API token?
+            Ansible pushes will be <strong>rejected</strong> until a new token is generated.
+          </p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-x-circle me-1"></i>Revoke
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

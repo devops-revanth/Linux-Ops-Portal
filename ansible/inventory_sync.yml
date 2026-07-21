@@ -1,0 +1,76 @@
+---
+# ============================================================
+# Linux Operations Portal — Ansible Inventory Sync Playbook
+# ============================================================
+#
+# Gathers facts from target Linux servers and pushes them to
+# the LOP REST API via POST /api/v1/inventory.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts inventory_sync.yml
+#
+# Required variables (set in group_vars/all.yml or pass -e):
+#   lop_api_url   : Base URL of the portal, e.g. https://lop.example.com
+#   lop_api_token : Bearer token generated in LOP Settings → API Settings
+#
+# Optional per-host variables (set in inventory/hosts or host_vars/):
+#   lop_location    : Location name matching a record in LOP (e.g. "USEG")
+#   lop_environment : Environment name (e.g. "Production")
+#   lop_owner       : Owner name (e.g. "Platform Engineering")
+# ============================================================
+
+- name: Linux Operations Portal — Inventory Sync
+  hosts: all
+  gather_facts: true
+  become: false
+
+  vars:
+    lop_api_url: "{{ lop_api_url | default('http://localhost:5000') }}"
+    lop_api_token: "{{ lop_api_token | mandatory }}"
+    lop_location: "{{ lop_location | default('') }}"
+    lop_environment: "{{ lop_environment | default('') }}"
+    lop_owner: "{{ lop_owner | default('') }}"
+
+  tasks:
+
+    # ── 1. Build the JSON payload ───────────────────────────────────── #
+    - name: Build server inventory payload
+      ansible.builtin.set_fact:
+        lop_payload:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn | default(ansible_hostname) }}"
+          ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+          operating_system: "{{ ansible_distribution }}"
+          os_version: "{{ ansible_distribution_version }}"
+          kernel_version: "{{ ansible_kernel }}"
+          cpu_count: "{{ ansible_processor_vcpus | default(ansible_processor_count) }}"
+          cpu_model: "{{ ansible_processor[2] | default('') if ansible_processor | length > 2 else '' }}"
+          ram_gb: "{{ (ansible_memtotal_mb / 1024) | round(2) }}"
+          location: "{{ lop_location }}"
+          environment: "{{ lop_environment }}"
+          owner: "{{ lop_owner }}"
+          patch_status: "{{ lop_patch_status | default('unknown') }}"
+          last_reboot: "{{ ansible_date_time.iso8601 }}"
+          last_inventory_sync: "{{ ansible_date_time.iso8601 }}"
+
+    # ── 2. Push to LOP API ─────────────────────────────────────────── #
+    - name: Push inventory to Linux Operations Portal
+      ansible.builtin.uri:
+        url: "{{ lop_api_url }}/api/v1/inventory"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ lop_api_token }}"
+          Content-Type: "application/json"
+        body: "{{ lop_payload | to_json }}"
+        body_format: json
+        status_code: [200]
+        timeout: 30
+      register: lop_response
+      failed_when: lop_response.status != 200 or lop_response.json.status != 'success'
+
+    # ── 3. Report result ───────────────────────────────────────────── #
+    - name: Show sync result
+      ansible.builtin.debug:
+        msg: >-
+          LOP sync {{ lop_response.json.action }}:
+          {{ lop_response.json.hostname }}

@@ -1,0 +1,14 @@
+---
+# ============================================================
+# Linux Operations Portal — Global Variables
+# ============================================================
+# Copy this file to group_vars/all.yml and fill in your values.
+# NEVER commit a real token to version control.
+# ============================================================
+
+# Base URL of the Linux Operations Portal
+lop_api_url: "http://localhost:5000"
+
+# Bearer token — generate this in LOP Settings → API Settings
+# Treat it like a password; store it in Ansible Vault in production.
+lop_api_token: "REPLACE_WITH_TOKEN_FROM_LOP_SETTINGS"

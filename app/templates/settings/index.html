@@ -246,6 +246,126 @@
     </div>
   </div>
 
+
+  {# ══════════════════════════════ API SETTINGS ═════════════════════════════ #}
+  <div class="card border-0 mb-4" id="api-settings">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-key me-2 text-primary"></i>API Settings
+      </h6>
+      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+        Ansible Integration
+      </span>
+    </div>
+    <div class="card-body">
+
+      <p class="text-secondary small mb-3">
+        The API token authenticates Ansible push requests to
+        <code>POST /api/v1/inventory</code>.
+        Treat it like a password — store it in Ansible Vault in production.
+      </p>
+
+      {# ── New token banner (shown only immediately after generation) ── #}
+      {% if new_token %}
+      <div class="alert alert-success d-flex align-items-start gap-3 mb-3" role="alert">
+        <i class="bi bi-shield-check fs-5 mt-1 flex-shrink-0"></i>
+        <div class="w-100">
+          <div class="fw-semibold mb-1">Your new API token — copy it now</div>
+          <div class="input-group">
+            <input type="text" id="newTokenValue" class="form-control font-monospace small"
+                   value="{{ new_token }}" readonly>
+            <button class="btn btn-outline-success"
+                    onclick="copyToken('newTokenValue', this)"
+                    title="Copy token">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
+          <div class="form-text text-secondary mt-1">
+            This token will not be shown again after you leave this page.
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Token status ─────────────────────────────────────────────── #}
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="p-3 bg-body-secondary rounded">
+            <div class="small text-secondary mb-1">Token Status</div>
+            {% if api_token %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                <i class="bi bi-check-circle me-1"></i>Active
+              </span>
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                <i class="bi bi-exclamation-triangle me-1"></i>No token — Ansible pushes will be rejected
+              </span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 bg-body-secondary rounded">
+            <div class="small text-secondary mb-1">Last Inventory Sync</div>
+            <span class="fw-semibold" id="lastSyncDisplay">
+              {% set last_sync_server = namespace(dt=None) %}
+              {# We show the most recent last_ansible_sync across all servers #}
+              <span class="text-secondary">—</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {# ── Actions ──────────────────────────────────────────────────── #}
+      <div class="d-flex gap-2 flex-wrap">
+        {% if not api_token %}
+          {# Generate first token #}
+          <form method="POST" action="{{ url_for('settings.generate_api_token_route') }}"
+                class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-key me-1"></i>Generate Token
+            </button>
+          </form>
+        {% else %}
+          {# Regenerate token — confirm first #}
+          <button class="btn btn-warning"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalRegenerateToken">
+            <i class="bi bi-arrow-repeat me-1"></i>Regenerate Token
+          </button>
+
+          {# Revoke token #}
+          <button class="btn btn-outline-danger"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalRevokeToken">
+            <i class="bi bi-x-circle me-1"></i>Revoke Token
+          </button>
+        {% endif %}
+      </div>
+
+      {# ── Usage example ────────────────────────────────────────────── #}
+      <div class="mt-4">
+        <div class="small text-secondary fw-semibold mb-2">
+          <i class="bi bi-terminal me-1"></i>Example Ansible call
+        </div>
+        <pre class="bg-body-secondary rounded p-3 small mb-0"><code>POST {{ request.host_url.rstrip('/') }}/api/v1/inventory
+Authorization: Bearer &lt;your-token&gt;
+Content-Type: application/json
+
+{
+  "hostname": "web01",
+  "ip_address": "192.168.1.10",
+  "operating_system": "RedHat",
+  "os_version": "9.2",
+  "kernel_version": "5.14.0-284.el9.x86_64",
+  "environment": "Production",
+  "patch_status": "up-to-date"
+}</code></pre>
+      </div>
+
+    </div>{# /card-body #}
+  </div>
+
 </div>{# /container-fluid #}
 
 
@@ -605,4 +725,27 @@
 
 {% endfor %}
 
+{% include "settings/_api_modals.html" %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyToken(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    const icon = btn.querySelector('i');
+    icon.classList.replace('bi-clipboard', 'bi-clipboard-check');
+    btn.classList.replace('btn-outline-success', 'btn-success');
+    setTimeout(() => {
+      icon.classList.replace('bi-clipboard-check', 'bi-clipboard');
+      btn.classList.replace('btn-success', 'btn-outline-success');
+    }, 2000);
+  }).catch(() => {
+    input.select();
+    document.execCommand('copy');
+  });
+}
+</script>
 {% endblock %}
