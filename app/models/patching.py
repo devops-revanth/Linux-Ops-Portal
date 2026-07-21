@@ -32,6 +32,7 @@ class Patching(db.Model):
     last_patch_date: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     last_reboot_date: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     pending_updates: int = db.Column(db.Integer, nullable=True, default=0)
+    reboot_required: bool | None = db.Column(db.Boolean, nullable=True, default=None)
 
     created_at: datetime = db.Column(
         db.DateTime(timezone=True),
@@ -65,4 +66,5 @@ class Patching(db.Model):
                 self.last_reboot_date.isoformat() if self.last_reboot_date else None
             ),
             "pending_updates": self.pending_updates,
+            "reboot_required": self.reboot_required,
         }

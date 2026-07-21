@@ -299,6 +299,35 @@
     </div>
     {% endif %}
 
+    {# ── Bulk actions toolbar ─────────────────────────────────────────── #}
+    <div id="bulk-toolbar" class="px-3 py-2 d-flex align-items-center gap-2 border-bottom border-secondary-subtle">
+      <span id="bulk-count" class="text-secondary small">0 selected</span>
+      <div class="dropdown ms-1">
+        <button id="bulk-btn" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                type="button" data-bs-toggle="dropdown" disabled aria-expanded="false">
+          <i class="bi bi-lightning-charge me-1"></i>Bulk Actions
+        </button>
+        <ul class="dropdown-menu dropdown-menu-dark border-secondary">
+          <li>
+            <button type="button" class="dropdown-item text-danger small" id="bulk-delete-trigger">
+              <i class="bi bi-trash me-2"></i>Delete Selected
+            </button>
+          </li>
+          <li><hr class="dropdown-divider border-secondary"></li>
+          <li>
+            <button type="button" class="dropdown-item small" id="bulk-env-trigger">
+              <i class="bi bi-diagram-3 me-2"></i>Change Environment
+            </button>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item small" id="bulk-loc-trigger">
+              <i class="bi bi-building me-2"></i>Change Location
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
     <div class="table-responsive">
       <table class="table lop-table mb-0">
         <thead>
@@ -648,6 +677,109 @@
   </div>
 </div>
 
+{# ══════════════════════════ Bulk Delete Modal ═══════════════════════════ #}
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1"
+     aria-labelledby="bulkDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold text-danger" id="bulkDeleteModalLabel">
+          <i class="bi bi-trash me-2"></i>Confirm Delete
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary small mb-2">
+          The following servers will be <strong class="text-danger">permanently deleted</strong>
+          along with all their patching records, packages, and notes. This cannot be undone.
+        </p>
+        <ul class="list-group list-group-flush mb-0" id="bulk-delete-list"></ul>
+      </div>
+      <form method="POST" action="{{ url_for('inventory.bulk_delete') }}" id="bulk-delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-danger">
+            <i class="bi bi-trash me-1"></i>Delete
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════ Bulk Change Environment Modal ════════════════════ #}
+<div class="modal fade" id="bulkEnvModal" tabindex="-1"
+     aria-labelledby="bulkEnvModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="bulkEnvModalLabel">
+          <i class="bi bi-diagram-3 me-2"></i>Change Environment
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('inventory.bulk_env') }}" id="bulk-env-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <label class="form-label" for="bulk-env-select">New environment for selected servers</label>
+          <select class="form-select form-select-sm" id="bulk-env-select" name="environment_id">
+            <option value="">— Clear environment —</option>
+            {% for env in inventory.environments %}
+              <option value="{{ env.id }}">{{ env.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check2 me-1"></i>Apply
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ════════════════════════ Bulk Change Location Modal ═════════════════════ #}
+<div class="modal fade" id="bulkLocModal" tabindex="-1"
+     aria-labelledby="bulkLocModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="bulkLocModalLabel">
+          <i class="bi bi-building me-2"></i>Change Location
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('inventory.bulk_location') }}" id="bulk-loc-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <label class="form-label" for="bulk-loc-select">New location for selected servers</label>
+          <select class="form-select form-select-sm" id="bulk-loc-select" name="location_id">
+            <option value="">— Clear location —</option>
+            {% for loc in inventory.locations %}
+              <option value="{{ loc.id }}">{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check2 me-1"></i>Apply
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -655,7 +787,7 @@
 (function () {
   "use strict";
 
-  /* ── Instant search ────────────────────────────────────────────── */
+  /* ── Instant search ─────────────────────────────────────────────── */
   const form    = document.getElementById("filter-form");
   const input   = document.getElementById("search-input");
   const icon    = document.getElementById("search-icon");
@@ -674,13 +806,27 @@
     });
   }
 
-  /* ── Select All checkboxes ─────────────────────────────────────── */
+  /* ── Select All + bulk toolbar ──────────────────────────────────── */
   const selectAll = document.getElementById("select-all");
+  const bulkBtn   = document.getElementById("bulk-btn");
+  const bulkCount = document.getElementById("bulk-count");
+
+  function getChecked() {
+    return Array.from(document.querySelectorAll(".lop-row-cb:checked"));
+  }
+
+  function updateBulk() {
+    const n = getChecked().length;
+    if (bulkBtn)   bulkBtn.disabled = n === 0;
+    if (bulkCount) bulkCount.textContent = n + (n === 1 ? " selected" : " selected");
+  }
+
   if (selectAll) {
     selectAll.addEventListener("change", function () {
       document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
         cb.checked = selectAll.checked;
       });
+      updateBulk();
     });
     document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
       cb.addEventListener("change", function () {
@@ -688,8 +834,74 @@
         const done = document.querySelectorAll(".lop-row-cb:checked");
         selectAll.indeterminate = done.length > 0 && done.length < all.length;
         selectAll.checked       = done.length === all.length;
+        updateBulk();
       });
     });
+  }
+
+  /* ── Populate hidden server_id inputs into a form ────────────────── */
+  function populateIds(targetForm, ids) {
+    targetForm.querySelectorAll('input[name="server_ids"]').forEach(function (el) { el.remove(); });
+    ids.forEach(function (id) {
+      const inp = document.createElement("input");
+      inp.type  = "hidden";
+      inp.name  = "server_ids";
+      inp.value = id;
+      targetForm.appendChild(inp);
+    });
+  }
+
+  /* ── Bulk Delete ────────────────────────────────────────────────── */
+  var deleteModalEl = document.getElementById("bulkDeleteModal");
+  var deleteForm    = document.getElementById("bulk-delete-form");
+  var deleteList    = document.getElementById("bulk-delete-list");
+
+  document.getElementById("bulk-delete-trigger") &&
+    document.getElementById("bulk-delete-trigger").addEventListener("click", function () {
+      var checked = getChecked();
+      if (!checked.length) return;
+      var hostnames = checked.map(function (cb) {
+        var link = cb.closest("tr").querySelector(".lop-hostname-link");
+        return link ? link.textContent.trim() : cb.value;
+      });
+      if (deleteList) {
+        deleteList.innerHTML = hostnames.map(function (h) {
+          return '<li class="list-group-item list-group-item-dark py-1 small font-monospace">' +
+                 escapeHtml(h) + "</li>";
+        }).join("");
+      }
+      populateIds(deleteForm, checked.map(function (cb) { return cb.value; }));
+      bootstrap.Modal.getOrCreateInstance(deleteModalEl).show();
+    });
+
+  /* ── Bulk Change Environment ────────────────────────────────────── */
+  var envModalEl = document.getElementById("bulkEnvModal");
+  var envForm    = document.getElementById("bulk-env-form");
+
+  document.getElementById("bulk-env-trigger") &&
+    document.getElementById("bulk-env-trigger").addEventListener("click", function () {
+      var checked = getChecked();
+      if (!checked.length) return;
+      populateIds(envForm, checked.map(function (cb) { return cb.value; }));
+      bootstrap.Modal.getOrCreateInstance(envModalEl).show();
+    });
+
+  /* ── Bulk Change Location ────────────────────────────────────────── */
+  var locModalEl = document.getElementById("bulkLocModal");
+  var locForm    = document.getElementById("bulk-loc-form");
+
+  document.getElementById("bulk-loc-trigger") &&
+    document.getElementById("bulk-loc-trigger").addEventListener("click", function () {
+      var checked = getChecked();
+      if (!checked.length) return;
+      populateIds(locForm, checked.map(function (cb) { return cb.value; }));
+      bootstrap.Modal.getOrCreateInstance(locModalEl).show();
+    });
+
+  /* ── HTML escape helper ─────────────────────────────────────────── */
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
   /* ── Client-side Add Server validation ─────────────────────────── */
@@ -704,7 +916,6 @@
         if (!ip)       addForm.querySelector('[name="ip_address"]').classList.add("is-invalid");
       }
     });
-    /* Clear invalid state on input */
     addForm.querySelectorAll("input[required]").forEach(function (el) {
       el.addEventListener("input", function () { el.classList.remove("is-invalid"); });
     });

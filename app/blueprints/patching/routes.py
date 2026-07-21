@@ -1,12 +1,28 @@
 """Patching blueprint routes."""
 import logging
 
-from flask import current_app, render_template, request
+from flask import current_app, flash, redirect, render_template, request, url_for
 
 from . import patching_bp
 from .queries import DEFAULT_ORDER, DEFAULT_SORT, PatchingFilters, get_patching_page
+from ...extensions import db
+from ...models.server import Server
 
 logger = logging.getLogger(__name__)
+
+VALID_STATUSES = {"active", "inactive", "maintenance", "decommissioned"}
+
+
+def _parse_server_ids(raw: list[str]) -> list[int]:
+    ids = []
+    for v in raw:
+        try:
+            i = int(v)
+            if i > 0:
+                ids.append(i)
+        except (TypeError, ValueError):
+            pass
+    return ids
 
 
 @patching_bp.route("/patching", methods=["GET"])
@@ -44,3 +60,49 @@ def index():
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
+
+
+# ── Bulk actions ─────────────────────────────────────────────────────────── #
+
+@patching_bp.route("/patching/bulk-active", methods=["POST"])
+def bulk_active():
+    """Mark selected servers as Active."""
+    ids = _parse_server_ids(request.form.getlist("server_ids"))
+    if not ids:
+        flash("No servers selected.", "warning")
+        return redirect(url_for("patching.index"))
+    try:
+        updated = (
+            Server.query.filter(Server.id.in_(ids))
+            .update({"status": "active"}, synchronize_session="fetch")
+        )
+        db.session.commit()
+        flash(f"{updated} server{'s' if updated != 1 else ''} marked as Active.", "success")
+        logger.info("Bulk active: %d server(s) — ids=%s", updated, ids)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Bulk active failed for ids=%s", ids)
+        flash("An error occurred while updating server status.", "danger")
+    return redirect(url_for("patching.index"))
+
+
+@patching_bp.route("/patching/bulk-maintenance", methods=["POST"])
+def bulk_maintenance():
+    """Mark selected servers as Maintenance."""
+    ids = _parse_server_ids(request.form.getlist("server_ids"))
+    if not ids:
+        flash("No servers selected.", "warning")
+        return redirect(url_for("patching.index"))
+    try:
+        updated = (
+            Server.query.filter(Server.id.in_(ids))
+            .update({"status": "maintenance"}, synchronize_session="fetch")
+        )
+        db.session.commit()
+        flash(f"{updated} server{'s' if updated != 1 else ''} marked as Maintenance.", "success")
+        logger.info("Bulk maintenance: %d server(s) — ids=%s", updated, ids)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Bulk maintenance failed for ids=%s", ids)
+        flash("An error occurred while updating server status.", "danger")
+    return redirect(url_for("patching.index"))

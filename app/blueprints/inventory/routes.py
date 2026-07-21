@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 VALID_STATUSES = {"active", "inactive", "maintenance", "decommissioned"}
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────── #
+
+def _parse_server_ids(raw: list[str]) -> list[int]:
+    """Parse a list of raw string IDs into positive integers, dropping invalid entries."""
+    ids = []
+    for v in raw:
+        try:
+            i = int(v)
+            if i > 0:
+                ids.append(i)
+        except (TypeError, ValueError):
+            pass
+    return ids
+
+
 # ── Inventory list ────────────────────────────────────────────────────────── #
 
 @inventory_bp.route("/inventory", methods=["GET"])
@@ -230,6 +245,113 @@ def delete_server(server_id: int):
         db.session.rollback()
         logger.exception("Failed to delete server id=%d", server_id)
         flash("An error occurred while deleting the server. Please try again.", "danger")
+    return redirect(url_for("inventory.index"))
+
+
+# ── Bulk actions ─────────────────────────────────────────────────────────── #
+
+@inventory_bp.route("/inventory/bulk-delete", methods=["POST"])
+def bulk_delete():
+    """Permanently delete multiple servers."""
+    ids = _parse_server_ids(request.form.getlist("server_ids"))
+    if not ids:
+        flash("No servers selected.", "warning")
+        return redirect(url_for("inventory.index"))
+
+    try:
+        servers = Server.query.filter(Server.id.in_(ids)).all()
+        count = len(servers)
+        hostnames = [s.hostname for s in servers]
+        for srv in servers:
+            db.session.delete(srv)
+        db.session.commit()
+        flash(
+            f"Deleted {count} server{'s' if count != 1 else ''}: "
+            + ", ".join(hostnames[:5])
+            + (" …" if count > 5 else ""),
+            "success",
+        )
+        logger.info("Bulk delete: %d server(s) removed — ids=%s", count, ids)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Bulk delete failed for ids=%s", ids)
+        flash("An error occurred while deleting the selected servers.", "danger")
+
+    return redirect(url_for("inventory.index"))
+
+
+@inventory_bp.route("/inventory/bulk-env", methods=["POST"])
+def bulk_env():
+    """Assign an environment to multiple servers."""
+    ids = _parse_server_ids(request.form.getlist("server_ids"))
+    env_id = request.form.get("environment_id", type=int)
+    if not ids:
+        flash("No servers selected.", "warning")
+        return redirect(url_for("inventory.index"))
+
+    # env_id=None clears the environment (allowed)
+    if env_id is not None:
+        env = Environment.query.get(env_id)
+        if env is None:
+            flash("Selected environment not found.", "danger")
+            return redirect(url_for("inventory.index"))
+        env_name = env.name
+    else:
+        env_name = "None"
+
+    try:
+        updated = (
+            Server.query.filter(Server.id.in_(ids))
+            .update({"environment_id": env_id}, synchronize_session="fetch")
+        )
+        db.session.commit()
+        flash(
+            f"Environment set to \"{env_name}\" for {updated} server{'s' if updated != 1 else ''}.",
+            "success",
+        )
+        logger.info("Bulk env: env_id=%s applied to %d server(s) — ids=%s", env_id, updated, ids)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Bulk env failed for ids=%s", ids)
+        flash("An error occurred while updating the environment.", "danger")
+
+    return redirect(url_for("inventory.index"))
+
+
+@inventory_bp.route("/inventory/bulk-location", methods=["POST"])
+def bulk_location():
+    """Assign a location to multiple servers."""
+    ids = _parse_server_ids(request.form.getlist("server_ids"))
+    location_id = request.form.get("location_id", type=int)
+    if not ids:
+        flash("No servers selected.", "warning")
+        return redirect(url_for("inventory.index"))
+
+    if location_id is not None:
+        loc = Location.query.get(location_id)
+        if loc is None:
+            flash("Selected location not found.", "danger")
+            return redirect(url_for("inventory.index"))
+        loc_name = loc.name
+    else:
+        loc_name = "None"
+
+    try:
+        updated = (
+            Server.query.filter(Server.id.in_(ids))
+            .update({"location_id": location_id}, synchronize_session="fetch")
+        )
+        db.session.commit()
+        flash(
+            f"Location set to \"{loc_name}\" for {updated} server{'s' if updated != 1 else ''}.",
+            "success",
+        )
+        logger.info("Bulk location: loc_id=%s applied to %d server(s) — ids=%s", location_id, updated, ids)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Bulk location failed for ids=%s", ids)
+        flash("An error occurred while updating the location.", "danger")
+
     return redirect(url_for("inventory.index"))
 
 

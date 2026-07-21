@@ -227,6 +227,11 @@ def validate_inventory_payload(data: dict) -> str | None:
     if ram is not None and not isinstance(ram, (int, float)):
         return "ram_gb must be a number"
 
+    # ── reboot_required: must be bool (or absent/null) ─────────────────────
+    rr = data.get("reboot_required")
+    if rr is not None and not isinstance(rr, bool):
+        return "reboot_required must be a boolean"
+
     return None
 
 
@@ -324,6 +329,12 @@ def upsert_server(data: dict) -> UpsertResult:
         patching.last_patch_date = _parse_datetime(data.get("last_patch_date"))
         patching.last_reboot_date = _parse_datetime(data.get("last_reboot"))
         patching.pending_updates = _parse_int(data.get("pending_updates")) or 0
+
+        # reboot_required: only update when explicitly provided in payload
+        if "reboot_required" in data:
+            rr = data["reboot_required"]
+            patching.reboot_required = bool(rr) if rr is not None else None
+
         patching.updated_at = now
 
         db.session.commit()

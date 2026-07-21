@@ -299,6 +299,29 @@
     </div>
     {% endif %}
 
+    {# ── Bulk actions toolbar ─────────────────────────────────────────── #}
+    <div id="bulk-toolbar" class="px-3 py-2 d-flex align-items-center gap-2 border-bottom border-secondary-subtle">
+      <span id="bulk-count" class="text-secondary small">0 selected</span>
+      <div class="dropdown ms-1">
+        <button id="bulk-btn" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                type="button" data-bs-toggle="dropdown" disabled aria-expanded="false">
+          <i class="bi bi-lightning-charge me-1"></i>Bulk Actions
+        </button>
+        <ul class="dropdown-menu dropdown-menu-dark border-secondary">
+          <li>
+            <button type="button" class="dropdown-item small" id="bulk-active-trigger">
+              <i class="bi bi-circle-fill me-2 text-success" style="font-size:.55rem;"></i>Mark as Active
+            </button>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item small" id="bulk-maint-trigger">
+              <i class="bi bi-cone-striped me-2 text-warning"></i>Mark as Maintenance
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
     <div class="table-responsive">
       <table class="table lop-table mb-0">
         <thead>
@@ -328,6 +351,7 @@
             <th>{{ sort_link('current_kernel',    'Current Kernel') }}</th>
             <th>Latest Avail. Kernel</th>
             <th>{{ sort_link('pending_updates',   'Updates Avail.') }}</th>
+            <th>Reboot Req.</th>
             <th>{{ sort_link('patch_status',      'Patch Status') }}</th>
             <th>{{ sort_link('last_patch_date',   'Last Patched') }}</th>
             <th>{{ sort_link('last_reboot_date',  'Last Reboot') }}</th>
@@ -417,6 +441,26 @@
                 {% endif %}
               </td>
 
+              {# Reboot Required #}
+              <td>
+                {% if p and p.reboot_required is not none %}
+                  {% if p.reboot_required %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
+                          style="font-size:.7rem;">
+                      <i class="bi bi-arrow-repeat me-1"></i>Yes
+                    </span>
+                  {% else %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle"
+                          style="font-size:.7rem;">
+                      <i class="bi bi-check2 me-1"></i>No
+                    </span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"
+                        style="font-size:.7rem;">Unknown</span>
+                {% endif %}
+              </td>
+
               {# Patch Status badge #}
               <td>
                 {% set ps = p.patch_status if p else 'unknown' %}
@@ -455,7 +499,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="11">
+              <td colspan="12">
                 <div class="lop-empty-state">
                   <i class="bi bi-shield-check"></i>
                   {% if f.search or f.location_id or f.env_id or f.patch_status %}
@@ -538,6 +582,16 @@
   </div>{# /card #}
 </div>
 
+{# ── Hidden bulk-action forms (no modals needed — non-destructive) ─────── #}
+<form method="POST" action="{{ url_for('patching.bulk_active') }}"
+      id="bulk-active-form" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<form method="POST" action="{{ url_for('patching.bulk_maintenance') }}"
+      id="bulk-maint-form" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -564,13 +618,38 @@
     });
   }
 
-  /* ── Select All checkboxes ─────────────────────────────────────── */
+  /* ── Select All + bulk toolbar ──────────────────────────────────── */
   const selectAll = document.getElementById("select-all");
+  const bulkBtn   = document.getElementById("bulk-btn");
+  const bulkCount = document.getElementById("bulk-count");
+
+  function getChecked() {
+    return Array.from(document.querySelectorAll(".lop-row-cb:checked"));
+  }
+
+  function updateBulk() {
+    const n = getChecked().length;
+    if (bulkBtn)   bulkBtn.disabled = n === 0;
+    if (bulkCount) bulkCount.textContent = n + " selected";
+  }
+
+  function populateIds(targetForm, ids) {
+    targetForm.querySelectorAll('input[name="server_ids"]').forEach(function (el) { el.remove(); });
+    ids.forEach(function (id) {
+      const inp = document.createElement("input");
+      inp.type  = "hidden";
+      inp.name  = "server_ids";
+      inp.value = id;
+      targetForm.appendChild(inp);
+    });
+  }
+
   if (selectAll) {
     selectAll.addEventListener("change", function () {
       document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
         cb.checked = selectAll.checked;
       });
+      updateBulk();
     });
     document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
       cb.addEventListener("change", function () {
@@ -578,9 +657,31 @@
         const done = document.querySelectorAll(".lop-row-cb:checked");
         selectAll.indeterminate = done.length > 0 && done.length < all.length;
         selectAll.checked       = done.length === all.length;
+        updateBulk();
       });
     });
   }
+
+  /* ── Mark as Active ──────────────────────────────────────────────── */
+  var activeForm = document.getElementById("bulk-active-form");
+  document.getElementById("bulk-active-trigger") &&
+    document.getElementById("bulk-active-trigger").addEventListener("click", function () {
+      var checked = getChecked();
+      if (!checked.length) return;
+      populateIds(activeForm, checked.map(function (cb) { return cb.value; }));
+      activeForm.submit();
+    });
+
+  /* ── Mark as Maintenance ─────────────────────────────────────────── */
+  var maintForm = document.getElementById("bulk-maint-form");
+  document.getElementById("bulk-maint-trigger") &&
+    document.getElementById("bulk-maint-trigger").addEventListener("click", function () {
+      var checked = getChecked();
+      if (!checked.length) return;
+      populateIds(maintForm, checked.map(function (cb) { return cb.value; }));
+      maintForm.submit();
+    });
+
 })();
 </script>
 {% endblock %}
