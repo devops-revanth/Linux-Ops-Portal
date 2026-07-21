@@ -44,10 +44,12 @@ services:
     container_name: lop_app
     restart: unless-stopped
     environment:
-      FLASK_ENV:   ${FLASK_ENV:-production}
-      SECRET_KEY:  ${SECRET_KEY}
+      FLASK_ENV:    ${FLASK_ENV:-production}
+      SECRET_KEY:   ${SECRET_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER:-lop_user}:${POSTGRES_PASSWORD:-lop_pass}@db:5432/${POSTGRES_DB:-lop_db}
-      LOG_LEVEL:   ${LOG_LEVEL:-INFO}
+      LOG_LEVEL:    ${LOG_LEVEL:-INFO}
+      APP_BASE_URL: ${APP_BASE_URL:-https://your-domain.example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     ports:
       - "5000:5000"
     depends_on:

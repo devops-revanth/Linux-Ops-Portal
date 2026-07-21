@@ -40,6 +40,7 @@ def _render_settings(new_token: str | None = None):
         valid_colors=VALID_COLORS,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
+        app_base_url=current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),
     )
 
 

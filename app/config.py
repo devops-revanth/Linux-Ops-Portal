@@ -49,6 +49,12 @@ class Config:
     APP_VERSION: str = "1.0.0"
     ITEMS_PER_PAGE: int = 25
 
+    # Base URL shown in API documentation (e.g. the Ansible example call).
+    # Override with the APP_BASE_URL environment variable in production.
+    APP_BASE_URL: str = os.environ.get(
+        "APP_BASE_URL", "https://your-domain.example.com"
+    )
+
     # ------------------------------------------------------------------ #
     # Logging
     # ------------------------------------------------------------------ #
@@ -82,6 +88,12 @@ class ProductionConfig(Config):
         if cls.SECRET_KEY == "change-me-in-production":
             raise RuntimeError(
                 "SECRET_KEY must be set to a strong random value in production."
+            )
+        import logging as _logging
+        if cls.APP_BASE_URL == "https://your-domain.example.com":
+            _logging.getLogger(__name__).warning(
+                "APP_BASE_URL is still set to the placeholder value. "
+                "Set the APP_BASE_URL environment variable before going live."
             )
 
 
