@@ -252,6 +252,23 @@
     font-size: .72rem;
     color: var(--lop-muted);
   }
+
+  /* ── Patch history table ────────────────────────────────────────────── */
+  .lop-patch-history-table th {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--lop-muted);
+    font-weight: 500;
+    border-color: var(--lop-border);
+    padding: .45rem .75rem;
+  }
+  .lop-patch-history-table td {
+    font-size: .82rem;
+    border-color: var(--lop-border);
+    padding: .5rem .75rem;
+    vertical-align: middle;
+  }
 </style>
 {% endblock %}
 
@@ -572,38 +589,9 @@
           </div>
         </div>
 
-        {# Dates #}
-        <p class="lop-section-title"><i class="bi bi-calendar-event me-1"></i>Patch History</p>
-        <div class="lop-field-group">
-          <div class="lop-field">
-            <span class="lop-field-label">Last Patch Date</span>
-            <span class="lop-field-value {% if not p.last_patch_date %}lop-field-empty{% endif %}">
-              {% if p.last_patch_date %}{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
-            </span>
-          </div>
-          <div class="lop-field">
-            <span class="lop-field-label">Last Reboot Date</span>
-            <span class="lop-field-value {% if not p.last_reboot_date %}lop-field-empty{% endif %}">
-              {% if p.last_reboot_date %}{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
-            </span>
-          </div>
-          <div class="lop-field">
-            <span class="lop-field-label">Patching Record Created</span>
-            <span class="lop-field-value text-secondary" style="font-size:.82rem;">
-              {{ p.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
-            </span>
-          </div>
-          <div class="lop-field">
-            <span class="lop-field-label">Patching Record Updated</span>
-            <span class="lop-field-value text-secondary" style="font-size:.82rem;">
-              {{ p.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
-            </span>
-          </div>
-        </div>
-
         {# Kernel history #}
-        <p class="lop-section-title mt-3"><i class="bi bi-code-slash me-1"></i>Kernel History</p>
-        <div class="lop-field-group">
+        <p class="lop-section-title mt-1"><i class="bi bi-code-slash me-1"></i>Kernel</p>
+        <div class="lop-field-group mb-4">
           <div class="lop-field">
             <span class="lop-field-label">Current Kernel</span>
             <span class="lop-field-value lop-meta-mono {% if not p.current_kernel %}lop-field-empty{% endif %}" style="font-size:.8rem;">
@@ -616,6 +604,57 @@
               {{ p.previous_kernel or '—' }}
             </span>
           </div>
+        </div>
+
+        {# Patch History #}
+        <p class="lop-section-title"><i class="bi bi-calendar-event me-1"></i>Patch History</p>
+        <div class="table-responsive mb-3">
+          <table class="table lop-patch-history-table mb-0">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Date / Time (UTC)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><i class="bi bi-shield-check me-2 text-secondary"></i>Last Patch Applied</td>
+                <td>
+                  {% if p.last_patch_date %}
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M') }}</span>
+                  {% else %}
+                    <span class="lop-field-empty">Never recorded</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td><i class="bi bi-arrow-counterclockwise me-2 text-secondary"></i>Last Reboot</td>
+                <td>
+                  {% if p.last_reboot_date %}
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M') }}</span>
+                  {% else %}
+                    <span class="lop-field-empty">Never recorded</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td><i class="bi bi-arrow-repeat me-2 text-secondary"></i>Last Inventory Sync</td>
+                <td>
+                  {% if server.last_ansible_sync %}
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}</span>
+                  {% else %}
+                    <span class="lop-field-empty">Never synced</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr>
+                <td><i class="bi bi-clock me-2 text-secondary"></i>Patching Record Updated</td>
+                <td>
+                  <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
       {% else %}
@@ -954,18 +993,31 @@
 (function () {
   "use strict";
 
-  /* ── Activate Notes tab if URL hash is #notes ───────────────────── */
-  if (window.location.hash === "#notes") {
-    const notesTab = document.getElementById("notes-tab");
-    if (notesTab) {
-      const tab = new bootstrap.Tab(notesTab);
-      tab.show();
-      setTimeout(function () {
-        const noteArea = document.getElementById("note-body");
-        if (noteArea) noteArea.focus();
-      }, 200);
+  /* ── Activate tab from ?tab= query param or #hash ───────────────── */
+  (function () {
+    var tabParam = new URLSearchParams(window.location.search).get("tab");
+    var hash     = window.location.hash;
+    var tabEl    = null;
+
+    if (tabParam === "patching") {
+      tabEl = document.getElementById("patching-tab");
+    } else if (tabParam === "packages") {
+      tabEl = document.getElementById("packages-tab");
+    } else if (tabParam === "notes" || hash === "#notes") {
+      tabEl = document.getElementById("notes-tab");
     }
-  }
+
+    if (tabEl) {
+      var bsTab = new bootstrap.Tab(tabEl);
+      bsTab.show();
+      if (tabParam === "notes" || hash === "#notes") {
+        setTimeout(function () {
+          var noteArea = document.getElementById("note-body");
+          if (noteArea) noteArea.focus();
+        }, 200);
+      }
+    }
+  })();
 
   /* ── Validate edit form ──────────────────────────────────────────── */
   const editForm = document.getElementById("edit-server-form");

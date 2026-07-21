@@ -74,11 +74,13 @@ def create_app(config_name: str | None = None) -> Flask:
     from .blueprints.dashboard import dashboard_bp  # noqa: E402
     from .blueprints.inventory import inventory_bp  # noqa: E402
     from .blueprints.main import main_bp  # noqa: E402
+    from .blueprints.patching import patching_bp  # noqa: E402
     from .blueprints.settings import settings_bp  # noqa: E402
 
     app.register_blueprint(main_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(inventory_bp)
+    app.register_blueprint(patching_bp)
     app.register_blueprint(settings_bp)
 
     # ------------------------------------------------------------------ #
