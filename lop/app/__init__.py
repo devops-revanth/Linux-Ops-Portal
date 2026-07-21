@@ -59,9 +59,14 @@ def create_app(config_name: str | None = None) -> Flask:
             server,
         )
 
-        # Seed reference data on first run (idempotent)
-        from .seeder import seed_all  # noqa: E402
-        seed_all()
+        # Seed reference data on first run (idempotent).
+        # Wrapped in try/except so flask db upgrade can import the app
+        # before the schema has been applied.
+        try:
+            from .seeder import seed_all  # noqa: E402
+            seed_all()
+        except Exception as exc:  # noqa: BLE001
+            app.logger.debug("Seeder skipped (tables not ready yet): %s", exc)
 
     # ------------------------------------------------------------------ #
     # Blueprints

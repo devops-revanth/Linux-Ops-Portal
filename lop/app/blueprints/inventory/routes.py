@@ -8,6 +8,7 @@ from .queries import DEFAULT_ORDER, DEFAULT_SORT, InventoryFilters, get_inventor
 from ...extensions import db
 from ...models.environment import Environment
 from ...models.location import Location
+from ...models.note import Note
 from ...models.owner import Owner
 from ...models.server import Server
 
@@ -124,15 +125,154 @@ def add_server():
     return redirect(url_for("inventory.index"))
 
 
-# ── Server detail placeholder ─────────────────────────────────────────────── #
+# ── Server detail ─────────────────────────────────────────────────────────── #
 
 @inventory_bp.route("/inventory/<int:server_id>", methods=["GET"])
 def server_detail(server_id: int):
-    """Server detail page — placeholder until the Server Details module is built."""
+    """Full server detail page — hardware, patching, packages, and notes."""
     server = Server.query.get_or_404(server_id)
+    locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
+    environments = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
+    owners       = Owner.query.filter_by(is_active=True).order_by(Owner.name).all()
     return render_template(
-        "inventory/server_detail_placeholder.html",
+        "inventory/server_detail.html",
         server=server,
+        locations=locations,
+        environments=environments,
+        owners=owners,
+        statuses=list(VALID_STATUSES),
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
+
+
+# ── Edit server ───────────────────────────────────────────────────────────── #
+
+@inventory_bp.route("/inventory/<int:server_id>/edit", methods=["POST"])
+def edit_server(server_id: int):
+    """Update an existing server record."""
+    server = Server.query.get_or_404(server_id)
+
+    hostname   = request.form.get("hostname",   "").strip()
+    ip_address = request.form.get("ip_address", "").strip()
+
+    errors = []
+    if not hostname:
+        errors.append("Hostname is required.")
+    if not ip_address:
+        errors.append("IP address is required.")
+
+    if not errors:
+        existing = Server.query.filter(
+            Server.hostname == hostname, Server.id != server_id
+        ).first()
+        if existing:
+            errors.append(f'Hostname "{hostname}" is already used by another server.')
+
+    if errors:
+        for msg in errors:
+            flash(msg, "danger")
+        return redirect(url_for("inventory.server_detail", server_id=server_id))
+
+    status = request.form.get("status", server.status).strip()
+    if status not in VALID_STATUSES:
+        status = server.status
+
+    cpu_count_raw = request.form.get("cpu_count", "").strip()
+    ram_gb_raw    = request.form.get("ram_gb",    "").strip()
+    try:
+        cpu_count = int(cpu_count_raw)   if cpu_count_raw else None
+        ram_gb    = float(ram_gb_raw)    if ram_gb_raw    else None
+    except ValueError:
+        cpu_count = None
+        ram_gb    = None
+
+    server.hostname          = hostname
+    server.ip_address        = ip_address
+    server.fqdn              = request.form.get("fqdn",              "").strip() or None
+    server.environment_id    = request.form.get("environment_id",    type=int) or None
+    server.location_id       = request.form.get("location_id",       type=int) or None
+    server.owner_id          = request.form.get("owner_id",          type=int) or None
+    server.operating_system  = request.form.get("operating_system",  "").strip() or None
+    server.os_version        = request.form.get("os_version",        "").strip() or None
+    server.kernel_version    = request.form.get("kernel_version",    "").strip() or None
+    server.cpu_model         = request.form.get("cpu_model",         "").strip() or None
+    server.cpu_count         = cpu_count
+    server.ram_gb            = ram_gb
+    server.status            = status
+
+    try:
+        db.session.commit()
+        flash(f'Server "{server.hostname}" updated successfully.', "success")
+        logger.info("Server updated: id=%d hostname=%s", server_id, server.hostname)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to update server id=%d", server_id)
+        flash("An error occurred while saving the server. Please try again.", "danger")
+
+    return redirect(url_for("inventory.server_detail", server_id=server_id))
+
+
+# ── Delete server ─────────────────────────────────────────────────────────── #
+
+@inventory_bp.route("/inventory/<int:server_id>/delete", methods=["POST"])
+def delete_server(server_id: int):
+    """Permanently delete a server and all related records."""
+    server = Server.query.get_or_404(server_id)
+    hostname = server.hostname
+    try:
+        db.session.delete(server)
+        db.session.commit()
+        flash(f'Server "{hostname}" has been deleted.', "success")
+        logger.info("Server deleted: id=%d hostname=%s", server_id, hostname)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to delete server id=%d", server_id)
+        flash("An error occurred while deleting the server. Please try again.", "danger")
+    return redirect(url_for("inventory.index"))
+
+
+# ── Notes: add ───────────────────────────────────────────────────────────── #
+
+@inventory_bp.route("/inventory/<int:server_id>/notes/add", methods=["POST"])
+def add_note(server_id: int):
+    """Add a note to a server."""
+    server = Server.query.get_or_404(server_id)
+    body   = request.form.get("body", "").strip()
+    author = request.form.get("author", "").strip() or None
+
+    if not body:
+        flash("Note body cannot be empty.", "danger")
+        return redirect(url_for("inventory.server_detail", server_id=server_id))
+
+    note = Note(server_id=server.id, body=body, author=author)
+    try:
+        db.session.add(note)
+        db.session.commit()
+        flash("Note added.", "success")
+        logger.info("Note added to server id=%d", server_id)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to add note to server id=%d", server_id)
+        flash("An error occurred while saving the note.", "danger")
+
+    return redirect(url_for("inventory.server_detail", server_id=server_id) + "#notes")
+
+
+# ── Notes: delete ────────────────────────────────────────────────────────── #
+
+@inventory_bp.route("/inventory/<int:server_id>/notes/<int:note_id>/delete", methods=["POST"])
+def delete_note(server_id: int, note_id: int):
+    """Delete a note from a server."""
+    note = Note.query.filter_by(id=note_id, server_id=server_id).first_or_404()
+    try:
+        db.session.delete(note)
+        db.session.commit()
+        flash("Note deleted.", "success")
+        logger.info("Note id=%d deleted from server id=%d", note_id, server_id)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to delete note id=%d", note_id)
+        flash("An error occurred while deleting the note.", "danger")
+
+    return redirect(url_for("inventory.server_detail", server_id=server_id) + "#notes")

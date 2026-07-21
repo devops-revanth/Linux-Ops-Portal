@@ -19,7 +19,13 @@ class Config:
     # ------------------------------------------------------------------ #
     # Security
     # ------------------------------------------------------------------ #
-    SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-me-in-production")
+    # Read SECRET_KEY first; fall back to SESSION_SECRET (Replit managed
+    # secret) so the value is never stored as a plaintext env var.
+    SECRET_KEY: str = (
+        os.environ.get("SECRET_KEY")
+        or os.environ.get("SESSION_SECRET")
+        or "change-me-in-production"
+    )
 
     # ------------------------------------------------------------------ #
     # Database

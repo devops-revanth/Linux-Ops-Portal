@@ -1,0 +1,987 @@
+{% extends "base.html" %}
+
+{% block title %}{{ server.hostname }} – {{ app_name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Detail page layout ─────────────────────────────────────────────── */
+  .lop-detail-header {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .lop-hostname {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #58a6ff;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  .lop-fqdn {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .78rem;
+    color: var(--lop-muted);
+    margin-top: .2rem;
+  }
+
+  /* ── Status badge (reused from inventory) ───────────────────────────── */
+  .lop-status-active         { --c: var(--bs-success); }
+  .lop-status-inactive       { --c: var(--bs-secondary); }
+  .lop-status-maintenance    { --c: var(--bs-warning); }
+  .lop-status-decommissioned { --c: var(--bs-danger); }
+
+  .lop-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .73rem;
+    font-weight: 500;
+    padding: .25rem .65rem;
+    border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    background: color-mix(in srgb, var(--c) 10%, transparent);
+    color: var(--c);
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+  .lop-status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--c);
+    flex-shrink: 0;
+  }
+
+  /* ── Environment pill ───────────────────────────────────────────────── */
+  .lop-env-pill {
+    display: inline-block;
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .2rem .5rem;
+    border-radius: 4px;
+  }
+
+  /* ── Meta row ───────────────────────────────────────────────────────── */
+  .lop-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem 2rem;
+    margin-top: .9rem;
+  }
+  .lop-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+  }
+  .lop-meta-label {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--lop-muted);
+    font-weight: 500;
+  }
+  .lop-meta-value {
+    font-size: .875rem;
+    color: var(--lop-text);
+    font-weight: 500;
+  }
+  .lop-meta-mono {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem;
+  }
+
+  /* ── Tabs ───────────────────────────────────────────────────────────── */
+  .nav-tabs {
+    border-color: var(--lop-border);
+  }
+  .nav-tabs .nav-link {
+    color: var(--lop-muted);
+    border-color: transparent;
+    font-size: .875rem;
+    padding: .6rem 1rem;
+  }
+  .nav-tabs .nav-link:hover {
+    color: var(--lop-text);
+    border-color: transparent transparent var(--lop-border);
+  }
+  .nav-tabs .nav-link.active {
+    background: var(--lop-surface);
+    border-color: var(--lop-border) var(--lop-border) var(--lop-surface);
+    color: var(--lop-text);
+    font-weight: 600;
+  }
+  .tab-content {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 1.5rem;
+  }
+
+  /* ── Detail fields ──────────────────────────────────────────────────── */
+  .lop-field-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .lop-field {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+  }
+  .lop-field-label {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--lop-muted);
+    font-weight: 500;
+  }
+  .lop-field-value {
+    font-size: .875rem;
+    color: var(--lop-text);
+  }
+  .lop-field-empty {
+    color: var(--lop-muted);
+    font-style: italic;
+  }
+
+  /* ── Patch status badge ─────────────────────────────────────────────── */
+  .lop-patch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .35rem .8rem;
+    border-radius: 6px;
+    font-size: .82rem;
+    font-weight: 600;
+  }
+  .lop-patch-up-to-date { background: rgba(35,134,54,.15); color: #3fb950; border: 1px solid rgba(35,134,54,.35); }
+  .lop-patch-pending    { background: rgba(210,153,34,.15); color: #d4a017; border: 1px solid rgba(210,153,34,.35); }
+  .lop-patch-failed     { background: rgba(248,81,73,.15);  color: #f85149; border: 1px solid rgba(248,81,73,.35); }
+  .lop-patch-unknown    { background: rgba(139,148,158,.1); color: #8b949e; border: 1px solid rgba(139,148,158,.3); }
+
+  /* ── Package table ──────────────────────────────────────────────────── */
+  .lop-pkg-badge {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .78rem;
+    background: rgba(56,139,253,.1);
+    color: #79c0ff;
+    border: 1px solid rgba(56,139,253,.25);
+    padding: .15rem .45rem;
+    border-radius: 4px;
+  }
+
+  /* ── Notes ──────────────────────────────────────────────────────────── */
+  .lop-note-card {
+    background: var(--lop-bg);
+    border: 1px solid var(--lop-border);
+    border-radius: 6px;
+    padding: .9rem 1rem;
+    margin-bottom: .75rem;
+  }
+  .lop-note-meta {
+    font-size: .73rem;
+    color: var(--lop-muted);
+    margin-bottom: .4rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .lop-note-body {
+    font-size: .875rem;
+    color: var(--lop-text);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .lop-note-add-area {
+    background: var(--lop-bg);
+    border: 1px solid var(--lop-border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-top: 1rem;
+  }
+  textarea.form-control {
+    background-color: var(--lop-surface) !important;
+    border-color: var(--lop-border) !important;
+    color: var(--lop-text) !important;
+    resize: vertical;
+  }
+  textarea.form-control:focus {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 .2rem rgba(35,134,54,.25) !important;
+  }
+  .form-control, .form-select {
+    background-color: var(--lop-bg) !important;
+    border-color: var(--lop-border) !important;
+    color: var(--lop-text) !important;
+  }
+  .form-control:focus, .form-select:focus {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 .2rem rgba(35,134,54,.25) !important;
+  }
+  .form-control::placeholder { color: var(--lop-muted) !important; }
+  .form-label { color: var(--lop-muted); font-size: .82rem; margin-bottom: .25rem; }
+  .form-text  { color: var(--lop-muted) !important; font-size: .75rem; }
+  .modal-content {
+    background-color: var(--lop-surface) !important;
+    border-color: var(--lop-border) !important;
+  }
+  .modal-header, .modal-footer { border-color: var(--lop-border) !important; }
+
+  /* ── Section divider ────────────────────────────────────────────────── */
+  .lop-section-title {
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--lop-muted);
+    margin-bottom: .75rem;
+    padding-bottom: .5rem;
+    border-bottom: 1px solid var(--lop-border);
+  }
+
+  /* ── Sync badge ─────────────────────────────────────────────────────── */
+  .lop-sync-badge {
+    font-size: .72rem;
+    color: var(--lop-muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+
+  {# ── Breadcrumb ──────────────────────────────────────────────────────── #}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb" style="font-size:.82rem;">
+      <li class="breadcrumb-item">
+        <a href="{{ url_for('inventory.index') }}" class="text-secondary text-decoration-none">
+          <i class="bi bi-server me-1"></i>Inventory
+        </a>
+      </li>
+      <li class="breadcrumb-item active text-light" aria-current="page">{{ server.hostname }}</li>
+    </ol>
+  </nav>
+
+  {# ── Header card ─────────────────────────────────────────────────────── #}
+  <div class="lop-detail-header">
+    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+
+      {# Left: hostname + badges #}
+      <div>
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+          <i class="bi bi-terminal text-primary opacity-75"></i>
+          <span class="lop-hostname">{{ server.hostname }}</span>
+          <span class="lop-status-badge lop-status-{{ server.status }}">
+            <span class="lop-status-dot"></span>{{ server.status | capitalize }}
+          </span>
+          {% if server.environment %}
+            <span class="lop-env-pill
+              {% if server.environment.color == 'primary'   %} bg-primary-subtle   text-primary
+              {% elif server.environment.color == 'danger'  %} bg-danger-subtle    text-danger
+              {% elif server.environment.color == 'warning' %} bg-warning-subtle   text-warning
+              {% elif server.environment.color == 'info'    %} bg-info-subtle      text-info
+              {% elif server.environment.color == 'success' %} bg-success-subtle   text-success
+              {% else %}                                        bg-secondary-subtle text-secondary
+              {% endif %}">{{ server.environment.label }}</span>
+          {% endif %}
+        </div>
+        {% if server.fqdn and server.fqdn != server.hostname %}
+          <div class="lop-fqdn">{{ server.fqdn }}</div>
+        {% endif %}
+
+        {# Meta row #}
+        <div class="lop-meta-row">
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">IP Address</span>
+            <span class="lop-meta-value lop-meta-mono">{{ server.ip_address }}</span>
+          </div>
+          {% if server.operating_system %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">OS</span>
+            <span class="lop-meta-value">{{ server.operating_system }}{% if server.os_version %} {{ server.os_version }}{% endif %}</span>
+          </div>
+          {% endif %}
+          {% if server.kernel_version %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Kernel</span>
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;">{{ server.kernel_version }}</span>
+          </div>
+          {% endif %}
+          {% if server.cpu_count is not none %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">CPU</span>
+            <span class="lop-meta-value">{{ server.cpu_count }} vCPU{% if server.cpu_model %} <span class="text-secondary" style="font-size:.78rem;">{{ server.cpu_model }}</span>{% endif %}</span>
+          </div>
+          {% endif %}
+          {% if server.ram_gb is not none %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">RAM</span>
+            <span class="lop-meta-value">{{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB</span>
+          </div>
+          {% endif %}
+          {% if server.location %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Location</span>
+            <span class="lop-meta-value"><i class="bi bi-building me-1 text-secondary"></i>{{ server.location.name }}</span>
+          </div>
+          {% endif %}
+          {% if server.owner %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Owner</span>
+            <span class="lop-meta-value">{{ server.owner.name }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Right: actions #}
+      <div class="d-flex gap-2 flex-wrap align-items-start">
+        {% if server.last_ansible_sync %}
+        <span class="lop-sync-badge align-self-center">
+          <i class="bi bi-arrow-repeat me-1"></i>
+          Synced {{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+        </span>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                data-bs-toggle="modal" data-bs-target="#editServerModal">
+          <i class="bi bi-pencil me-1"></i>Edit
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger"
+                data-bs-toggle="modal" data-bs-target="#deleteServerModal">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  {# ── Tabs ─────────────────────────────────────────────────────────────── #}
+  <ul class="nav nav-tabs" id="serverTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="overview-tab" data-bs-toggle="tab"
+              data-bs-target="#overview" type="button" role="tab"
+              aria-controls="overview" aria-selected="true">
+        <i class="bi bi-info-circle me-1"></i>Overview
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="patching-tab" data-bs-toggle="tab"
+              data-bs-target="#patching" type="button" role="tab"
+              aria-controls="patching" aria-selected="false">
+        <i class="bi bi-shield-check me-1"></i>Patching
+        {% if server.patching %}
+          {% if server.patching.patch_status == 'pending' %}
+            <span class="badge bg-warning-subtle text-warning ms-1" style="font-size:.65rem;">
+              {% if server.patching.pending_updates %}{{ server.patching.pending_updates }}{% else %}!{% endif %}
+            </span>
+          {% elif server.patching.patch_status == 'failed' %}
+            <span class="badge bg-danger-subtle text-danger ms-1" style="font-size:.65rem;">!</span>
+          {% endif %}
+        {% endif %}
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="packages-tab" data-bs-toggle="tab"
+              data-bs-target="#packages" type="button" role="tab"
+              aria-controls="packages" aria-selected="false">
+        <i class="bi bi-box me-1"></i>Packages
+        {% if server.packages %}
+          <span class="badge bg-secondary-subtle text-secondary ms-1" style="font-size:.65rem;">{{ server.packages | length }}</span>
+        {% endif %}
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if request.url.endswith('#notes') %}active{% endif %}"
+              id="notes-tab" data-bs-toggle="tab"
+              data-bs-target="#notes-pane" type="button" role="tab"
+              aria-controls="notes-pane" aria-selected="false">
+        <i class="bi bi-sticky me-1"></i>Notes
+        {% if server.notes %}
+          <span class="badge bg-secondary-subtle text-secondary ms-1" style="font-size:.65rem;">{{ server.notes | length }}</span>
+        {% endif %}
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="serverTabsContent">
+
+    {# ══════════════════════════════════ Overview Tab ══════════════════════ #}
+    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+
+      {# Identity #}
+      <p class="lop-section-title"><i class="bi bi-fingerprint me-1"></i>Identity</p>
+      <div class="lop-field-group">
+        <div class="lop-field">
+          <span class="lop-field-label">Hostname</span>
+          <span class="lop-field-value" style="font-family:monospace;">{{ server.hostname }}</span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">FQDN</span>
+          <span class="lop-field-value {% if not server.fqdn %}lop-field-empty{% else %}lop-meta-mono{% endif %}" style="font-size:.82rem;">
+            {{ server.fqdn or '—' }}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">IP Address</span>
+          <span class="lop-field-value lop-meta-mono">{{ server.ip_address }}</span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Status</span>
+          <span>
+            <span class="lop-status-badge lop-status-{{ server.status }}">
+              <span class="lop-status-dot"></span>{{ server.status | capitalize }}
+            </span>
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Environment</span>
+          <span class="lop-field-value">
+            {% if server.environment %}
+              <span class="lop-env-pill
+                {% if server.environment.color == 'primary'   %} bg-primary-subtle   text-primary
+                {% elif server.environment.color == 'danger'  %} bg-danger-subtle    text-danger
+                {% elif server.environment.color == 'warning' %} bg-warning-subtle   text-warning
+                {% elif server.environment.color == 'info'    %} bg-info-subtle      text-info
+                {% elif server.environment.color == 'success' %} bg-success-subtle   text-success
+                {% else %}                                        bg-secondary-subtle text-secondary
+                {% endif %}">{{ server.environment.label }}</span>
+              <span class="text-secondary ms-1" style="font-size:.82rem;">{{ server.environment.name }}</span>
+            {% else %}<span class="lop-field-empty">—</span>{% endif %}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Location</span>
+          <span class="lop-field-value">
+            {% if server.location %}<i class="bi bi-building me-1 text-secondary"></i>{{ server.location.name }}{% else %}<span class="lop-field-empty">—</span>{% endif %}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Owner</span>
+          <span class="lop-field-value">
+            {% if server.owner %}
+              <i class="bi bi-person me-1 text-secondary"></i>{{ server.owner.name }}
+              {% if server.owner.email %}<div class="text-secondary" style="font-size:.75rem;">{{ server.owner.email }}</div>{% endif %}
+            {% else %}<span class="lop-field-empty">—</span>{% endif %}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Added</span>
+          <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+            {{ server.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Last Updated</span>
+          <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+            {{ server.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Last Ansible Sync</span>
+          <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+            {% if server.last_ansible_sync %}{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+            {% else %}<span class="lop-field-empty">Never</span>{% endif %}
+          </span>
+        </div>
+      </div>
+
+      {# Hardware #}
+      <p class="lop-section-title mt-3"><i class="bi bi-cpu me-1"></i>Hardware</p>
+      <div class="lop-field-group">
+        <div class="lop-field">
+          <span class="lop-field-label">Operating System</span>
+          <span class="lop-field-value {% if not server.operating_system %}lop-field-empty{% endif %}">
+            {{ server.operating_system or '—' }}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">OS Version</span>
+          <span class="lop-field-value {% if not server.os_version %}lop-field-empty{% endif %}">
+            {{ server.os_version or '—' }}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">Kernel Version</span>
+          <span class="lop-field-value lop-meta-mono {% if not server.kernel_version %}lop-field-empty{% endif %}" style="font-size:.8rem;">
+            {{ server.kernel_version or '—' }}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">CPU Count</span>
+          <span class="lop-field-value {% if server.cpu_count is none %}lop-field-empty{% endif %}">
+            {% if server.cpu_count is not none %}{{ server.cpu_count }} vCPU{% else %}—{% endif %}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">CPU Model</span>
+          <span class="lop-field-value {% if not server.cpu_model %}lop-field-empty{% endif %}" style="font-size:.82rem;">
+            {{ server.cpu_model or '—' }}
+          </span>
+        </div>
+        <div class="lop-field">
+          <span class="lop-field-label">RAM</span>
+          <span class="lop-field-value {% if server.ram_gb is none %}lop-field-empty{% endif %}">
+            {% if server.ram_gb is not none %}
+              {{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB
+            {% else %}—{% endif %}
+          </span>
+        </div>
+      </div>
+
+    </div>{# /overview #}
+
+    {# ══════════════════════════════════ Patching Tab ══════════════════════ #}
+    <div class="tab-pane fade" id="patching" role="tabpanel" aria-labelledby="patching-tab">
+
+      {% if server.patching %}
+        {% set p = server.patching %}
+
+        {# Status banner #}
+        <div class="mb-4">
+          <p class="lop-section-title"><i class="bi bi-shield-check me-1"></i>Patch Status</p>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="lop-patch-badge lop-patch-{{ p.patch_status | replace('-', '-') }}
+              {% if p.patch_status == 'up-to-date' %}lop-patch-up-to-date
+              {% elif p.patch_status == 'pending'  %}lop-patch-pending
+              {% elif p.patch_status == 'failed'   %}lop-patch-failed
+              {% else                               %}lop-patch-unknown{% endif %}">
+              {% if p.patch_status == 'up-to-date' %}<i class="bi bi-check-circle-fill"></i>
+              {% elif p.patch_status == 'pending'   %}<i class="bi bi-exclamation-circle-fill"></i>
+              {% elif p.patch_status == 'failed'    %}<i class="bi bi-x-circle-fill"></i>
+              {% else %}<i class="bi bi-question-circle-fill"></i>{% endif %}
+              {{ p.patch_status | replace('-', ' ') | title }}
+            </span>
+            {% if p.pending_updates %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                <i class="bi bi-arrow-down-circle me-1"></i>{{ p.pending_updates }} pending update{{ 's' if p.pending_updates != 1 else '' }}
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
+        {# Dates #}
+        <p class="lop-section-title"><i class="bi bi-calendar-event me-1"></i>Patch History</p>
+        <div class="lop-field-group">
+          <div class="lop-field">
+            <span class="lop-field-label">Last Patch Date</span>
+            <span class="lop-field-value {% if not p.last_patch_date %}lop-field-empty{% endif %}">
+              {% if p.last_patch_date %}{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Last Reboot Date</span>
+            <span class="lop-field-value {% if not p.last_reboot_date %}lop-field-empty{% endif %}">
+              {% if p.last_reboot_date %}{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Patching Record Created</span>
+            <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+              {{ p.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Patching Record Updated</span>
+            <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+              {{ p.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
+            </span>
+          </div>
+        </div>
+
+        {# Kernel history #}
+        <p class="lop-section-title mt-3"><i class="bi bi-code-slash me-1"></i>Kernel History</p>
+        <div class="lop-field-group">
+          <div class="lop-field">
+            <span class="lop-field-label">Current Kernel</span>
+            <span class="lop-field-value lop-meta-mono {% if not p.current_kernel %}lop-field-empty{% endif %}" style="font-size:.8rem;">
+              {{ p.current_kernel or '—' }}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Previous Kernel</span>
+            <span class="lop-field-value lop-meta-mono {% if not p.previous_kernel %}lop-field-empty{% endif %}" style="font-size:.8rem;">
+              {{ p.previous_kernel or '—' }}
+            </span>
+          </div>
+        </div>
+
+      {% else %}
+        <div class="text-center py-5 text-secondary">
+          <i class="bi bi-shield fs-1 d-block mb-3 opacity-25"></i>
+          <h6 class="fw-semibold">No patching data</h6>
+          <p class="small">Patching information will appear here once Ansible syncs this server.</p>
+        </div>
+      {% endif %}
+
+    </div>{# /patching #}
+
+    {# ══════════════════════════════════ Packages Tab ══════════════════════ #}
+    <div class="tab-pane fade" id="packages" role="tabpanel" aria-labelledby="packages-tab">
+
+      {% if server.packages %}
+        <p class="lop-section-title"><i class="bi bi-box me-1"></i>Installed Packages ({{ server.packages | length }})</p>
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Version</th>
+                <th>Collected At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for sp in server.packages | sort(attribute='package.name') %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ sp.package.display_name or sp.package.name }}</span>
+                  {% if sp.package.description %}
+                    <div class="text-secondary" style="font-size:.75rem;">{{ sp.package.description }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if sp.version %}
+                    <span class="lop-pkg-badge">{{ sp.version }}</span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
+                <td class="text-secondary" style="font-size:.82rem;">
+                  {% if sp.collected_at %}{{ sp.collected_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center py-5 text-secondary">
+          <i class="bi bi-box fs-1 d-block mb-3 opacity-25"></i>
+          <h6 class="fw-semibold">No package data</h6>
+          <p class="small">Package versions will appear here once Ansible syncs this server.</p>
+        </div>
+      {% endif %}
+
+    </div>{# /packages #}
+
+    {# ══════════════════════════════════ Notes Tab ═════════════════════════ #}
+    <div class="tab-pane fade" id="notes-pane" role="tabpanel" aria-labelledby="notes-tab">
+
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <p class="lop-section-title mb-0"><i class="bi bi-sticky me-1"></i>Notes ({{ server.notes | length }})</p>
+      </div>
+
+      {# Existing notes #}
+      {% if server.notes %}
+        {% for note in server.notes %}
+        <div class="lop-note-card">
+          <div class="lop-note-meta">
+            <i class="bi bi-person-circle"></i>
+            <span>{{ note.author or 'Anonymous' }}</span>
+            <span class="text-secondary">·</span>
+            <span>{{ note.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+            {% if note.updated_at != note.created_at %}
+              <span class="text-secondary">(edited {{ note.updated_at.strftime('%Y-%m-%d %H:%M') }})</span>
+            {% endif %}
+            <form method="POST"
+                  action="{{ url_for('inventory.delete_note', server_id=server.id, note_id=note.id) }}"
+                  class="ms-auto"
+                  onsubmit="return confirm('Delete this note?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-link btn-sm text-danger p-0" title="Delete note">
+                <i class="bi bi-trash" style="font-size:.8rem;"></i>
+              </button>
+            </form>
+          </div>
+          <div class="lop-note-body">{{ note.body }}</div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-center py-4 text-secondary">
+          <i class="bi bi-sticky fs-2 d-block mb-2 opacity-25"></i>
+          <p class="small mb-0">No notes yet. Add the first note below.</p>
+        </div>
+      {% endif %}
+
+      {# Add note form #}
+      <div class="lop-note-add-area mt-3">
+        <p class="lop-section-title"><i class="bi bi-plus-circle me-1"></i>Add a Note</p>
+        <form method="POST" action="{{ url_for('inventory.add_note', server_id=server.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-2">
+            <label class="form-label" for="note-author">Author <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control form-control-sm"
+                   id="note-author" name="author" placeholder="e.g. your name or team" maxlength="150">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="note-body">Note <span class="text-danger">*</span></label>
+            <textarea class="form-control form-control-sm"
+                      id="note-body" name="body" rows="4"
+                      placeholder="Enter notes about this server…" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Add Note
+          </button>
+        </form>
+      </div>
+
+    </div>{# /notes #}
+
+  </div>{# /tab-content #}
+
+</div>{# /container #}
+
+
+{# ═══════════════════════════════ Edit Server Modal ════════════════════════ #}
+<div class="modal fade" id="editServerModal" tabindex="-1"
+     aria-labelledby="editServerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="editServerModalLabel">
+          <i class="bi bi-pencil me-2 text-primary"></i>Edit Server — {{ server.hostname }}
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form method="POST"
+            action="{{ url_for('inventory.edit_server', server_id=server.id) }}"
+            id="edit-server-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="modal-body">
+
+          {# Row 1: Identity #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="es-hostname">Hostname <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-hostname" name="hostname"
+                     value="{{ server.hostname }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="es-ip">IP Address <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-ip" name="ip_address"
+                     value="{{ server.ip_address }}" required>
+            </div>
+          </div>
+
+          {# Row 2: FQDN #}
+          <div class="row g-3 mb-3">
+            <div class="col-12">
+              <label class="form-label" for="es-fqdn">FQDN</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-fqdn" name="fqdn"
+                     value="{{ server.fqdn or '' }}"
+                     placeholder="e.g. web-prod-01.example.com">
+            </div>
+          </div>
+
+          {# Row 3: Classification #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label" for="es-env">Environment</label>
+              <select class="form-select form-select-sm" id="es-env" name="environment_id">
+                <option value="">— None —</option>
+                {% for env in environments %}
+                  <option value="{{ env.id }}" {{ 'selected' if server.environment_id == env.id }}>
+                    {{ env.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-loc">Location</label>
+              <select class="form-select form-select-sm" id="es-loc" name="location_id">
+                <option value="">— None —</option>
+                {% for loc in locations %}
+                  <option value="{{ loc.id }}" {{ 'selected' if server.location_id == loc.id }}>
+                    {{ loc.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-owner">Owner</label>
+              <select class="form-select form-select-sm" id="es-owner" name="owner_id">
+                <option value="">— None —</option>
+                {% for own in owners %}
+                  <option value="{{ own.id }}" {{ 'selected' if server.owner_id == own.id }}>
+                    {{ own.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          {# Row 4: OS & Kernel #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label" for="es-os">Operating System</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-os" name="operating_system"
+                     value="{{ server.operating_system or '' }}"
+                     placeholder="e.g. Red Hat Enterprise Linux">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-osver">OS Version</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-osver" name="os_version"
+                     value="{{ server.os_version or '' }}"
+                     placeholder="e.g. 9.3">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-kernel">Kernel Version</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-kernel" name="kernel_version"
+                     value="{{ server.kernel_version or '' }}"
+                     placeholder="e.g. 5.14.0-362.8.1.el9_3.x86_64">
+            </div>
+          </div>
+
+          {# Row 5: Hardware #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label" for="es-cpu-count">CPU (vCPUs)</label>
+              <input type="number" class="form-control form-control-sm"
+                     id="es-cpu-count" name="cpu_count"
+                     value="{{ server.cpu_count or '' }}"
+                     min="1" max="1024">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-ram">RAM (GB)</label>
+              <input type="number" class="form-control form-control-sm"
+                     id="es-ram" name="ram_gb"
+                     value="{{ server.ram_gb or '' }}"
+                     min="0" step="0.5">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="es-status">Status</label>
+              <select class="form-select form-select-sm" id="es-status" name="status">
+                <option value="active"          {{ 'selected' if server.status == 'active' }}>Active</option>
+                <option value="inactive"        {{ 'selected' if server.status == 'inactive' }}>Inactive</option>
+                <option value="maintenance"     {{ 'selected' if server.status == 'maintenance' }}>Maintenance</option>
+                <option value="decommissioned"  {{ 'selected' if server.status == 'decommissioned' }}>Decommissioned</option>
+              </select>
+            </div>
+          </div>
+
+          {# Row 6: CPU Model #}
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="es-cpu-model">CPU Model</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="es-cpu-model" name="cpu_model"
+                     value="{{ server.cpu_model or '' }}"
+                     placeholder="e.g. Intel Xeon E5-2690 v4">
+            </div>
+          </div>
+
+        </div>{# /modal-body #}
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Save Changes
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+
+{# ══════════════════════════════ Delete Server Modal ══════════════════════ #}
+<div class="modal fade" id="deleteServerModal" tabindex="-1"
+     aria-labelledby="deleteServerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header border-danger">
+        <h5 class="modal-title fw-semibold text-danger" id="deleteServerModalLabel">
+          <i class="bi bi-exclamation-triangle me-2"></i>Delete Server
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <p>Are you sure you want to permanently delete <strong class="text-light">{{ server.hostname }}</strong>?</p>
+        <p class="text-secondary small mb-0">
+          This will remove the server and all associated patching records, package data, and notes.
+          This action cannot be undone.
+        </p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                data-bs-dismiss="modal">Cancel</button>
+        <form method="POST"
+              action="{{ url_for('inventory.delete_server', server_id=server.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-danger">
+            <i class="bi bi-trash me-1"></i>Delete Permanently
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  "use strict";
+
+  /* ── Activate Notes tab if URL hash is #notes ───────────────────── */
+  if (window.location.hash === "#notes") {
+    const notesTab = document.getElementById("notes-tab");
+    if (notesTab) {
+      const tab = new bootstrap.Tab(notesTab);
+      tab.show();
+      setTimeout(function () {
+        const noteArea = document.getElementById("note-body");
+        if (noteArea) noteArea.focus();
+      }, 200);
+    }
+  }
+
+  /* ── Validate edit form ──────────────────────────────────────────── */
+  const editForm = document.getElementById("edit-server-form");
+  if (editForm) {
+    editForm.addEventListener("submit", function (e) {
+      const hostname = editForm.querySelector('[name="hostname"]').value.trim();
+      const ip       = editForm.querySelector('[name="ip_address"]').value.trim();
+      let valid = true;
+      if (!hostname) {
+        editForm.querySelector('[name="hostname"]').classList.add("is-invalid");
+        valid = false;
+      }
+      if (!ip) {
+        editForm.querySelector('[name="ip_address"]').classList.add("is-invalid");
+        valid = false;
+      }
+      if (!valid) e.preventDefault();
+    });
+    editForm.querySelectorAll("input[required]").forEach(function (el) {
+      el.addEventListener("input", function () { el.classList.remove("is-invalid"); });
+    });
+  }
+})();
+</script>
+{% endblock %}
