@@ -26,7 +26,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd lop && python run.py"
+args = "python run.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
