@@ -4,7 +4,7 @@ All database logic lives in queries.py.
 """
 import logging
 
-from flask import current_app, flash, redirect, render_template, request, url_for
+from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from . import settings_bp
@@ -28,11 +28,25 @@ from .queries import (
     toggle_user_active,
 )
 from ...audit import commit_audit
+from ...freeipa import FreeIPAService
 
 logger = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────── #
+
+def _freeipa_info() -> dict:
+    """Build FreeIPA status dict for the settings template."""
+    cfg = current_app.config
+    enabled = str(cfg.get("FREEIPA_ENABLED", "false")).lower() == "true"
+    return {
+        "enabled":      enabled,
+        "uri":          cfg.get("FREEIPA_URI", "") if enabled else "",
+        "base_dn":      cfg.get("FREEIPA_BASE_DN", "") if enabled else "",
+        "bind_dn":      cfg.get("FREEIPA_BIND_DN", "") if enabled else "",
+        "verify_cert":  str(cfg.get("FREEIPA_VERIFY_CERT", "true")).lower() != "false",
+    }
+
 
 def _render_settings(new_token: str | None = None):
     data = get_settings_data()
@@ -49,6 +63,7 @@ def _render_settings(new_token: str | None = None):
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
         app_base_url=current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),
+        freeipa=_freeipa_info(),
     )
 
 
@@ -272,3 +287,23 @@ def delete_user_route(user_id: int):
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#users")
+
+
+# ── FreeIPA / Authentication ───────────────────────────────────────────── #
+
+@settings_bp.route("/settings/freeipa/test", methods=["POST"])
+def test_freeipa_connection():
+    """AJAX endpoint: test the FreeIPA service-account bind and return JSON."""
+    svc = FreeIPAService(current_app.config)
+    result = svc.test_connection()
+    commit_audit(
+        "settings.freeipa.test_connection",
+        target=current_app.config.get("FREEIPA_URI", ""),
+        details=f"success={result.success}: {result.message}",
+    )
+    return jsonify({
+        "success": result.success,
+        "message": result.message,
+        "server":  result.server,
+        "base_dn": result.base_dn,
+    })

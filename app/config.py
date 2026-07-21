@@ -56,6 +56,21 @@ class Config:
     )
 
     # ------------------------------------------------------------------ #
+    # FreeIPA / LDAP Authentication
+    # ------------------------------------------------------------------ #
+    # Set FREEIPA_ENABLED=true to activate LDAP-first login.
+    # All other FREEIPA_* vars are required when enabled.
+    FREEIPA_ENABLED: str = os.environ.get("FREEIPA_ENABLED", "false")
+    FREEIPA_URI: str = os.environ.get("FREEIPA_URI", "")
+    FREEIPA_BASE_DN: str = os.environ.get("FREEIPA_BASE_DN", "")
+    FREEIPA_BIND_DN: str = os.environ.get("FREEIPA_BIND_DN", "")
+    FREEIPA_BIND_PASSWORD: str = os.environ.get("FREEIPA_BIND_PASSWORD", "")
+    # Absolute path to the PEM CA bundle (leave blank to use system trust store)
+    FREEIPA_CA_CERT: str = os.environ.get("FREEIPA_CA_CERT", "")
+    # Set to "false" only in isolated dev environments — disables TLS cert check
+    FREEIPA_VERIFY_CERT: str = os.environ.get("FREEIPA_VERIFY_CERT", "true")
+
+    # ------------------------------------------------------------------ #
     # Logging
     # ------------------------------------------------------------------ #
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")

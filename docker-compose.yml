@@ -50,6 +50,14 @@ services:
       LOG_LEVEL:    ${LOG_LEVEL:-INFO}
       APP_BASE_URL: ${APP_BASE_URL:-https://your-domain.example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # FreeIPA / LDAP authentication (optional — see docs/FREEIPA.md)
+      FREEIPA_ENABLED:       ${FREEIPA_ENABLED:-false}
+      FREEIPA_URI:           ${FREEIPA_URI:-}
+      FREEIPA_BASE_DN:       ${FREEIPA_BASE_DN:-}
+      FREEIPA_BIND_DN:       ${FREEIPA_BIND_DN:-}
+      FREEIPA_BIND_PASSWORD: ${FREEIPA_BIND_PASSWORD:-}
+      FREEIPA_CA_CERT:       ${FREEIPA_CA_CERT:-}
+      FREEIPA_VERIFY_CERT:   ${FREEIPA_VERIFY_CERT:-true}
     ports:
       - "5000:5000"
     depends_on:

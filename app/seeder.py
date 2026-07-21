@@ -105,7 +105,12 @@ def _seed_admin_user() -> None:
         password = secrets.token_urlsafe(20)
         generated = True
 
-    admin = User(username=username, email="admin@localhost")
+    admin = User(
+        username=username,
+        email="admin@localhost",
+        role="administrator",
+        auth_source="local",
+    )
     admin.set_password(password)
     db.session.add(admin)
     db.session.commit()

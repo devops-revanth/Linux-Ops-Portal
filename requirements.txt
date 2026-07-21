@@ -15,5 +15,8 @@ WTForms==3.2.2
 # Excel export
 openpyxl==3.1.5
 
+# LDAP / FreeIPA authentication
+ldap3==2.9.1
+
 # Production WSGI server
 gunicorn==23.0.0

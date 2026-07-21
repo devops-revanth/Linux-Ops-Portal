@@ -354,6 +354,68 @@
     </div>
   </div>
 
+  {# ══════════════════════════════ AUTHENTICATION ══════════════════════════ #}
+  <div class="card border-0 mb-4" id="authentication">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-shield-lock me-2 text-info"></i>Authentication
+      </h6>
+      <span class="badge
+        {% if freeipa.enabled %}bg-success-subtle text-success border border-success-subtle
+        {% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
+        {% if freeipa.enabled %}FreeIPA enabled{% else %}Local only{% endif %}
+      </span>
+    </div>
+    <div class="card-body">
+      {% if freeipa.enabled %}
+        <dl class="row mb-3">
+          <dt class="col-sm-3 text-secondary small">LDAP URI</dt>
+          <dd class="col-sm-9 mb-1"><code>{{ freeipa.uri }}</code></dd>
+          <dt class="col-sm-3 text-secondary small">Base DN</dt>
+          <dd class="col-sm-9 mb-1"><code>{{ freeipa.base_dn }}</code></dd>
+          <dt class="col-sm-3 text-secondary small">Bind DN</dt>
+          <dd class="col-sm-9 mb-1"><code>{{ freeipa.bind_dn }}</code></dd>
+          <dt class="col-sm-3 text-secondary small">TLS verification</dt>
+          <dd class="col-sm-9 mb-0">
+            {% if freeipa.verify_cert %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">Enabled</span>
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Disabled (dev only)</span>
+            {% endif %}
+          </dd>
+        </dl>
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <button id="btnTestFreeIPA" class="btn btn-sm btn-outline-info"
+                  hx-post="{{ url_for('settings.test_freeipa_connection') }}"
+                  hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'
+                  onclick="testFreeIPAConnection(event)">
+            <i class="bi bi-plug me-1"></i>Test Connection
+          </button>
+          <span id="freeipaTestResult" class="small"></span>
+        </div>
+
+        <div class="alert alert-info border-0 mt-3 mb-0 py-2 small">
+          <i class="bi bi-info-circle me-1"></i>
+          Users are authenticated against FreeIPA first; local accounts act as fallback.
+          The emergency local admin always uses local password authentication.
+          See <code>docs/FREEIPA.md</code> for group-to-role mapping.
+        </div>
+      {% else %}
+        <div class="text-secondary small mb-3">
+          <i class="bi bi-lock me-1"></i>
+          FreeIPA / LDAP authentication is <strong>disabled</strong>.
+          All users authenticate with local passwords.
+        </div>
+        <p class="small text-secondary mb-0">
+          To enable FreeIPA, set <code>FREEIPA_ENABLED=true</code> and the other
+          <code>FREEIPA_*</code> environment variables, then restart the application.
+          See <code>docs/FREEIPA.md</code> for full setup instructions.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
   {# ══════════════════════════════ CHANGE LOG ══════════════════════════════ #}
   <div class="card border-0 mb-4" id="change-log">
     <div class="card-header d-flex align-items-center justify-content-between py-3">
@@ -931,6 +993,41 @@ function copyToken(inputId, btn) {
     input.select();
     document.execCommand('copy');
   });
+}
+
+async function testFreeIPAConnection(evt) {
+  evt.preventDefault();
+  const btn    = document.getElementById('btnTestFreeIPA');
+  const result = document.getElementById('freeipaTestResult');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Testing…';
+  result.textContent = '';
+  result.className = 'small';
+
+  try {
+    const resp = await fetch(btn.getAttribute('hx-post') || "{{ url_for('settings.test_freeipa_connection') }}", {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': '{{ csrf_token() }}',
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await resp.json();
+    if (data.success) {
+      result.textContent = '✓ ' + data.message;
+      result.className = 'small text-success';
+    } else {
+      result.textContent = '✗ ' + data.message;
+      result.className = 'small text-danger';
+    }
+  } catch (e) {
+    result.textContent = '✗ Request failed: ' + e.message;
+    result.className = 'small text-danger';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-plug me-1"></i>Test Connection';
+  }
 }
 </script>
 {% endblock %}
