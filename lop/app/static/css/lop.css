@@ -163,6 +163,78 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--lop-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--lop-muted); }
 
+/* ── Stat cards ─────────────────────────────────────────── */
+.lop-stat-card {
+  transition: transform 0.15s;
+}
+.lop-stat-card:hover {
+  transform: translateY(-2px);
+}
+.lop-stat-number {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.lop-card-alert {
+  border-left: 3px solid var(--bs-danger) !important;
+}
+
+/* ── Environment cards ──────────────────────────────────── */
+.lop-env-card {
+  transition: transform 0.15s;
+}
+.lop-env-card:hover {
+  transform: translateY(-2px);
+}
+.lop-env-count {
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.lop-env-label {
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-top: .25rem;
+}
+.lop-env-sublabel {
+  font-size: .7rem;
+  color: var(--lop-muted);
+}
+
+/* Environment colour variants */
+.lop-env-danger  { border-top: 3px solid var(--bs-danger)  !important; }
+.lop-env-primary { border-top: 3px solid var(--bs-primary) !important; }
+.lop-env-warning { border-top: 3px solid var(--bs-warning) !important; }
+.lop-env-info    { border-top: 3px solid var(--bs-info)    !important; }
+.lop-env-success { border-top: 3px solid var(--bs-success) !important; }
+.lop-env-secondary { border-top: 3px solid var(--bs-secondary) !important; }
+
+.lop-env-danger  .lop-env-count { color: var(--bs-danger-text-emphasis); }
+.lop-env-primary .lop-env-count { color: var(--bs-primary-text-emphasis); }
+.lop-env-warning .lop-env-count { color: var(--bs-warning-text-emphasis); }
+.lop-env-info    .lop-env-count { color: var(--bs-info-text-emphasis); }
+.lop-env-success .lop-env-count { color: var(--bs-success-text-emphasis); }
+
+/* ── Progress bars ──────────────────────────────────────── */
+.lop-progress {
+  height: 6px;
+  border-radius: 3px;
+  background-color: rgba(255,255,255,0.07);
+}
+
+/* ── Status dot ─────────────────────────────────────────── */
+.lop-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* ── Responsive: collapse sidebar on small screens ──────── */
 @media (max-width: 767.98px) {
   .lop-sidebar {

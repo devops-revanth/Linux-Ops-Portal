@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+
+  {# ── Page header ──────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h4 class="mb-0 fw-bold">
+        <i class="bi bi-speedometer2 me-2 text-success"></i>Dashboard
+      </h4>
+      <small class="text-secondary">Linux Operations Portal – Live Overview</small>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      {% if stats.last_ansible_sync %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-2">
+          <i class="bi bi-arrow-repeat me-1"></i>
+          Last sync: {{ stats.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+        </span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-2">
+          <i class="bi bi-arrow-repeat me-1"></i>No sync recorded
+        </span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Row 1: Server summary cards ──────────────────────────────────────── #}
+  <div class="row g-3 mb-4">
+
+    {# Total Servers #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-primary-subtle text-primary">
+            <i class="bi bi-server fs-3"></i>
+          </div>
+          <div>
+            <div class="text-secondary small fw-medium">Total Servers</div>
+            <div class="lop-stat-number">{{ stats.total_servers }}</div>
+            <div class="text-secondary" style="font-size: .75rem;">
+              {{ stats.active_servers }} active
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Pending Patches #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100 {% if stats.pending_patches > 0 %}lop-card-alert{% endif %}">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap {% if stats.pending_patches > 0 %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}">
+            <i class="bi bi-shield-{% if stats.pending_patches > 0 %}exclamation{% else %}check{% endif %} fs-3"></i>
+          </div>
+          <div>
+            <div class="text-secondary small fw-medium">Pending Patches</div>
+            <div class="lop-stat-number {% if stats.pending_patches > 0 %}text-danger{% endif %}">
+              {{ stats.pending_patches }}
+            </div>
+            <div class="text-secondary" style="font-size: .75rem;">
+              {% if stats.failed_patches > 0 %}
+                <span class="text-warning">{{ stats.failed_patches }} failed</span>
+              {% else %}
+                {{ stats.patched_servers }} up-to-date
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Last Inventory Sync #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-info-subtle text-info">
+            <i class="bi bi-clock-history fs-3"></i>
+          </div>
+          <div>
+            <div class="text-secondary small fw-medium">Last Inventory Sync</div>
+            {% if stats.last_ansible_sync %}
+              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;">
+                {{ stats.last_ansible_sync.strftime('%b %d, %Y') }}
+              </div>
+              <div class="text-secondary" style="font-size: .75rem;">
+                {{ stats.last_ansible_sync.strftime('%H:%M UTC') }}
+              </div>
+            {% else %}
+              <div class="lop-stat-number text-secondary" style="font-size: 1.1rem;">
+                Never
+              </div>
+              <div class="text-secondary" style="font-size: .75rem;">No Ansible sync yet</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Locations count #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-warning-subtle text-warning">
+            <i class="bi bi-geo-alt fs-3"></i>
+          </div>
+          <div>
+            <div class="text-secondary small fw-medium">Locations</div>
+            <div class="lop-stat-number">{{ stats.locations | length }}</div>
+            <div class="text-secondary" style="font-size: .75rem;">active sites</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# /row 1 #}
+
+  {# ── Row 2: Environment breakdown ─────────────────────────────────────── #}
+  <h6 class="text-secondary text-uppercase fw-semibold mb-3" style="font-size:.7rem; letter-spacing:.08em;">
+    <i class="bi bi-layers me-1"></i>Servers by Environment
+  </h6>
+
+  <div class="row g-3 mb-4">
+    {% if stats.environments %}
+      {% for env in stats.environments %}
+        <div class="col-6 col-sm-4 col-xl-2">
+          <div class="card border-0 lop-env-card lop-env-{{ env.color }} h-100">
+            <div class="card-body text-center py-3 px-2">
+              <div class="lop-env-count">{{ env.count }}</div>
+              <div class="lop-env-label">{{ env.label }}</div>
+              <div class="lop-env-sublabel">servers</div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="col-12">
+        <div class="card border-0 bg-body-secondary">
+          <div class="card-body text-center text-secondary py-4">
+            <i class="bi bi-layers fs-4 d-block mb-2"></i>
+            No environments configured yet. Add environments via Settings.
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>{# /row 2 #}
+
+  {# ── Row 3: Location Summary + Patch Status ───────────────────────────── #}
+  <div class="row g-3">
+
+    {# Location Summary #}
+    <div class="col-lg-7">
+      <div class="card border-0 h-100">
+        <div class="card-header d-flex align-items-center justify-content-between py-3">
+          <h6 class="mb-0 fw-semibold">
+            <i class="bi bi-geo-alt me-2 text-warning"></i>Location Summary
+          </h6>
+          <span class="badge bg-secondary-subtle text-secondary">{{ stats.locations | length }} sites</span>
+        </div>
+        <div class="card-body p-0">
+          {% if stats.locations %}
+            <table class="table lop-table mb-0">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th class="text-end">Servers</th>
+                  <th style="width: 200px;">Distribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for loc in stats.locations %}
+                  <tr>
+                    <td>
+                      <i class="bi bi-building me-2 text-secondary"></i>
+                      {{ loc.name }}
+                    </td>
+                    <td class="text-end fw-semibold">{{ loc.count }}</td>
+                    <td>
+                      <div class="d-flex align-items-center gap-2">
+                        <div class="flex-grow-1">
+                          <div class="progress lop-progress">
+                            <div
+                              class="progress-bar bg-primary"
+                              role="progressbar"
+                              style="width: {{ loc.percent }}%"
+                              aria-valuenow="{{ loc.percent }}"
+                              aria-valuemin="0"
+                              aria-valuemax="100"
+                            ></div>
+                          </div>
+                        </div>
+                        <div class="text-secondary" style="font-size:.75rem; width:36px; text-align:right;">
+                          {{ loc.percent }}%
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div class="text-center text-secondary py-5">
+              <i class="bi bi-geo-alt fs-4 d-block mb-2"></i>
+              No locations configured. Add locations via Settings.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Patch Status Summary #}
+    <div class="col-lg-5">
+      <div class="card border-0 h-100">
+        <div class="card-header d-flex align-items-center justify-content-between py-3">
+          <h6 class="mb-0 fw-semibold">
+            <i class="bi bi-shield-check me-2 text-success"></i>Patch Status
+          </h6>
+        </div>
+        <div class="card-body">
+          {% set total = stats.total_servers if stats.total_servers > 0 else 1 %}
+
+          {# Up-to-date #}
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="d-flex align-items-center gap-2">
+                <span class="lop-dot bg-success"></span>
+                <span class="small">Up-to-date</span>
+              </span>
+              <span class="fw-semibold small">{{ stats.patched_servers }}</span>
+            </div>
+            <div class="progress lop-progress">
+              <div
+                class="progress-bar bg-success"
+                style="width: {{ (stats.patched_servers / total * 100) | round(1) }}%"
+              ></div>
+            </div>
+          </div>
+
+          {# Pending #}
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="d-flex align-items-center gap-2">
+                <span class="lop-dot bg-warning"></span>
+                <span class="small">Pending</span>
+              </span>
+              <span class="fw-semibold small">{{ stats.pending_patches }}</span>
+            </div>
+            <div class="progress lop-progress">
+              <div
+                class="progress-bar bg-warning"
+                style="width: {{ (stats.pending_patches / total * 100) | round(1) }}%"
+              ></div>
+            </div>
+          </div>
+
+          {# Failed #}
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="d-flex align-items-center gap-2">
+                <span class="lop-dot bg-danger"></span>
+                <span class="small">Failed</span>
+              </span>
+              <span class="fw-semibold small">{{ stats.failed_patches }}</span>
+            </div>
+            <div class="progress lop-progress">
+              <div
+                class="progress-bar bg-danger"
+                style="width: {{ (stats.failed_patches / total * 100) | round(1) }}%"
+              ></div>
+            </div>
+          </div>
+
+          {# Unknown / no patching data #}
+          {% set unknown = stats.total_servers - stats.patched_servers - stats.pending_patches - stats.failed_patches %}
+          {% if unknown > 0 %}
+          <div class="mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="d-flex align-items-center gap-2">
+                <span class="lop-dot bg-secondary"></span>
+                <span class="small">Unknown</span>
+              </span>
+              <span class="fw-semibold small">{{ unknown }}</span>
+            </div>
+            <div class="progress lop-progress">
+              <div
+                class="progress-bar bg-secondary"
+                style="width: {{ (unknown / total * 100) | round(1) }}%"
+              ></div>
+            </div>
+          </div>
+          {% endif %}
+
+          {# Summary line #}
+          <div class="mt-4 pt-3 border-top border-secondary-subtle">
+            <div class="d-flex justify-content-between text-secondary small">
+              <span><i class="bi bi-server me-1"></i>{{ stats.total_servers }} total servers</span>
+              {% if stats.total_servers > 0 %}
+                <span>
+                  {{ (stats.patched_servers / stats.total_servers * 100) | round(0) | int }}% compliant
+                </span>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>{# /row 3 #}
+
+</div>
+{% endblock %}
