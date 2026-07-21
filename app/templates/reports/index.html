@@ -74,14 +74,14 @@
       <h4 class="mb-0 fw-bold">
         <i class="bi bi-file-earmark-bar-graph me-2 text-info"></i>Reports
       </h4>
-      <small class="text-secondary">7 reports available — all support search, filter, sort, pagination, CSV and Excel export.</small>
+      <small class="text-secondary">4 reports available — all support search, filter, sort, pagination, CSV and Excel export.</small>
     </div>
   </div>
 
   <div class="row g-3">
 
     {# ── 1. Server Inventory Report ───────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
+    <div class="col-md-6">
       <a href="{{ url_for('reports.inventory') }}" class="lop-report-card">
         <div class="lop-report-icon text-primary"><i class="bi bi-server"></i></div>
         <h6 class="lop-report-title">Server Inventory Report</h6>
@@ -98,44 +98,27 @@
       </a>
     </div>
 
-    {# ── 2. Servers by Location ───────────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
-      <a href="{{ url_for('reports.by_location') }}" class="lop-report-card">
-        <div class="lop-report-icon text-warning"><i class="bi bi-building"></i></div>
-        <h6 class="lop-report-title">Servers by Location</h6>
+    {# ── 2. Infrastructure Summary ─────────────────────────────────── #}
+    <div class="col-md-6">
+      <a href="{{ url_for('reports.infrastructure_summary') }}" class="lop-report-card">
+        <div class="lop-report-icon text-warning"><i class="bi bi-diagram-3"></i></div>
+        <h6 class="lop-report-title">Infrastructure Summary</h6>
         <p class="lop-report-desc">
-          Location-distribution summary with per-status breakdown, followed by a
-          filterable server list drillable to a specific site.
+          Fleet distribution by location and environment — side-by-side summary tables
+          with per-status counts and drill-down to the matching server list.
         </p>
         <div class="lop-report-meta">
-          <span class="lop-report-tag">Summary table</span>
-          <span class="lop-report-tag">Filter by location / env</span>
+          <span class="lop-report-tag">By location</span>
+          <span class="lop-report-tag">By environment</span>
+          <span class="lop-report-tag">Drill-down</span>
           <span class="lop-report-tag">CSV</span>
           <span class="lop-report-tag">Excel</span>
         </div>
       </a>
     </div>
 
-    {# ── 3. Servers by Environment ────────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
-      <a href="{{ url_for('reports.by_environment') }}" class="lop-report-card">
-        <div class="lop-report-icon text-info"><i class="bi bi-layers"></i></div>
-        <h6 class="lop-report-title">Servers by Environment</h6>
-        <p class="lop-report-desc">
-          Environment-distribution summary with per-status counts, followed by a
-          filterable server list for any deployment tier.
-        </p>
-        <div class="lop-report-meta">
-          <span class="lop-report-tag">Summary table</span>
-          <span class="lop-report-tag">Filter by env / location</span>
-          <span class="lop-report-tag">CSV</span>
-          <span class="lop-report-tag">Excel</span>
-        </div>
-      </a>
-    </div>
-
-    {# ── 4. Patch Compliance Report ───────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
+    {# ── 3. Patch Compliance Report ───────────────────────────────── #}
+    <div class="col-md-6">
       <a href="{{ url_for('reports.patch_compliance') }}" class="lop-report-card">
         <div class="lop-report-icon text-success"><i class="bi bi-shield-check"></i></div>
         <h6 class="lop-report-title">Patch Compliance Report</h6>
@@ -152,54 +135,19 @@
       </a>
     </div>
 
-    {# ── 5. Kernel Compliance Report ──────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
-      <a href="{{ url_for('reports.kernel_compliance') }}" class="lop-report-card">
-        <div class="lop-report-icon text-danger"><i class="bi bi-cpu"></i></div>
-        <h6 class="lop-report-title">Kernel Compliance Report</h6>
-        <p class="lop-report-desc">
-          Kernel version distribution across the fleet with current and previous
-          kernel tracking per server.
-        </p>
-        <div class="lop-report-meta">
-          <span class="lop-report-tag">Version distribution</span>
-          <span class="lop-report-tag">Filter by kernel version</span>
-          <span class="lop-report-tag">CSV</span>
-          <span class="lop-report-tag">Excel</span>
-        </div>
-      </a>
-    </div>
-
-    {# ── 6. Owner Summary Report ──────────────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
-      <a href="{{ url_for('reports.owner_summary') }}" class="lop-report-card">
-        <div class="lop-report-icon text-secondary"><i class="bi bi-people"></i></div>
-        <h6 class="lop-report-title">Owner Summary Report</h6>
-        <p class="lop-report-desc">
-          Per-owner server counts broken down by status — active, inactive,
-          maintenance, and decommissioned.
-        </p>
-        <div class="lop-report-meta">
-          <span class="lop-report-tag">Owner breakdown</span>
-          <span class="lop-report-tag">Status counts</span>
-          <span class="lop-report-tag">CSV</span>
-          <span class="lop-report-tag">Excel</span>
-        </div>
-      </a>
-    </div>
-
-    {# ── 7. Recently Synchronized Servers ────────────────────────── #}
-    <div class="col-md-6 col-xl-4">
-      <a href="{{ url_for('reports.recently_synced') }}" class="lop-report-card">
+    {# ── 4. Synchronization Report ────────────────────────────────── #}
+    <div class="col-md-6">
+      <a href="{{ url_for('reports.synchronization') }}" class="lop-report-card">
         <div class="lop-report-icon" style="color:#d2a520;"><i class="bi bi-arrow-repeat"></i></div>
-        <h6 class="lop-report-title">Recently Synchronized Servers</h6>
+        <h6 class="lop-report-title">Synchronization Report</h6>
         <p class="lop-report-desc">
-          Servers ordered by last Ansible sync timestamp — quickly identify stale
-          servers or verify a recent synchronization run.
+          Ansible sync timeline with last synchronization time — quickly identify
+          recently synced servers or find servers that have never been synchronized.
         </p>
         <div class="lop-report-meta">
-          <span class="lop-report-tag">Sync timeline</span>
-          <span class="lop-report-tag">Never-synced counter</span>
+          <span class="lop-report-tag">Recently synced</span>
+          <span class="lop-report-tag">Never synced</span>
+          <span class="lop-report-tag">Last sync time</span>
           <span class="lop-report-tag">CSV</span>
           <span class="lop-report-tag">Excel</span>
         </div>

@@ -76,6 +76,30 @@
     border-radius: 6px; border: 1px solid;
   }
 
+  /* ── Clickable stat cards (Synchronization Report) ──────────────────── */
+  .lop-stat-card {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border) !important;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--lop-text);
+    transition: border-color .15s, box-shadow .15s;
+    cursor: default;
+  }
+  a.lop-stat-card { cursor: pointer; }
+  a.lop-stat-card:hover {
+    border-color: rgba(255,255,255,.25) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    color: var(--lop-text);
+  }
+  a.lop-stat-card.active {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 1px rgba(35,134,54,.3);
+  }
+  .lop-stat-icon { font-size: 1.5rem; line-height: 1; opacity: .85; }
+  .lop-stat-value { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
+  .lop-stat-label { font-size: .72rem; color: var(--lop-muted); margin-top: .15rem; }
+
   /* ── Form overrides ─────────────────────────────────────────────────── */
   .modal-content { background-color: var(--lop-surface) !important; border-color: var(--lop-border) !important; }
   .form-control, .form-select {

@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}Infrastructure Summary | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('reports.index') }}"><i class="bi bi-file-earmark-bar-graph me-1"></i>Reports</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Infrastructure Summary</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+{% include "reports/_report_styles.html" %}
+{% endblock %}
+
+{% block content %}
+{% set f = report.filters %}
+
+<div class="container-fluid p-4">
+
+  {# ── Page header ─────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h4 class="mb-0 fw-bold">
+        <i class="bi bi-diagram-3 me-2 text-warning"></i>Infrastructure Summary
+      </h4>
+      <small class="text-secondary">
+        {{ report.total }} server{{ 's' if report.total != 1 else '' }} in detail view
+      </small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('reports.infrastructure_summary', q=f.search, location_id=f.location_id,
+               env_id=f.env_id, status=f.status, sort=f.sort, order=f.order, export='csv') }}"
+         class="btn btn-sm btn-outline-secondary"><i class="bi bi-filetype-csv me-1"></i>Export CSV</a>
+      <a href="{{ url_for('reports.infrastructure_summary', q=f.search, location_id=f.location_id,
+               env_id=f.env_id, status=f.status, sort=f.sort, order=f.order, export='xlsx') }}"
+         class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Export Excel</a>
+    </div>
+  </div>
+
+  {# ── Summary tables: Location + Environment side by side ─────────────── #}
+  <div class="row g-3 mb-3">
+
+    {# Location distribution #}
+    {% if report.loc_summary %}
+    <div class="col-xl-6">
+      <div class="card border-0 h-100">
+        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+          <small class="text-secondary fw-semibold">
+            <i class="bi bi-building me-1 text-warning"></i>By Location
+          </small>
+          <small class="text-secondary">Click a row to filter the server list below</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th class="text-center">Total</th>
+                <th class="text-center text-success">Active</th>
+                <th class="text-center text-warning">Maint.</th>
+                <th class="text-center text-secondary">Inactive</th>
+                <th class="text-center text-danger">Decomm.</th>
+                <th style="width:100px;">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report.loc_summary %}
+              <tr class="{{ 'table-active' if f.location_id == row.location_id }}">
+                <td>
+                  <a href="{{ url_for('reports.infrastructure_summary', location_id=row.location_id,
+                               env_id=f.env_id, status=f.status, q=f.search) }}"
+                     class="text-decoration-none text-light">
+                    <i class="bi bi-building me-1 text-warning opacity-75"></i>{{ row.location_name }}
+                    {% if f.location_id == row.location_id %}
+                      <i class="bi bi-funnel-fill ms-1 text-warning" style="font-size:.7rem;"></i>
+                    {% endif %}
+                  </a>
+                </td>
+                <td class="text-center fw-bold">{{ row.total }}</td>
+                <td class="text-center text-success">{{ row.active }}</td>
+                <td class="text-center text-warning">{{ row.maintenance }}</td>
+                <td class="text-center text-secondary">{{ row.inactive }}</td>
+                <td class="text-center text-danger">{{ row.decommissioned }}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="flex-grow-1">
+                      <div class="progress" style="height:5px; background:rgba(255,255,255,.1);">
+                        <div class="progress-bar bg-warning" style="width:{{ row.percent }}%;"></div>
+                      </div>
+                    </div>
+                    <small class="text-secondary" style="min-width:32px; font-size:.72rem;">{{ row.percent }}%</small>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if f.location_id %}
+        <div class="card-footer py-1 text-center">
+          <a href="{{ url_for('reports.infrastructure_summary', env_id=f.env_id, status=f.status, q=f.search) }}"
+             class="small text-secondary text-decoration-none">
+            <i class="bi bi-x-circle me-1"></i>Clear location filter
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Environment distribution #}
+    {% if report.env_summary %}
+    <div class="col-xl-6">
+      <div class="card border-0 h-100">
+        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+          <small class="text-secondary fw-semibold">
+            <i class="bi bi-layers me-1 text-info"></i>By Environment
+          </small>
+          <small class="text-secondary">Click a row to filter the server list below</small>
+        </div>
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
+              <tr>
+                <th>Environment</th>
+                <th class="text-center">Total</th>
+                <th class="text-center text-success">Active</th>
+                <th class="text-center text-warning">Maint.</th>
+                <th class="text-center text-secondary">Inactive</th>
+                <th class="text-center text-danger">Decomm.</th>
+                <th style="width:100px;">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report.env_summary %}
+              <tr class="{{ 'table-active' if f.env_id == row.env_id }}">
+                <td>
+                  <a href="{{ url_for('reports.infrastructure_summary', env_id=row.env_id,
+                               location_id=f.location_id, status=f.status, q=f.search) }}"
+                     class="text-decoration-none text-light d-flex align-items-center gap-2">
+                    <span class="lop-env-pill
+                      {% if row.env_color == 'primary'   %} bg-primary-subtle   text-primary
+                      {% elif row.env_color == 'danger'  %} bg-danger-subtle    text-danger
+                      {% elif row.env_color == 'warning' %} bg-warning-subtle   text-warning
+                      {% elif row.env_color == 'info'    %} bg-info-subtle      text-info
+                      {% elif row.env_color == 'success' %} bg-success-subtle   text-success
+                      {% else %}                             bg-secondary-subtle text-secondary
+                      {% endif %}">{{ row.env_label }}</span>
+                    <span class="text-secondary small">{{ row.env_name }}</span>
+                    {% if f.env_id == row.env_id %}
+                      <i class="bi bi-funnel-fill text-info" style="font-size:.7rem;"></i>
+                    {% endif %}
+                  </a>
+                </td>
+                <td class="text-center fw-bold">{{ row.total }}</td>
+                <td class="text-center text-success">{{ row.active }}</td>
+                <td class="text-center text-warning">{{ row.maintenance }}</td>
+                <td class="text-center text-secondary">{{ row.inactive }}</td>
+                <td class="text-center text-danger">{{ row.decommissioned }}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="flex-grow-1">
+                      <div class="progress" style="height:5px; background:rgba(255,255,255,.1);">
+                        <div class="progress-bar bg-info" style="width:{{ row.percent }}%;"></div>
+                      </div>
+                    </div>
+                    <small class="text-secondary" style="min-width:32px; font-size:.72rem;">{{ row.percent }}%</small>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if f.env_id %}
+        <div class="card-footer py-1 text-center">
+          <a href="{{ url_for('reports.infrastructure_summary', location_id=f.location_id, status=f.status, q=f.search) }}"
+             class="small text-secondary text-decoration-none">
+            <i class="bi bi-x-circle me-1"></i>Clear environment filter
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>{# /row #}
+
+  {# ── Filter bar ──────────────────────────────────────────────────────── #}
+  <div class="card border-0 mb-3">
+    <div class="card-body py-3">
+      <form id="filter-form" method="GET" action="{{ url_for('reports.infrastructure_summary') }}"
+            class="d-flex lop-filter-bar align-items-end">
+        <input type="hidden" name="sort"  value="{{ f.sort }}">
+        <input type="hidden" name="order" value="{{ f.order }}">
+        <input type="hidden" name="page"  value="1">
+
+        <div class="flex-grow-1" style="min-width:200px; max-width:300px;">
+          <label class="form-label text-secondary small mb-1">Search</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-transparent border-secondary">
+              <i class="bi bi-search text-secondary" id="search-icon"></i>
+              <span class="spinner-border spinner-border-sm text-secondary"
+                    id="search-spinner" role="status" aria-hidden="true" style="display:none;"></span>
+            </span>
+            <input id="search-input" type="text" name="q"
+                   class="form-control form-control-sm bg-transparent border-secondary text-light"
+                   placeholder="Hostname, IP or owner…"
+                   value="{{ f.search }}" autocomplete="off">
+          </div>
+        </div>
+
+        <div style="min-width:140px;">
+          <label class="form-label text-secondary small mb-1">Location</label>
+          <select name="location_id" class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            <option value="">All locations</option>
+            {% for loc in report.locations %}
+              <option value="{{ loc.id }}" {{ 'selected' if f.location_id == loc.id }}>{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="min-width:150px;">
+          <label class="form-label text-secondary small mb-1">Environment</label>
+          <select name="env_id" class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            <option value="">All environments</option>
+            {% for env in report.environments %}
+              <option value="{{ env.id }}" {{ 'selected' if f.env_id == env.id }}>{{ env.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="min-width:140px;">
+          <label class="form-label text-secondary small mb-1">Status</label>
+          <select name="status" class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            <option value="">All statuses</option>
+            {% for s in ['active','inactive','maintenance','decommissioned'] %}
+              <option value="{{ s }}" {{ 'selected' if f.status == s }}>{{ s | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="d-flex gap-2 align-self-end">
+          <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+          {% if f.search or f.location_id or f.env_id or f.status %}
+            <a href="{{ url_for('reports.infrastructure_summary') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Server detail table ─────────────────────────────────────────────── #}
+  <div class="card border-0" id="server-list">
+    {% include "reports/_active_filters.html" with context %}
+    <div class="table-responsive">
+      <table class="table lop-table mb-0">
+        <thead>
+          <tr>
+            {% macro sl(col, label) %}
+              {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
+              <a href="{{ url_for('reports.infrastructure_summary', q=f.search, location_id=f.location_id,
+                          env_id=f.env_id, status=f.status, sort=col, order=next_order, page=1) }}"
+                 class="lop-sort-link {{ 'active' if f.sort == col }}">
+                {{ label }}{% if f.sort == col %}<i class="bi bi-arrow-{{ 'up' if f.order == 'asc' else 'down' }} lop-sort-icon"></i>{% else %}<i class="bi bi-arrow-down-up lop-sort-icon"></i>{% endif %}
+              </a>
+            {% endmacro %}
+            <th>{{ sl('hostname',    'Hostname') }}</th>
+            <th>{{ sl('ip_address',  'IP Address') }}</th>
+            <th>{{ sl('location',    'Location') }}</th>
+            <th>{{ sl('environment', 'Environment') }}</th>
+            <th>{{ sl('os',          'OS') }}</th>
+            <th>{{ sl('owner',       'Owner') }}</th>
+            <th>{{ sl('status',      'Status') }}</th>
+            <th>Last Sync</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if report.servers %}
+            {% for srv in report.servers %}
+            <tr>
+              <td><a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}" class="lop-hostname-link"><i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}</a></td>
+              <td><span class="lop-mono">{{ srv.ip_address }}</span></td>
+              <td>{% if srv.location %}<i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% include "reports/_env_pill.html" %}</td>
+              <td>{% if srv.operating_system %}{{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% include "reports/_status_badge.html" %}</td>
+              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="8">{% include "reports/_empty_state.html" %}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    {% set endpoint = 'reports.infrastructure_summary' %}
+    {% set extra_params = {'status': f.status} %}
+    {% include "reports/_pagination.html" with context %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}{% include "reports/_search_js.html" %}{% endblock %}
