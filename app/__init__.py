@@ -12,7 +12,7 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask
 
 from .config import config
-from .extensions import csrf, db, migrate
+from .extensions import csrf, db, login_manager, migrate
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -45,6 +45,12 @@ def create_app(config_name: str | None = None) -> Flask:
     migrate.init_app(app, db)
     csrf.init_app(app)
 
+    # Flask-Login
+    login_manager.login_view = "auth.login"          # redirect destination
+    login_manager.login_message = "Please sign in to access this page."
+    login_manager.login_message_category = "warning"
+    login_manager.init_app(app)
+
     # ------------------------------------------------------------------ #
     # Models – import so Alembic / Flask-Migrate can detect them
     # ------------------------------------------------------------------ #
@@ -57,7 +63,15 @@ def create_app(config_name: str | None = None) -> Flask:
             package,
             patching,
             server,
+            user,
         )
+
+        # User loader for Flask-Login
+        from .models.user import User
+
+        @login_manager.user_loader
+        def load_user(user_id: str):  # noqa: ANN202
+            return User.query.get(int(user_id))
 
         # Seed reference data on first run (idempotent).
         # Wrapped in try/except so flask db upgrade can import the app
@@ -71,16 +85,18 @@ def create_app(config_name: str | None = None) -> Flask:
     # ------------------------------------------------------------------ #
     # Blueprints
     # ------------------------------------------------------------------ #
-    from .blueprints.api import api_bp  # noqa: E402
+    from .blueprints.api import api_bp          # noqa: E402
+    from .blueprints.auth import auth_bp        # noqa: E402
     from .blueprints.dashboard import dashboard_bp  # noqa: E402
     from .blueprints.inventory import inventory_bp  # noqa: E402
-    from .blueprints.main import main_bp  # noqa: E402
+    from .blueprints.main import main_bp        # noqa: E402
     from .blueprints.patching import patching_bp  # noqa: E402
     from .blueprints.reports import reports_bp  # noqa: E402
-    from .blueprints.search import search_bp  # noqa: E402
+    from .blueprints.search import search_bp    # noqa: E402
     from .blueprints.settings import settings_bp  # noqa: E402
 
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(inventory_bp)
@@ -145,6 +161,14 @@ def _register_error_handlers(app: Flask) -> None:
     """Register custom HTTP error pages."""
     from flask import render_template
 
+    @app.errorhandler(401)
+    def unauthorized(exc):  # noqa: ANN001
+        return render_template("errors/401.html"), 401
+
+    @app.errorhandler(403)
+    def forbidden(exc):  # noqa: ANN001
+        return render_template("errors/403.html"), 403
+
     @app.errorhandler(404)
     def not_found(exc):  # noqa: ANN001
         app.logger.warning("404  path=%s", exc)
@@ -154,7 +178,3 @@ def _register_error_handlers(app: Flask) -> None:
     def server_error(exc):  # noqa: ANN001
         app.logger.error("500  error=%s", exc, exc_info=True)
         return render_template("errors/500.html"), 500
-
-    @app.errorhandler(403)
-    def forbidden(exc):  # noqa: ANN001
-        return render_template("errors/403.html"), 403
