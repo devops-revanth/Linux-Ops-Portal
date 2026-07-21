@@ -59,11 +59,9 @@
           {% for row in report.summary %}
           <tr>
             <td>
-              <a href="{{ url_for('reports.by_location', location_id=loop.index) }}"
-                 class="text-decoration-none">
-                <i class="bi bi-building me-1 text-warning opacity-75"></i>
-                <a href="{{ url_for('reports.by_location', location_id=loop.index) }}"
-                   class="text-decoration-none text-light">{{ row.location_name }}</a>
+              <a href="{{ url_for('reports.by_location', location_id=row.location_id) }}"
+                 class="text-decoration-none text-light">
+                <i class="bi bi-building me-1 text-warning opacity-75"></i>{{ row.location_name }}
               </a>
             </td>
             <td class="text-center fw-bold">{{ row.total }}</td>

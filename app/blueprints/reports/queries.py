@@ -182,6 +182,7 @@ BY_LOCATION_DEFAULT_ORDER = "asc"
 
 @dataclass
 class LocationSummaryRow:
+    location_id:   int
     location_name: str
     total:         int
     active:        int
@@ -246,6 +247,7 @@ def get_by_location_report(
         total_all = db.session.query(func.count(Server.id)).scalar() or 1
         loc_rows = (
             db.session.query(
+                Location.id,
                 Location.name,
                 func.count(Server.id).label("total"),
                 func.sum(
@@ -269,6 +271,7 @@ def get_by_location_report(
         )
         result.summary = [
             LocationSummaryRow(
+                location_id    = r.id,
                 location_name  = r.name,
                 total          = r.total or 0,
                 active         = r.active or 0,
