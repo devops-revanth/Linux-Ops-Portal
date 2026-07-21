@@ -1,0 +1,665 @@
+{% extends "base.html" %}
+
+{% block title %}Search | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">
+      <i class="bi bi-search me-1"></i>Search
+    </li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Sort links ────────────────────────────────────────────────────── */
+  .lop-sort-link {
+    color: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .lop-sort-link:hover { color: var(--lop-text); }
+  .lop-sort-icon { color: var(--lop-muted); font-size: .65rem; margin-left: .15rem; }
+  .lop-sort-link.active .lop-sort-icon { color: #3fb950; }
+
+  /* ── Instant-search ────────────────────────────────────────────────── */
+  #search-spinner { display: none; }
+
+  /* ── Search hero box ───────────────────────────────────────────────── */
+  .lop-search-hero {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border);
+    border-radius: 10px;
+    padding: 1.75rem 2rem;
+    margin-bottom: 1.25rem;
+  }
+  .lop-search-input-wrap {
+    position: relative;
+  }
+  .lop-search-input-wrap .lop-search-icon-left {
+    position: absolute;
+    left: .9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--lop-muted);
+    font-size: 1rem;
+    pointer-events: none;
+  }
+  .lop-search-main {
+    padding-left: 2.4rem !important;
+    padding-right: 2.4rem !important;
+    font-size: .95rem;
+    background: var(--lop-bg) !important;
+    border-color: var(--lop-border) !important;
+    color: var(--lop-text) !important;
+    height: 2.75rem;
+  }
+  .lop-search-main:focus {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 3px rgba(35,134,54,.18) !important;
+  }
+  .lop-search-main::placeholder { color: var(--lop-muted); }
+  .lop-search-clear {
+    position: absolute;
+    right: .75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--lop-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    font-size: .9rem;
+  }
+  .lop-search-clear:hover { color: var(--lop-text); }
+
+  /* ── Scope pills ───────────────────────────────────────────────────── */
+  .lop-scope-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-top: .65rem;
+  }
+  .lop-scope-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .68rem;
+    font-weight: 500;
+    padding: .15rem .5rem;
+    border-radius: 20px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--lop-border);
+    color: var(--lop-muted);
+    white-space: nowrap;
+  }
+  .lop-scope-pill i { font-size: .6rem; opacity: .7; }
+
+  /* ── Hostname link ─────────────────────────────────────────────────── */
+  .lop-hostname-link {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem;
+    color: #58a6ff;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .lop-hostname-link:hover { text-decoration: underline; color: #79bfff; }
+
+  /* ── Mono values ───────────────────────────────────────────────────── */
+  .lop-mono {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .8rem;
+    color: var(--lop-muted);
+  }
+
+  /* ── Patch status badges ────────────────────────────────────────────── */
+  .lop-patch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .73rem;
+    font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .lop-patch-up-to-date {
+    background: rgba(35,134,54,.15);
+    color: #3fb950;
+    border: 1px solid rgba(35,134,54,.35);
+  }
+  .lop-patch-pending {
+    background: rgba(210,153,34,.15);
+    color: #d4a017;
+    border: 1px solid rgba(210,153,34,.35);
+  }
+  .lop-patch-failed {
+    background: rgba(248,81,73,.15);
+    color: #f85149;
+    border: 1px solid rgba(248,81,73,.35);
+  }
+  .lop-patch-unknown {
+    background: rgba(139,148,158,.1);
+    color: #8b949e;
+    border: 1px solid rgba(139,148,158,.3);
+  }
+
+  /* ── Environment pills ─────────────────────────────────────────────── */
+  .lop-env-pill {
+    display: inline-block;
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .15rem .45rem;
+    border-radius: 4px;
+  }
+
+  /* ── Result count badge ────────────────────────────────────────────── */
+  .lop-result-count {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .75rem;
+    font-weight: 600;
+    padding: .2rem .55rem;
+    border-radius: 20px;
+    background: rgba(88,166,255,.12);
+    border: 1px solid rgba(88,166,255,.3);
+    color: #58a6ff;
+  }
+
+  /* ── Empty state ───────────────────────────────────────────────────── */
+  .lop-empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+    color: var(--lop-muted);
+  }
+  .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .35; }
+  .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .4rem; }
+
+  /* ── Prompt state (no query yet) ───────────────────────────────────── */
+  .lop-search-prompt {
+    padding: 3rem 2rem;
+    text-align: center;
+    color: var(--lop-muted);
+  }
+  .lop-search-prompt .prompt-icon {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+    opacity: .2;
+    color: #58a6ff;
+  }
+  .lop-search-prompt h6 { color: var(--lop-text); margin-bottom: .35rem; font-weight: 600; }
+
+  /* ── Pagination ────────────────────────────────────────────────────── */
+  .lop-pagination .page-link {
+    background: var(--lop-surface);
+    border-color: var(--lop-border);
+    color: var(--lop-muted);
+    font-size: .82rem;
+    padding: .3rem .65rem;
+  }
+  .lop-pagination .page-link:hover { background: rgba(255,255,255,.06); color: var(--lop-text); }
+  .lop-pagination .page-item.active .page-link {
+    background: rgba(35,134,54,.2);
+    border-color: #238636;
+    color: #3fb950;
+  }
+  .lop-pagination .page-item.disabled .page-link { opacity: .4; }
+
+  /* ── Match highlight ──────────────────────────────────────────────── */
+  .lop-match {
+    background: rgba(210,153,34,.25);
+    border-radius: 2px;
+    padding: 0 .1em;
+    color: inherit;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% set f = results.filters %}
+{% set has_query = f.search | length > 0 %}
+
+<div class="container-fluid px-4 pb-4">
+
+  {# ── Search hero ──────────────────────────────────────────────────── #}
+  <div class="lop-search-hero">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-search text-primary fs-5"></i>
+      <h5 class="mb-0 fw-semibold">Global Search</h5>
+      {% if has_query and results.total > 0 %}
+        <span class="lop-result-count ms-1">
+          <i class="bi bi-check2-circle"></i>
+          {{ results.total }} result{{ 's' if results.total != 1 }}
+        </span>
+      {% endif %}
+    </div>
+
+    <form id="search-form" method="GET" action="{{ url_for('search.index') }}"
+          autocomplete="off" role="search">
+      <input type="hidden" name="sort"  value="{{ f.sort }}">
+      <input type="hidden" name="order" value="{{ f.order }}">
+      <input type="hidden" name="page"  value="1">
+
+      <div class="lop-search-input-wrap">
+        <span class="lop-search-icon-left">
+          <i id="search-icon" class="bi bi-search"></i>
+          <span id="search-spinner"
+                class="spinner-border spinner-border-sm text-secondary"
+                role="status" aria-hidden="true"></span>
+        </span>
+
+        <input
+          id="search-input"
+          type="search"
+          name="q"
+          class="form-control lop-search-main"
+          placeholder="Search hostname, IP, OS, owner, location…"
+          value="{{ f.search }}"
+          autofocus
+          aria-label="Global search"
+        >
+
+        {% if has_query %}
+        <button type="button" class="lop-search-clear" id="clear-btn"
+                aria-label="Clear search" title="Clear">
+          <i class="bi bi-x-circle-fill"></i>
+        </button>
+        {% endif %}
+      </div>
+
+      {# Scope pills — purely decorative, communicates search coverage #}
+      <div class="lop-scope-pills">
+        <span class="lop-scope-pill"><i class="bi bi-terminal"></i>Hostname</span>
+        <span class="lop-scope-pill"><i class="bi bi-globe2"></i>FQDN</span>
+        <span class="lop-scope-pill"><i class="bi bi-hdd-network"></i>IP Address</span>
+        <span class="lop-scope-pill"><i class="bi bi-person"></i>Owner</span>
+        <span class="lop-scope-pill"><i class="bi bi-ubuntu"></i>OS</span>
+        <span class="lop-scope-pill"><i class="bi bi-cpu"></i>Kernel</span>
+        <span class="lop-scope-pill"><i class="bi bi-geo-alt"></i>Location</span>
+        <span class="lop-scope-pill"><i class="bi bi-layers"></i>Environment</span>
+      </div>
+    </form>
+  </div>
+
+  {# ── Results card ─────────────────────────────────────────────────── #}
+  <div class="card lop-card">
+
+    {# Card header — shown only when a query produced results or no results #}
+    {% if has_query %}
+    <div class="card-header d-flex align-items-center justify-content-between py-2
+                border-bottom border-secondary-subtle">
+      <span class="text-secondary small">
+        {% if results.total == 0 %}
+          No matches for <strong class="text-body">{{ f.search }}</strong>
+        {% else %}
+          {% set start = (results.page - 1) * results.per_page + 1 %}
+          {% set end   = [results.page * results.per_page, results.total] | min %}
+          Results for <strong class="text-body ms-1">{{ f.search }}</strong>
+          <span class="ms-2 text-secondary">— showing {{ start }}–{{ end }} of {{ results.total }}</span>
+        {% endif %}
+      </span>
+
+      {# Active filter pills — clear search #}
+      {% if has_query %}
+      <div class="d-flex gap-2 align-items-center">
+        <a href="{{ url_for('search.index') }}"
+           class="badge text-bg-secondary text-decoration-none"
+           style="font-size:.72rem;">
+          <i class="bi bi-x me-1"></i>Clear
+        </a>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# ── Table ──────────────────────────────────────────────────────── #}
+    <div class="table-responsive">
+      <table class="table table-hover lop-table mb-0">
+        <thead>
+          <tr>
+
+            {# Hostname #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'hostname' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'hostname' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='hostname',
+                          order=next_order, page=1) }}">
+                Hostname
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'hostname' and f.order == 'asc') else 'up' if (f.sort == 'hostname' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# IP Address #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'ip_address' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'ip_address' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='ip_address',
+                          order=next_order, page=1) }}">
+                IP Address
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'ip_address' and f.order == 'asc') else 'up' if (f.sort == 'ip_address' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Environment #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'environment' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'environment' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='environment',
+                          order=next_order, page=1) }}">
+                Environment
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'environment' and f.order == 'asc') else 'up' if (f.sort == 'environment' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Location #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'location' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'location' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='location',
+                          order=next_order, page=1) }}">
+                Location
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'location' and f.order == 'asc') else 'up' if (f.sort == 'location' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Operating System #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'operating_system' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'operating_system' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='operating_system',
+                          order=next_order, page=1) }}">
+                OS
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'operating_system' and f.order == 'asc') else 'up' if (f.sort == 'operating_system' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Kernel #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'kernel_version' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'kernel_version' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='kernel_version',
+                          order=next_order, page=1) }}">
+                Kernel
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'kernel_version' and f.order == 'asc') else 'up' if (f.sort == 'kernel_version' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Owner #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'owner' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'owner' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='owner',
+                          order=next_order, page=1) }}">
+                Owner
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'owner' and f.order == 'asc') else 'up' if (f.sort == 'owner' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+            {# Patch Status #}
+            <th scope="col">
+              {% set next_order = 'desc' if (f.sort == 'patch_status' and f.order == 'asc') else 'asc' %}
+              <a class="lop-sort-link {{ 'active' if f.sort == 'patch_status' }}"
+                 href="{{ url_for('search.index', q=f.search, sort='patch_status',
+                          order=next_order, page=1) }}">
+                Patch Status
+                <i class="bi bi-chevron-{{ 'down' if (f.sort == 'patch_status' and f.order == 'asc') else 'up' if (f.sort == 'patch_status' and f.order == 'desc') else 'expand' }} lop-sort-icon"></i>
+              </a>
+            </th>
+
+          </tr>
+        </thead>
+        <tbody>
+
+          {% if not has_query %}
+          {# ── Prompt: no search term entered yet ─────────────────── #}
+          <tr>
+            <td colspan="8">
+              <div class="lop-search-prompt">
+                <i class="bi bi-search prompt-icon"></i>
+                <h6>Start typing to search</h6>
+                <p class="mb-0 small">
+                  Search across hostname, FQDN, IP address, owner, OS, kernel,
+                  location, and environment.
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          {% elif results.servers %}
+          {# ── Result rows ─────────────────────────────────────────── #}
+          {% for srv in results.servers %}
+            {% set p = srv.patching %}
+            <tr>
+
+              {# Hostname #}
+              <td>
+                <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}"
+                   class="lop-hostname-link">
+                  <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
+                </a>
+              </td>
+
+              {# IP Address #}
+              <td><span class="lop-mono">{{ srv.ip_address }}</span></td>
+
+              {# Environment #}
+              <td>
+                {% if srv.environment %}
+                  <span class="lop-env-pill
+                    {% if 'prod' in srv.environment.name|lower %}bg-danger-subtle text-danger-emphasis
+                    {% elif 'stag' in srv.environment.name|lower or 'uat' in srv.environment.name|lower %}bg-warning-subtle text-warning-emphasis
+                    {% elif 'dev' in srv.environment.name|lower %}bg-info-subtle text-info-emphasis
+                    {% else %}bg-secondary-subtle text-secondary-emphasis{% endif %}">
+                    {{ srv.environment.name }}
+                  </span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Location #}
+              <td>
+                {% if srv.location %}
+                  <span class="text-secondary small">{{ srv.location.name }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# OS #}
+              <td>
+                {% if srv.operating_system %}
+                  <span class="small">{{ srv.operating_system }}
+                    {% if srv.os_version %}
+                      <span class="text-secondary">{{ srv.os_version }}</span>
+                    {% endif %}
+                  </span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Kernel #}
+              <td>
+                {% if srv.kernel_version %}
+                  <span class="lop-mono">{{ srv.kernel_version }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Owner #}
+              <td>
+                {% if srv.owner %}
+                  {{ srv.owner.name }}
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Patch Status #}
+              <td>
+                {% if p %}
+                  {% set status = p.patch_status | lower | replace(' ', '-') %}
+                  <span class="lop-patch-badge lop-patch-{{ status }}">
+                    {% if status == 'up-to-date' %}
+                      <i class="bi bi-check-circle-fill"></i>Up-to-date
+                    {% elif status == 'pending' %}
+                      <i class="bi bi-clock-fill"></i>Pending
+                      {% if p.pending_updates %}
+                        <span class="opacity-75">({{ p.pending_updates }})</span>
+                      {% endif %}
+                    {% elif status == 'failed' %}
+                      <i class="bi bi-x-circle-fill"></i>Failed
+                    {% else %}
+                      <i class="bi bi-question-circle"></i>Unknown
+                    {% endif %}
+                  </span>
+                {% else %}
+                  <span class="lop-patch-badge lop-patch-unknown">
+                    <i class="bi bi-question-circle"></i>Unknown
+                  </span>
+                {% endif %}
+              </td>
+
+            </tr>
+          {% endfor %}
+
+          {% else %}
+          {# ── Empty: query returned no matches ────────────────────── #}
+          <tr>
+            <td colspan="8">
+              <div class="lop-empty-state">
+                <i class="bi bi-search"></i>
+                <h6>No results for "{{ f.search }}"</h6>
+                <p class="mb-3 small">
+                  Try a different term, or check the search covers the field you need.
+                </p>
+                <a href="{{ url_for('search.index') }}"
+                   class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-arrow-left me-1"></i>Clear search
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+
+        </tbody>
+      </table>
+    </div>
+
+    {# ── Pagination footer ──────────────────────────────────────────── #}
+    {% if has_query and (results.total_pages > 1 or results.total > 0) %}
+    <div class="card-footer d-flex align-items-center justify-content-between py-2
+                border-top border-secondary-subtle">
+
+      <small class="text-secondary">
+        {% if results.total == 0 %}
+          No results
+        {% else %}
+          {% set start = (results.page - 1) * results.per_page + 1 %}
+          {% set end   = [results.page * results.per_page, results.total] | min %}
+          Showing {{ start }}–{{ end }} of {{ results.total }}
+        {% endif %}
+      </small>
+
+      {% if results.total_pages > 1 %}
+      <nav aria-label="Search results pagination">
+        <ul class="pagination mb-0 lop-pagination">
+
+          <li class="page-item {{ 'disabled' if results.page <= 1 }}">
+            <a class="page-link"
+               href="{{ url_for('search.index', q=f.search, sort=f.sort,
+                        order=f.order, page=results.page - 1) if results.page > 1 else '#' }}">
+              <i class="bi bi-chevron-left"></i>
+            </a>
+          </li>
+
+          {% for p in range(1, results.total_pages + 1) %}
+            {% if p == 1 or p == results.total_pages
+               or (p >= results.page - 2 and p <= results.page + 2) %}
+              {% if loop.index > 1
+                 and p > (range(1, results.total_pages + 1) | list)[loop.index - 2] + 1 %}
+                <li class="page-item disabled">
+                  <span class="page-link">…</span>
+                </li>
+              {% endif %}
+              <li class="page-item {{ 'active' if p == results.page }}">
+                <a class="page-link"
+                   href="{{ url_for('search.index', q=f.search, sort=f.sort,
+                            order=f.order, page=p) }}">{{ p }}</a>
+              </li>
+            {% endif %}
+          {% endfor %}
+
+          <li class="page-item {{ 'disabled' if results.page >= results.total_pages }}">
+            <a class="page-link"
+               href="{{ url_for('search.index', q=f.search, sort=f.sort,
+                        order=f.order, page=results.page + 1) if results.page < results.total_pages else '#' }}">
+              <i class="bi bi-chevron-right"></i>
+            </a>
+          </li>
+
+        </ul>
+      </nav>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
+  </div>{# /card #}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  "use strict";
+
+  /* ── Instant search with 400 ms debounce ───────────────────────── */
+  const form    = document.getElementById("search-form");
+  const input   = document.getElementById("search-input");
+  const icon    = document.getElementById("search-icon");
+  const spinner = document.getElementById("search-spinner");
+  const clearBtn = document.getElementById("clear-btn");
+  let timer;
+
+  if (input && form) {
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      if (icon)    icon.style.display    = "none";
+      if (spinner) spinner.style.display = "inline-block";
+      timer = setTimeout(function () {
+        form.querySelector('[name="page"]').value = "1";
+        form.submit();
+      }, 400);
+    });
+  }
+
+  /* ── Clear button ───────────────────────────────────────────────── */
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function () {
+      window.location.href = "{{ url_for('search.index') }}";
+    });
+  }
+
+  /* ── Auto-focus search box ──────────────────────────────────────── */
+  if (input) {
+    // Move cursor to end of existing value
+    var val = input.value;
+    input.value = "";
+    input.value = val;
+    input.focus();
+  }
+})();
+</script>
+{% endblock %}
