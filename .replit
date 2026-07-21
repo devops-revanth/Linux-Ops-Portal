@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "python-3.12", "web"]
+modules = ["nodejs-20", "python-3.12", "web", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -9,6 +9,28 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Linux Operations Portal"
+
+[[workflows.workflow]]
+name = "Linux Operations Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd lop && python run.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "PNPM_WORKSPACE"

@@ -1,24 +1,22 @@
-# [Project name]
+# Linux Operations Portal (LOP)
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A production-quality internal web portal for Linux infrastructure operations — replaces manual Excel-based server inventories with a centralised portal that collects and maintains Linux server inventory and patching information via Ansible.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- **Workflow**: `Linux Operations Portal` — `cd lop && python run.py` (port 5000)
+- `cd lop && FLASK_APP=run.py flask db upgrade` — apply pending DB migrations
+- `cd lop && FLASK_APP=run.py flask db migrate -m "description"` — generate a new migration after model changes
+- Required env: `DATABASE_URL` — Postgres connection string (runtime-managed by Replit, always available)
+- Required secret: `SESSION_SECRET` — available in Replit Secrets
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.12, Flask 3.1, Gunicorn 23
+- DB: PostgreSQL + Flask-SQLAlchemy + Flask-Migrate (Alembic)
+- Frontend: Bootstrap 5.3 dark theme + Jinja2 templates
+- Forms: Flask-WTF / WTForms (CSRF enabled)
+- Automation: Ansible pushes data via REST API (no direct SSH from the portal)
 
 ## Where things live
 
