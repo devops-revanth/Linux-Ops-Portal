@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import asc, desc, func, or_
+from sqlalchemy import asc, desc, or_
+from sqlalchemy.orm import contains_eager
 
 from ...extensions import db
 from ...models.environment import Environment
@@ -19,14 +20,16 @@ from ...models.server import Server
 
 logger = logging.getLogger(__name__)
 
-# Columns that can be sorted, mapped to the SQLAlchemy expression to order by.
-# Related-model columns require the join to be present in the query.
+# Columns that can be sorted, mapped to their SQLAlchemy expression.
+# Related-model columns require the join already present in the query.
 SORTABLE_COLUMNS: dict[str, object] = {
     "hostname":          Server.hostname,
     "ip_address":        Server.ip_address,
     "environment":       Environment.name,
     "operating_system":  Server.operating_system,
     "kernel_version":    Server.kernel_version,
+    "cpu_count":         Server.cpu_count,
+    "ram_gb":            Server.ram_gb,
     "location":          Location.name,
     "owner":             Owner.name,
     "status":            Server.status,
@@ -56,6 +59,7 @@ class InventoryPage:
     filters:      InventoryFilters = field(default_factory=InventoryFilters)
     locations:    list  = field(default_factory=list)
     environments: list  = field(default_factory=list)
+    owners:       list  = field(default_factory=list)
     statuses:     list  = field(default_factory=list)
 
 
@@ -76,10 +80,16 @@ def get_inventory_page(filters: InventoryFilters, page: int, per_page: int) -> I
             .outerjoin(Owner,       Server.owner_id       == Owner.id)
         )
 
-        # ── Search ────────────────────────────────────────────────────
+        # ── Search: hostname, IP address, or owner name ───────────────
         if filters.search:
             term = f"%{filters.search.strip()}%"
-            q = q.filter(Server.hostname.ilike(term))
+            q = q.filter(
+                or_(
+                    Server.hostname.ilike(term),
+                    Server.ip_address.ilike(term),
+                    Owner.name.ilike(term),
+                )
+            )
 
         # ── Filters ───────────────────────────────────────────────────
         if filters.location_id:
@@ -94,20 +104,20 @@ def get_inventory_page(filters: InventoryFilters, page: int, per_page: int) -> I
         # ── Total (before pagination) ─────────────────────────────────
         result.total = q.count()
 
-        # ── Sort ──────────────────────────────────────────────────────
+        # ── Sort — NULLs always last regardless of direction ──────────
         sort_col = SORTABLE_COLUMNS.get(filters.sort, Server.hostname)
         order_fn = asc if filters.order == "asc" else desc
-        # NULLs always last regardless of direction
-        q = q.order_by(order_fn(func.coalesce(sort_col.cast(db.String), "zzz")))
+        q = q.order_by(order_fn(sort_col).nulls_last())
 
         # ── Pagination ────────────────────────────────────────────────
         offset = (page - 1) * per_page
         result.servers     = q.offset(offset).limit(per_page).all()
         result.total_pages = max(1, -(-result.total // per_page))   # ceiling division
 
-        # ── Sidebar filter options ────────────────────────────────────
+        # ── Dropdown options (for filter bar and Add Server form) ─────
         result.locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
         result.environments = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
+        result.owners       = Owner.query.filter_by(is_active=True).order_by(Owner.name).all()
         result.statuses     = ["active", "inactive", "maintenance", "decommissioned"]
 
     except Exception:

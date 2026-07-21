@@ -4,38 +4,41 @@
 
 {% block extra_head %}
 <style>
+  /* ── Sort links ────────────────────────────────────────────────────── */
   .lop-sort-link {
     color: inherit;
     text-decoration: none;
     white-space: nowrap;
   }
   .lop-sort-link:hover { color: var(--lop-text); }
-  .lop-sort-icon { color: var(--lop-muted); font-size: .7rem; margin-left: .2rem; }
+  .lop-sort-icon { color: var(--lop-muted); font-size: .65rem; margin-left: .15rem; }
   .lop-sort-link.active .lop-sort-icon { color: #3fb950; }
 
+  /* ── Filter bar ────────────────────────────────────────────────────── */
   .lop-filter-bar { gap: .5rem; flex-wrap: wrap; }
 
-  /* instant-search spinner */
+  /* ── Instant-search ────────────────────────────────────────────────── */
   #search-spinner { display: none; }
-  .lop-searching #search-spinner { display: inline-block; }
 
-  .lop-status-active        { --c: var(--bs-success); }
-  .lop-status-inactive      { --c: var(--bs-secondary); }
-  .lop-status-maintenance   { --c: var(--bs-warning); }
-  .lop-status-decommissioned{ --c: var(--bs-danger); }
+  /* ── Status badges ─────────────────────────────────────────────────── */
+  .lop-status-active         { --c: var(--bs-success); }
+  .lop-status-inactive       { --c: var(--bs-secondary); }
+  .lop-status-maintenance    { --c: var(--bs-warning); }
+  .lop-status-decommissioned { --c: var(--bs-danger); }
 
   .lop-status-badge {
     display: inline-flex;
     align-items: center;
     gap: .35rem;
-    font-size: .75rem;
+    font-size: .73rem;
     font-weight: 500;
     padding: .2rem .55rem;
     border-radius: 20px;
-    border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
-    background: color-mix(in srgb, var(--c) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    background: color-mix(in srgb, var(--c) 10%, transparent);
     color: var(--c);
     letter-spacing: .02em;
+    white-space: nowrap;
   }
   .lop-status-dot {
     width: 6px; height: 6px; border-radius: 50%;
@@ -43,9 +46,10 @@
     flex-shrink: 0;
   }
 
+  /* ── Environment pills ─────────────────────────────────────────────── */
   .lop-env-pill {
     display: inline-block;
-    font-size: .7rem;
+    font-size: .68rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .05em;
@@ -53,6 +57,7 @@
     border-radius: 4px;
   }
 
+  /* ── Hostname link ─────────────────────────────────────────────────── */
   .lop-hostname-link {
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     font-size: .82rem;
@@ -62,20 +67,23 @@
   }
   .lop-hostname-link:hover { text-decoration: underline; color: #79bfff; }
 
-  .lop-ip {
+  /* ── Mono values (IP, kernel) ──────────────────────────────────────── */
+  .lop-mono {
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: .82rem;
+    font-size: .8rem;
     color: var(--lop-muted);
   }
 
+  /* ── Empty state ───────────────────────────────────────────────────── */
   .lop-empty-state {
     padding: 4rem 2rem;
     text-align: center;
     color: var(--lop-muted);
   }
-  .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .4; }
-  .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .25rem; }
+  .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .35; }
+  .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .4rem; }
 
+  /* ── Pagination ────────────────────────────────────────────────────── */
   .lop-pagination .page-link {
     background: var(--lop-surface);
     border-color: var(--lop-border);
@@ -90,18 +98,39 @@
     color: #3fb950;
   }
   .lop-pagination .page-item.disabled .page-link { opacity: .4; }
+
+  /* ── Add Server modal ──────────────────────────────────────────────── */
+  .modal-content {
+    background-color: var(--lop-surface) !important;
+    border-color: var(--lop-border) !important;
+  }
+  .modal-header, .modal-footer {
+    border-color: var(--lop-border) !important;
+  }
+  .form-control, .form-select {
+    background-color: var(--lop-bg) !important;
+    border-color: var(--lop-border) !important;
+    color: var(--lop-text) !important;
+  }
+  .form-control:focus, .form-select:focus {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 .2rem rgba(35,134,54,.25) !important;
+  }
+  .form-control::placeholder { color: var(--lop-muted) !important; }
+  .form-label { color: var(--lop-muted); font-size: .82rem; margin-bottom: .25rem; }
+  .form-text  { color: var(--lop-muted) !important; font-size: .75rem; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-{# ── Shorthand aliases ─────────────────────────────────────────────────── #}
-{% set f = inventory.filters %}
+{# ── Shorthand aliases ──────────────────────────────────────────────────── #}
+{% set f   = inventory.filters %}
 {% set inv = inventory %}
 
 <div class="container-fluid p-4">
 
-  {# ── Page header ──────────────────────────────────────────────────────── #}
+  {# ── Page header ────────────────────────────────────────────────────── #}
   <div class="d-flex align-items-center justify-content-between mb-4">
     <div>
       <h4 class="mb-0 fw-bold">
@@ -111,34 +140,41 @@
         {{ inv.total }} server{{ 's' if inv.total != 1 else '' }} registered
       </small>
     </div>
+    <button
+      type="button"
+      class="btn btn-success btn-sm"
+      data-bs-toggle="modal"
+      data-bs-target="#addServerModal"
+    >
+      <i class="bi bi-plus-lg me-1"></i>Add Server
+    </button>
   </div>
 
-  {# ── Search + Filter bar ───────────────────────────────────────────────── #}
+  {# ── Search + Filter bar ─────────────────────────────────────────────── #}
   <div class="card border-0 mb-3">
     <div class="card-body py-3">
       <form id="filter-form" method="GET" action="{{ url_for('inventory.index') }}"
             class="d-flex lop-filter-bar align-items-end">
 
-        {# Hidden sort/order carry-through #}
         <input type="hidden" name="sort"  value="{{ f.sort }}">
         <input type="hidden" name="order" value="{{ f.order }}">
         <input type="hidden" name="page"  value="1">
 
-        {# Hostname search #}
-        <div class="flex-grow-1" style="min-width: 200px; max-width: 320px;">
-          <label class="form-label text-secondary small mb-1">Search hostname</label>
+        {# Hostname / IP / Owner search #}
+        <div class="flex-grow-1" style="min-width: 200px; max-width: 340px;">
+          <label class="form-label text-secondary small mb-1">Search</label>
           <div class="input-group input-group-sm">
             <span class="input-group-text bg-transparent border-secondary">
               <i class="bi bi-search text-secondary" id="search-icon"></i>
               <span class="spinner-border spinner-border-sm text-secondary" id="search-spinner"
-                    role="status" aria-hidden="true"></span>
+                    role="status" aria-hidden="true" style="display:none;"></span>
             </span>
             <input
               id="search-input"
               type="text"
               name="q"
               class="form-control form-control-sm bg-transparent border-secondary text-light"
-              placeholder="e.g. web-prod-01"
+              placeholder="Hostname, IP address or owner…"
               value="{{ f.search }}"
               autocomplete="off"
             >
@@ -197,7 +233,6 @@
           </select>
         </div>
 
-        {# Submit / reset #}
         <div class="d-flex gap-2 align-self-end">
           <button type="submit" class="btn btn-sm btn-primary">Apply</button>
           {% if f.search or f.location_id or f.env_id or f.status %}
@@ -210,7 +245,7 @@
     </div>
   </div>
 
-  {# ── Server table ──────────────────────────────────────────────────────── #}
+  {# ── Server table ────────────────────────────────────────────────────── #}
   <div class="card border-0">
 
     {# Active filter pills #}
@@ -219,26 +254,22 @@
       <small class="text-secondary me-1">Active filters:</small>
       {% if f.search %}
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
-          hostname: {{ f.search }}
+          search: {{ f.search }}
         </span>
       {% endif %}
       {% if f.location_id %}
-        {% for loc in inv.locations %}
-          {% if loc.id == f.location_id %}
-            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-              location: {{ loc.name }}
-            </span>
-          {% endif %}
-        {% endfor %}
+        {% for loc in inv.locations %}{% if loc.id == f.location_id %}
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+            location: {{ loc.name }}
+          </span>
+        {% endif %}{% endfor %}
       {% endif %}
       {% if f.env_id %}
-        {% for env in inv.environments %}
-          {% if env.id == f.env_id %}
-            <span class="badge bg-info-subtle text-info border border-info-subtle">
-              env: {{ env.name }}
-            </span>
-          {% endif %}
-        {% endfor %}
+        {% for env in inv.environments %}{% if env.id == f.env_id %}
+          <span class="badge bg-info-subtle text-info border border-info-subtle">
+            env: {{ env.name }}
+          </span>
+        {% endif %}{% endfor %}
       {% endif %}
       {% if f.status %}
         <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
@@ -253,7 +284,7 @@
         <thead>
           <tr>
 
-            {# ── Sort helper macro ────────────────────────────────── #}
+            {# Sort-link macro #}
             {% macro sort_link(col, label) %}
               {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
               <a href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
@@ -271,8 +302,10 @@
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
             <th>{{ sort_link('ip_address',       'IP Address') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
-            <th>{{ sort_link('operating_system', 'Operating System') }}</th>
-            <th>{{ sort_link('kernel_version',   'Kernel Version') }}</th>
+            <th>{{ sort_link('operating_system', 'OS') }}</th>
+            <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
+            <th>{{ sort_link('cpu_count',        'CPU') }}</th>
+            <th>{{ sort_link('ram_gb',           'RAM') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('owner',            'Owner') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
@@ -283,19 +316,19 @@
             {% for srv in inv.servers %}
             <tr>
 
-              {# Hostname — links to Server Details #}
+              {# Hostname #}
               <td>
-                <a href="{{ url_for('inventory.index') }}/{{ srv.id }}"
+                <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}"
                    class="lop-hostname-link">
                   <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
                 </a>
                 {% if srv.fqdn and srv.fqdn != srv.hostname %}
-                  <div class="text-secondary" style="font-size:.7rem;">{{ srv.fqdn }}</div>
+                  <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem;">{{ srv.fqdn }}</div>
                 {% endif %}
               </td>
 
               {# IP address #}
-              <td><span class="lop-ip">{{ srv.ip_address }}</span></td>
+              <td><span class="lop-mono">{{ srv.ip_address }}</span></td>
 
               {# Environment pill #}
               <td>
@@ -318,10 +351,7 @@
               {# OS #}
               <td>
                 {% if srv.operating_system %}
-                  {{ srv.operating_system }}
-                  {% if srv.os_version %}
-                    <span class="text-secondary small"> {{ srv.os_version }}</span>
-                  {% endif %}
+                  {{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}
                 {% else %}
                   <span class="text-secondary">—</span>
                 {% endif %}
@@ -330,9 +360,25 @@
               {# Kernel #}
               <td>
                 {% if srv.kernel_version %}
-                  <span style="font-family: monospace; font-size: .8rem;">
-                    {{ srv.kernel_version }}
-                  </span>
+                  <span class="lop-mono">{{ srv.kernel_version }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# CPU #}
+              <td>
+                {% if srv.cpu_count is not none %}
+                  {{ srv.cpu_count }} vCPU
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# RAM #}
+              <td>
+                {% if srv.ram_gb is not none %}
+                  {{ srv.ram_gb | int if srv.ram_gb == srv.ram_gb | int else srv.ram_gb }} GB
                 {% else %}
                   <span class="text-secondary">—</span>
                 {% endif %}
@@ -349,11 +395,7 @@
 
               {# Owner #}
               <td>
-                {% if srv.owner %}
-                  {{ srv.owner.name }}
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
+                {% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
 
               {# Status badge #}
@@ -368,7 +410,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="8">
+              <td colspan="10">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}
@@ -377,11 +419,18 @@
                     <a href="{{ url_for('inventory.index') }}"
                        class="btn btn-sm btn-outline-secondary">Clear all filters</a>
                   {% else %}
-                    <h6>No servers in the inventory yet</h6>
-                    <p class="mb-0 small">
-                      Servers are added automatically when Ansible pushes data
-                      via the REST API.
+                    <h6>No servers found.</h6>
+                    <p class="mb-3 small">
+                      Add your first server manually or synchronize the inventory using Ansible.
                     </p>
+                    <button
+                      type="button"
+                      class="btn btn-success btn-sm"
+                      data-bs-toggle="modal"
+                      data-bs-target="#addServerModal"
+                    >
+                      <i class="bi bi-plus-lg me-1"></i>Add Server
+                    </button>
                   {% endif %}
                 </div>
               </td>
@@ -391,7 +440,7 @@
       </table>
     </div>
 
-    {# ── Pagination footer ────────────────────────────────────────────── #}
+    {# ── Pagination footer ──────────────────────────────────────────── #}
     {% if inv.total_pages > 1 or inv.total > 0 %}
     <div class="card-footer d-flex align-items-center justify-content-between py-2
                 border-top border-secondary-subtle">
@@ -409,8 +458,6 @@
       {% if inv.total_pages > 1 %}
       <nav aria-label="Inventory pagination">
         <ul class="pagination mb-0 lop-pagination">
-
-          {# Previous #}
           <li class="page-item {{ 'disabled' if inv.page <= 1 }}">
             <a class="page-link"
                href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
@@ -419,11 +466,8 @@
               <i class="bi bi-chevron-left"></i>
             </a>
           </li>
-
-          {# Page numbers — show window around current page #}
           {% for p in range(1, inv.total_pages + 1) %}
-            {% if p == 1 or p == inv.total_pages
-                  or (p >= inv.page - 2 and p <= inv.page + 2) %}
+            {% if p == 1 or p == inv.total_pages or (p >= inv.page - 2 and p <= inv.page + 2) %}
               {% if loop.index > 1 and p > (range(1, inv.total_pages + 1) | list)[loop.index - 2] + 1 %}
                 <li class="page-item disabled"><span class="page-link">…</span></li>
               {% endif %}
@@ -435,8 +479,6 @@
               </li>
             {% endif %}
           {% endfor %}
-
-          {# Next #}
           <li class="page-item {{ 'disabled' if inv.page >= inv.total_pages }}">
             <a class="page-link"
                href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
@@ -445,7 +487,6 @@
               <i class="bi bi-chevron-right"></i>
             </a>
           </li>
-
         </ul>
       </nav>
       {% endif %}
@@ -455,6 +496,140 @@
 
   </div>{# /card #}
 </div>
+
+
+{# ══════════════════════════════ Add Server Modal ══════════════════════════ #}
+<div class="modal fade" id="addServerModal" tabindex="-1"
+     aria-labelledby="addServerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="addServerModalLabel">
+          <i class="bi bi-plus-circle me-2 text-success"></i>Add Server
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form method="POST" action="{{ url_for('inventory.add_server') }}"
+            id="add-server-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="modal-body">
+
+          {# ── Row 1: Identity ─────────────────────────────────────── #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="as-hostname">
+                Hostname <span class="text-danger">*</span>
+              </label>
+              <input type="text" class="form-control form-control-sm"
+                     id="as-hostname" name="hostname"
+                     placeholder="e.g. web-prod-01" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="as-ip">
+                IP Address <span class="text-danger">*</span>
+              </label>
+              <input type="text" class="form-control form-control-sm"
+                     id="as-ip" name="ip_address"
+                     placeholder="e.g. 10.0.1.42" required>
+            </div>
+          </div>
+
+          {# ── Row 2: Classification ───────────────────────────────── #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label" for="as-env">Environment</label>
+              <select class="form-select form-select-sm" id="as-env" name="environment_id">
+                <option value="">— None —</option>
+                {% for env in inv.environments %}
+                  <option value="{{ env.id }}">{{ env.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="as-loc">Location</label>
+              <select class="form-select form-select-sm" id="as-loc" name="location_id">
+                <option value="">— None —</option>
+                {% for loc in inv.locations %}
+                  <option value="{{ loc.id }}">{{ loc.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="as-owner">Owner</label>
+              <select class="form-select form-select-sm" id="as-owner" name="owner_id">
+                <option value="">— None —</option>
+                {% for own in inv.owners %}
+                  <option value="{{ own.id }}">{{ own.name }}</option>
+                {% endfor %}
+              </select>
+              {% if not inv.owners %}
+                <div class="form-text">No owners configured yet.</div>
+              {% endif %}
+            </div>
+          </div>
+
+          {# ── Row 3: OS & Kernel ──────────────────────────────────── #}
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="as-os">Operating System</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="as-os" name="operating_system"
+                     placeholder="e.g. Red Hat Enterprise Linux">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="as-kernel">Kernel Version</label>
+              <input type="text" class="form-control form-control-sm"
+                     id="as-kernel" name="kernel_version"
+                     placeholder="e.g. 5.14.0-362.8.1.el9_3.x86_64">
+            </div>
+          </div>
+
+          {# ── Row 4: Hardware & Status ────────────────────────────── #}
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label" for="as-cpu">CPU (vCPUs)</label>
+              <input type="number" class="form-control form-control-sm"
+                     id="as-cpu" name="cpu_count"
+                     min="1" max="1024" placeholder="e.g. 4">
+              <div class="form-text">May be populated by Ansible.</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="as-ram">RAM (GB)</label>
+              <input type="number" class="form-control form-control-sm"
+                     id="as-ram" name="ram_gb"
+                     min="0" step="0.5" placeholder="e.g. 16">
+              <div class="form-text">May be populated by Ansible.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="as-status">Status</label>
+              <select class="form-select form-select-sm" id="as-status" name="status">
+                <option value="active"          selected>Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="decommissioned">Decommissioned</option>
+              </select>
+            </div>
+          </div>
+
+        </div>{# /modal-body #}
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Add Server
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -462,24 +637,42 @@
 (function () {
   "use strict";
 
-  const form   = document.getElementById("filter-form");
-  const input  = document.getElementById("search-input");
-  const icon   = document.getElementById("search-icon");
+  /* ── Instant search ────────────────────────────────────────────── */
+  const form    = document.getElementById("filter-form");
+  const input   = document.getElementById("search-input");
+  const icon    = document.getElementById("search-icon");
   const spinner = document.getElementById("search-spinner");
   let timer;
 
-  if (!input || !form) return;
+  if (input && form) {
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      if (icon)    icon.style.display    = "none";
+      if (spinner) spinner.style.display = "inline-block";
+      timer = setTimeout(function () {
+        form.querySelector('[name="page"]').value = "1";
+        form.submit();
+      }, 400);
+    });
+  }
 
-  input.addEventListener("input", function () {
-    clearTimeout(timer);
-    icon.style.display    = "none";
-    spinner.style.display = "inline-block";
-    timer = setTimeout(function () {
-      // Reset to page 1 on new search
-      form.querySelector('[name="page"]').value = "1";
-      form.submit();
-    }, 400);
-  });
+  /* ── Client-side Add Server validation ─────────────────────────── */
+  const addForm = document.getElementById("add-server-form");
+  if (addForm) {
+    addForm.addEventListener("submit", function (e) {
+      const hostname = addForm.querySelector('[name="hostname"]').value.trim();
+      const ip       = addForm.querySelector('[name="ip_address"]').value.trim();
+      if (!hostname || !ip) {
+        e.preventDefault();
+        if (!hostname) addForm.querySelector('[name="hostname"]').classList.add("is-invalid");
+        if (!ip)       addForm.querySelector('[name="ip_address"]').classList.add("is-invalid");
+      }
+    });
+    /* Clear invalid state on input */
+    addForm.querySelectorAll("input[required]").forEach(function (el) {
+      el.addEventListener("input", function () { el.classList.remove("is-invalid"); });
+    });
+  }
 })();
 </script>
 {% endblock %}
