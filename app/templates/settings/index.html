@@ -262,288 +262,293 @@
 
   {# ══════════════════════════ DIRECTORY SERVICES ══════════════════════════ #}
   <div class="card border-0 mb-4" id="directory-services">
-    <div class="card-header d-flex align-items-center justify-content-between py-3 flex-wrap gap-2">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
       <h6 class="mb-0 fw-semibold">
         <i class="bi bi-diagram-3 me-2 text-info"></i>Directory Services
       </h6>
-      <div class="d-flex align-items-center gap-2">
-        {% if dir_config and dir_config.is_enabled %}
-          <span class="badge bg-success-subtle text-success border border-success-subtle">
-            <i class="bi bi-check-circle me-1"></i>Enabled — {{ dir_config.display_type }}
-          </span>
-          <form method="POST" action="{{ url_for('settings.toggle_directory_route') }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="enabled" value="0">
-            <button type="submit" class="btn btn-sm btn-outline-warning">
-              <i class="bi bi-toggle-on me-1"></i>Disable
-            </button>
-          </form>
-        {% else %}
-          <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-            <i class="bi bi-x-circle me-1"></i>Disabled
-          </span>
-          <form method="POST" action="{{ url_for('settings.toggle_directory_route') }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="enabled" value="1">
-            <button type="submit" class="btn btn-sm btn-outline-success"
-                    {% if not dir_config or not dir_config.uri %}disabled
-                    title="Save a configuration first"{% endif %}>
-              <i class="bi bi-toggle-off me-1"></i>Enable
-            </button>
-          </form>
-        {% endif %}
-      </div>
+      {% if dir_config and dir_config.is_enabled %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle">
+          <i class="bi bi-check-circle me-1"></i>Enabled
+        </span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+          <i class="bi bi-x-circle me-1"></i>Disabled
+        </span>
+      {% endif %}
     </div>
 
     <div class="card-body">
 
-      {# ── Configuration form ─────────────────────────────────────────── #}
-      <form method="POST" action="{{ url_for('settings.save_directory_route') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
+      {# ── ENABLED: summary card ─────────────────────────────────────── #}
+      {% if dir_config and dir_config.is_enabled %}
         <div class="row g-3 mb-4">
-
-          {# Directory Type #}
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">Directory Type</label>
-            <select class="form-select form-select-sm" name="directory_type" id="dirType"
-                    onchange="updateDirectoryDefaults(this.value)">
-              {% for dt in directory_types %}
-                <option value="{{ dt }}"
-                  {% if dir_config and dir_config.directory_type == dt %}selected{% endif %}>
-                  {% if dt == 'freeipa' %}FreeIPA{% elif dt == 'ad' %}Active Directory{% else %}OpenLDAP{% endif %}
-                </option>
-              {% endfor %}
-            </select>
+          <div class="col-sm-6 col-lg-3">
+            <div class="p-3 bg-body-secondary rounded h-100">
+              <div class="small text-secondary mb-1">Directory Type</div>
+              <div class="fw-semibold">{{ dir_config.display_type }}</div>
+            </div>
           </div>
-
-          {# URI #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">LDAP / LDAPS URI <span class="text-danger">*</span></label>
-            <input type="text" class="form-control form-control-sm" name="uri"
-                   value="{{ dir_config.uri if dir_config else '' }}"
-                   placeholder="ldaps://ipa.example.com" required>
+          <div class="col-sm-6 col-lg-3">
+            <div class="p-3 bg-body-secondary rounded h-100">
+              <div class="small text-secondary mb-1">Server</div>
+              <div class="fw-semibold font-monospace small text-break">{{ dir_config.uri }}</div>
+            </div>
           </div>
-
-          {# Port #}
-          <div class="col-md-2">
-            <label class="form-label small fw-semibold">Port</label>
-            <input type="number" class="form-control form-control-sm" name="port"
-                   value="{{ dir_config.port if dir_config and dir_config.port else '' }}"
-                   placeholder="auto">
+          <div class="col-sm-6 col-lg-3">
+            <div class="p-3 bg-body-secondary rounded h-100">
+              <div class="small text-secondary mb-1">SSL</div>
+              {% if dir_config.ssl_enabled %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">Enabled</span>
+              {% else %}
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Disabled</span>
+              {% endif %}
+            </div>
           </div>
-
-          {# Base DN #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Base DN <span class="text-danger">*</span></label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="base_dn"
-                   value="{{ dir_config.base_dn if dir_config else '' }}"
-                   placeholder="dc=example,dc=com" required>
+          <div class="col-sm-6 col-lg-3">
+            <div class="p-3 bg-body-secondary rounded h-100">
+              <div class="small text-secondary mb-1">Last Successful Connection</div>
+              <div class="fw-semibold small">
+                {% if dir_config.last_connected_at %}
+                  {{ dir_config.last_connected_at.strftime('%Y-%m-%d %H:%M') }}
+                {% else %}
+                  <span class="text-secondary">Never tested</span>
+                {% endif %}
+              </div>
+            </div>
           </div>
+        </div>
 
-          {# Bind DN #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Bind DN</label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="bind_dn"
-                   value="{{ dir_config.bind_dn if dir_config else '' }}"
-                   placeholder="uid=svc-lop,cn=sysaccounts,cn=etc,dc=example,dc=com">
-          </div>
-
-          {# Bind Password #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Bind Password</label>
-            <input type="password" class="form-control form-control-sm" name="bind_password"
-                   autocomplete="new-password"
-                   placeholder="{% if dir_config and dir_config.bind_password_enc %}••••••••  (leave blank to keep current){% else %}Enter bind password{% endif %}">
-            <div class="form-text">Stored encrypted. Leave blank to keep the current password.</div>
-          </div>
-
-          {# User Search Base #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">User Search Base</label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="user_search_base"
-                   value="{{ dir_config.user_search_base if dir_config and dir_config.user_search_base else '' }}"
-                   placeholder="defaults to Base DN">
-          </div>
-
-          {# Group Search Base #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Group Search Base</label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="group_search_base"
-                   value="{{ dir_config.group_search_base if dir_config and dir_config.group_search_base else '' }}"
-                   placeholder="defaults to Base DN">
-          </div>
-
-          {# User Search Filter #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">User Search Filter</label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="user_search_filter"
-                   id="userSearchFilter"
-                   value="{{ dir_config.user_search_filter if dir_config else '(uid={username})' }}"
-                   placeholder="(uid={username})">
-            <div class="form-text"><code>{username}</code> is replaced at runtime.</div>
-          </div>
-
-          {# Group Search Filter #}
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Group Search Filter</label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="group_search_filter"
-                   id="groupSearchFilter"
-                   value="{{ dir_config.group_search_filter if dir_config else '(objectClass=groupOfNames)' }}"
-                   placeholder="(objectClass=groupOfNames)">
-          </div>
-
-          {# SSL / TLS #}
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold">SSL/TLS</label>
-            <select class="form-select form-select-sm" name="ssl_enabled">
-              <option value="1" {% if not dir_config or dir_config.ssl_enabled %}selected{% endif %}>Enabled (LDAPS)</option>
-              <option value="0" {% if dir_config and not dir_config.ssl_enabled %}selected{% endif %}>Disabled (LDAP)</option>
-            </select>
-          </div>
-
-          {# Verify Certificate #}
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold">Verify Certificate</label>
-            <select class="form-select form-select-sm" name="verify_cert">
-              <option value="1" {% if not dir_config or dir_config.verify_cert %}selected{% endif %}>Yes (recommended)</option>
-              <option value="0" {% if dir_config and not dir_config.verify_cert %}selected{% endif %}>No (dev/self-signed)</option>
-            </select>
-          </div>
-
-          {# Timeout #}
-          <div class="col-md-2">
-            <label class="form-label small fw-semibold">Timeout (s)</label>
-            <input type="number" class="form-control form-control-sm" name="timeout" min="1" max="60"
-                   value="{{ dir_config.timeout if dir_config else 10 }}">
-          </div>
-
-          {# Default Role #}
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold">Default Role</label>
-            <select class="form-select form-select-sm" name="default_role">
-              {% for r in mapping_valid_roles %}
-                <option value="{{ r }}"
-                  {% if dir_config and dir_config.default_role == r %}selected
-                  {% elif not dir_config and r == 'operator' %}selected{% endif %}>
-                  {{ r | title }}
-                </option>
-              {% endfor %}
-            </select>
-            <div class="form-text">Assigned when no group mapping matches.</div>
-          </div>
-
-          {# CA Certificate Path #}
-          <div class="col-12">
-            <label class="form-label small fw-semibold">CA Certificate Path <span class="text-secondary">(optional)</span></label>
-            <input type="text" class="form-control form-control-sm font-monospace small" name="ca_cert_path"
-                   value="{{ dir_config.ca_cert_path if dir_config and dir_config.ca_cert_path else '' }}"
-                   placeholder="/etc/ipa/ca.crt">
-            <div class="form-text">Absolute path on the server. Leave blank to use the system CA bundle.</div>
-          </div>
-
-        </div>{# /row #}
-
-        <div class="d-flex gap-2 flex-wrap">
-          <button type="submit" class="btn btn-sm btn-primary">
-            <i class="bi bi-floppy me-1"></i>Save Configuration
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <button class="btn btn-sm btn-outline-secondary"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#dirConfigForm"
+                  aria-expanded="false"
+                  aria-controls="dirConfigForm">
+            <i class="bi bi-pencil me-1"></i>Edit Configuration
           </button>
           <button type="button" id="btnTestDirectory" class="btn btn-sm btn-outline-info"
                   onclick="testDirectoryConnection(event)">
             <i class="bi bi-plug me-1"></i>Test Connection
           </button>
+          <form method="POST" action="{{ url_for('settings.toggle_directory_route') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="enabled" value="0">
+            <button type="submit" class="btn btn-sm btn-outline-warning">
+              <i class="bi bi-slash-circle me-1"></i>Disable
+            </button>
+          </form>
           <span id="dirTestResult" class="small align-self-center"></span>
         </div>
 
-      </form>
-
-      {# ── Group Mappings ──────────────────────────────────────────────── #}
-      <hr class="my-4 border-secondary">
-      <h6 class="fw-semibold mb-3">
-        <i class="bi bi-arrow-left-right me-2 text-secondary"></i>Group → Role Mappings
-      </h6>
-      <p class="small text-secondary mb-3">
-        Map LDAP group DNs (or just the CN component) to portal roles.
-        When a user belongs to multiple groups, the highest-priority role is applied
-        (Administrator &gt; Operator &gt; Read Only).
-      </p>
-
-      {% if group_mappings %}
-        <div class="table-responsive mb-3">
-          <table class="table lop-table mb-0">
-            <thead>
-              <tr>
-                <th>LDAP Group DN / CN</th>
-                <th style="width:120px;">Portal Role</th>
-                <th style="width:80px;" class="text-center">Delete</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for m in group_mappings %}
-                <tr>
-                  <td class="font-monospace small">{{ m.group_dn }}</td>
-                  <td>
-                    {% if m.role == 'administrator' %}
-                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Admin</span>
-                    {% elif m.role == 'operator' %}
-                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Operator</span>
-                    {% else %}
-                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Read Only</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-center">
-                    <form method="POST"
-                          action="{{ url_for('settings.delete_group_mapping_route', mapping_id=m.id) }}"
-                          class="d-inline">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button type="submit" class="btn btn-sm btn-outline-danger"
-                              title="Remove mapping"
-                              onclick="return confirm('Remove mapping for {{ m.group_dn }}?')">
-                        <i class="bi bi-trash3"></i>
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+      {# ── DISABLED: simple prompt ────────────────────────────────────── #}
       {% else %}
-        <div class="text-secondary small mb-3">
-          <i class="bi bi-info-circle me-1"></i>
-          No group mappings defined. All directory users will receive the default role above.
-        </div>
-      {% endif %}
-
-      {# Add mapping inline form #}
-      <form method="POST" action="{{ url_for('settings.add_group_mapping_route') }}"
-            class="row g-2 align-items-end">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="col-12 col-md-7">
-          <label class="form-label small text-secondary mb-1">Group DN or CN</label>
-          <input type="text" class="form-control form-control-sm font-monospace" name="group_dn"
-                 placeholder="cn=LinuxAdmins,cn=groups,dc=example,dc=com" required>
-        </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label small text-secondary mb-1">Maps to Role</label>
-          <select class="form-select form-select-sm" name="role">
-            {% for r in mapping_valid_roles %}
-              <option value="{{ r }}">{{ r | title }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-md-2">
-          <button type="submit" class="btn btn-sm btn-outline-success w-100">
-            <i class="bi bi-plus-lg me-1"></i>Add
+        <div class="d-flex align-items-center gap-3 py-2">
+          <div class="text-secondary small flex-grow-1">
+            <i class="bi bi-lock me-1"></i>
+            Directory authentication is disabled. All users sign in with local passwords.
+          </div>
+          <button class="btn btn-sm btn-success"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#dirConfigForm"
+                  aria-expanded="false"
+                  aria-controls="dirConfigForm">
+            <i class="bi bi-diagram-3 me-1"></i>Enable Directory Authentication
           </button>
         </div>
-      </form>
+        <span id="dirTestResult" class="small d-block mt-2"></span>
+      {% endif %}
 
-      <div class="alert alert-info border-0 mt-4 mb-0 py-2 small">
-        <i class="bi bi-info-circle me-1"></i>
-        Directory users are authenticated first; local accounts act as fallback.
-        The local admin account always uses local password authentication regardless of this setting.
-      </div>
+      {# ── Configuration form (collapsed by default; Bootstrap collapse) ── #}
+      <div class="collapse mt-4" id="dirConfigForm">
+        <div class="border border-secondary rounded p-3">
+
+          <form method="POST" action="{{ url_for('settings.save_directory_route') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# ── Essential fields ────────────────────────────────────── #}
+            <div class="row g-3 mb-3">
+
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Directory Type</label>
+                <select class="form-select form-select-sm" name="directory_type" id="dirType"
+                        onchange="updateDirectoryDefaults(this.value)">
+                  {% for dt in directory_types %}
+                    <option value="{{ dt }}"
+                      {% if dir_config and dir_config.directory_type == dt %}selected{% endif %}>
+                      {% if dt == 'freeipa' %}FreeIPA{% elif dt == 'ad' %}Active Directory{% else %}OpenLDAP{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold">
+                  Server Address <span class="text-danger">*</span>
+                </label>
+                <input type="text" class="form-control form-control-sm" name="uri"
+                       value="{{ dir_config.uri if dir_config else '' }}"
+                       placeholder="ldaps://ipa.example.com" required>
+                <div class="form-text">Use <code>ldaps://</code> for SSL or <code>ldap://</code> for plain.</div>
+              </div>
+
+              <div class="col-md-2">
+                <label class="form-label small fw-semibold">Port</label>
+                <input type="number" class="form-control form-control-sm" name="port"
+                       value="{{ dir_config.port if dir_config and dir_config.port else '' }}"
+                       placeholder="auto">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold">
+                  Base DN <span class="text-danger">*</span>
+                </label>
+                <input type="text" class="form-control form-control-sm font-monospace small" name="base_dn"
+                       value="{{ dir_config.base_dn if dir_config else '' }}"
+                       placeholder="dc=example,dc=com" required>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold">Bind Username</label>
+                <input type="text" class="form-control form-control-sm font-monospace small" name="bind_dn"
+                       value="{{ dir_config.bind_dn if dir_config else '' }}"
+                       placeholder="uid=svc-lop,cn=sysaccounts,cn=etc,dc=example,dc=com"
+                       autocomplete="off">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold">Bind Password</label>
+                <input type="password" class="form-control form-control-sm" name="bind_password"
+                       autocomplete="new-password"
+                       placeholder="{% if dir_config and dir_config.bind_password_enc %}Leave blank to keep current{% else %}Service account password{% endif %}">
+                <div class="form-text">Stored encrypted. Leave blank to keep the current value.</div>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label small fw-semibold">Use SSL</label>
+                <select class="form-select form-select-sm" name="ssl_enabled">
+                  <option value="1" {% if not dir_config or dir_config.ssl_enabled %}selected{% endif %}>Yes (recommended)</option>
+                  <option value="0" {% if dir_config and not dir_config.ssl_enabled %}selected{% endif %}>No</option>
+                </select>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label small fw-semibold">Default Role</label>
+                <select class="form-select form-select-sm" name="default_role">
+                  {% for r in mapping_valid_roles %}
+                    <option value="{{ r }}"
+                      {% if dir_config and dir_config.default_role == r %}selected
+                      {% elif not dir_config and r == 'operator' %}selected{% endif %}>
+                      {{ r | title }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Role assigned to all directory users.</div>
+              </div>
+
+            </div>{# /essential row #}
+
+            {# ── Advanced Settings (collapsed) ────────────────────────── #}
+            <div class="accordion accordion-flush mb-3" id="advancedAccordion">
+              <div class="accordion-item bg-transparent border border-secondary rounded">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed bg-transparent text-body small py-2"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#advancedSettings"
+                          aria-expanded="false"
+                          aria-controls="advancedSettings">
+                    <i class="bi bi-sliders me-2 text-secondary"></i>Advanced Settings
+                  </button>
+                </h2>
+                <div id="advancedSettings" class="accordion-collapse collapse"
+                     data-bs-parent="#advancedAccordion">
+                  <div class="accordion-body pt-2">
+                    <div class="row g-3">
+
+                      <div class="col-md-6">
+                        <label class="form-label small fw-semibold">User Search Base</label>
+                        <input type="text" class="form-control form-control-sm font-monospace small"
+                               name="user_search_base"
+                               value="{{ dir_config.user_search_base if dir_config and dir_config.user_search_base else '' }}"
+                               placeholder="Defaults to Base DN">
+                      </div>
+
+                      <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Group Search Base</label>
+                        <input type="text" class="form-control form-control-sm font-monospace small"
+                               name="group_search_base"
+                               value="{{ dir_config.group_search_base if dir_config and dir_config.group_search_base else '' }}"
+                               placeholder="Defaults to Base DN">
+                      </div>
+
+                      <div class="col-md-6">
+                        <label class="form-label small fw-semibold">User Search Filter</label>
+                        <input type="text" class="form-control form-control-sm font-monospace small"
+                               name="user_search_filter" id="userSearchFilter"
+                               value="{{ dir_config.user_search_filter if dir_config else '(uid={username})' }}"
+                               placeholder="(uid={username})">
+                        <div class="form-text"><code>{username}</code> is substituted at runtime.</div>
+                      </div>
+
+                      <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Group Search Filter</label>
+                        <input type="text" class="form-control form-control-sm font-monospace small"
+                               name="group_search_filter" id="groupSearchFilter"
+                               value="{{ dir_config.group_search_filter if dir_config else '(objectClass=groupOfNames)' }}"
+                               placeholder="(objectClass=groupOfNames)">
+                      </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Verify Certificate</label>
+                        <select class="form-select form-select-sm" name="verify_cert">
+                          <option value="1" {% if not dir_config or dir_config.verify_cert %}selected{% endif %}>Yes (recommended)</option>
+                          <option value="0" {% if dir_config and not dir_config.verify_cert %}selected{% endif %}>No (self-signed)</option>
+                        </select>
+                      </div>
+
+                      <div class="col-md-2">
+                        <label class="form-label small fw-semibold">Timeout (s)</label>
+                        <input type="number" class="form-control form-control-sm" name="timeout"
+                               min="1" max="60"
+                               value="{{ dir_config.timeout if dir_config else 10 }}">
+                      </div>
+
+                      <div class="col-12">
+                        <label class="form-label small fw-semibold">CA Certificate Path</label>
+                        <input type="text" class="form-control form-control-sm font-monospace small"
+                               name="ca_cert_path"
+                               value="{{ dir_config.ca_cert_path if dir_config and dir_config.ca_cert_path else '' }}"
+                               placeholder="/etc/ipa/ca.crt  (leave blank for system CA bundle)">
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── Form actions ─────────────────────────────────────────── #}
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <button type="submit" class="btn btn-sm btn-primary">
+                <i class="bi bi-floppy me-1"></i>Save Configuration
+              </button>
+              <button type="button" id="btnTestDirectoryForm" class="btn btn-sm btn-outline-info"
+                      onclick="testDirectoryConnection(event, 'dirTestResultForm')">
+                <i class="bi bi-plug me-1"></i>Test Connection
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#dirConfigForm">
+                Cancel
+              </button>
+              <span id="dirTestResultForm" class="small align-self-center"></span>
+            </div>
+
+          </form>
+        </div>
+      </div>{# /collapse #}
 
     </div>
   </div>
@@ -1065,15 +1070,14 @@ function updateDirectoryDefaults(dirType) {
   if (gf && !gf.value) gf.value = d.groupFilter;
 }
 
-async function testDirectoryConnection(evt) {
+async function testDirectoryConnection(evt, resultId) {
   evt.preventDefault();
-  const btn    = document.getElementById('btnTestDirectory');
-  const result = document.getElementById('dirTestResult');
+  const btn    = evt.currentTarget;
+  const result = document.getElementById(resultId || 'dirTestResult');
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Testing…';
-  result.textContent = '';
-  result.className = 'small';
+  if (result) { result.textContent = ''; result.className = 'small'; }
 
   try {
     const resp = await fetch("{{ url_for('settings.test_directory_connection') }}", {
@@ -1081,16 +1085,17 @@ async function testDirectoryConnection(evt) {
       headers: { 'X-CSRFToken': '{{ csrf_token() }}', 'Content-Type': 'application/json' },
     });
     const data = await resp.json();
+    if (result) {
+      result.textContent = data.success ? ('✓ ' + data.message) : ('✗ ' + data.message);
+      result.className   = 'small ' + (data.success ? 'text-success' : 'text-danger');
+    }
+    // Refresh last-connection tile if test succeeded
     if (data.success) {
-      result.textContent = '✓ ' + data.message;
-      result.className = 'small text-success';
-    } else {
-      result.textContent = '✗ ' + data.message;
-      result.className = 'small text-danger';
+      const tile = document.getElementById('lastConnectedDisplay');
+      if (tile) tile.textContent = new Date().toISOString().slice(0,16).replace('T',' ');
     }
   } catch (e) {
-    result.textContent = '✗ Request failed: ' + e.message;
-    result.className = 'small text-danger';
+    if (result) { result.textContent = '✗ Request failed: ' + e.message; result.className = 'small text-danger'; }
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-plug me-1"></i>Test Connection';

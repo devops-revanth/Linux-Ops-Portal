@@ -234,10 +234,10 @@ def revoke_api_token_route():
 @settings_bp.route("/settings/directory/save", methods=["POST"])
 @login_required
 def save_directory_route():
-    """Save the directory configuration."""
+    """Save the directory configuration and enable directory auth."""
     result = save_directory_config(request.form)
     if result.success:
-        flash("Directory configuration saved.", "success")
+        flash("Directory configuration saved and enabled.", "success")
         commit_audit("settings.directory.save", target=request.form.get("uri", ""))
     else:
         flash(result.error, "danger")
@@ -265,6 +265,17 @@ def test_directory_connection():
     """AJAX: test the directory service-account bind."""
     svc    = FreeIPAService.from_db()
     result = svc.test_connection()
+    if result.success:
+        from datetime import datetime
+        from ...models.directory_config import DirectoryConfig
+        from ...extensions import db as _db
+        cfg = DirectoryConfig.get()
+        if cfg:
+            cfg.last_connected_at = datetime.utcnow()
+            try:
+                _db.session.commit()
+            except Exception:
+                _db.session.rollback()
     commit_audit(
         "settings.directory.test_connection",
         target  = result.server,

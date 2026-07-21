@@ -62,6 +62,7 @@ class DirectoryConfig(db.Model):
     timeout              = db.Column(db.Integer,      nullable=False, default=10)
     default_role         = db.Column(db.String(32),   nullable=False, default="operator")
     is_enabled           = db.Column(db.Boolean,      nullable=False, default=False)
+    last_connected_at    = db.Column(db.DateTime,     nullable=True)   # set on successful test
     created_at           = db.Column(db.DateTime,     nullable=False, default=datetime.utcnow)
     updated_at           = db.Column(db.DateTime,     nullable=False, default=datetime.utcnow,
                                      onupdate=datetime.utcnow)

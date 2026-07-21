@@ -257,8 +257,11 @@ def save_directory_config(form: dict) -> QueryResult:
         if new_password:
             cfg.set_bind_password(new_password)
 
+        # Saving the form also enables directory auth
+        cfg.is_enabled = True
+
         db.session.commit()
-        logger.info("Directory config saved: type=%s uri=%s", cfg.directory_type, cfg.uri)
+        logger.info("Directory config saved+enabled: type=%s uri=%s", cfg.directory_type, cfg.uri)
         return QueryResult()
     except Exception:
         db.session.rollback()
