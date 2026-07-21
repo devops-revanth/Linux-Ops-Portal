@@ -11,7 +11,7 @@ name = "LOP"
 paths = ["/"]
 
 [services.development]
-run = "cd /home/runner/workspace/lop && venv/bin/python run.py"
+run = "cd /home/runner/workspace && python run.py"
 
 # ── Node.js API Server ────────────────────────────────────────────────────────
 [[services]]
