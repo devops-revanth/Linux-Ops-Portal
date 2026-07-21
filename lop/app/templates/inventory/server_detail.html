@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ server.hostname }} – {{ app_name }}{% endblock %}
+{% block title %}{{ server.hostname }} | Linux Operations Portal{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -255,20 +255,21 @@
 </style>
 {% endblock %}
 
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item">
+      <a href="{{ url_for('inventory.index') }}">
+        <i class="bi bi-server me-1"></i>Inventory
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page">{{ server.hostname }}</li>
+  </ol>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid p-4">
-
-  {# ── Breadcrumb ──────────────────────────────────────────────────────── #}
-  <nav aria-label="breadcrumb" class="mb-3">
-    <ol class="breadcrumb" style="font-size:.82rem;">
-      <li class="breadcrumb-item">
-        <a href="{{ url_for('inventory.index') }}" class="text-secondary text-decoration-none">
-          <i class="bi bi-server me-1"></i>Inventory
-        </a>
-      </li>
-      <li class="breadcrumb-item active text-light" aria-current="page">{{ server.hostname }}</li>
-    </ol>
-  </nav>
 
   {# ── Header card ─────────────────────────────────────────────────────── #}
   <div class="lop-detail-header">
@@ -350,14 +351,18 @@
           Synced {{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
         </span>
         {% endif %}
-        <button type="button" class="btn btn-sm btn-outline-primary"
-                data-bs-toggle="modal" data-bs-target="#editServerModal">
-          <i class="bi bi-pencil me-1"></i>Edit
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-danger"
-                data-bs-toggle="modal" data-bs-target="#deleteServerModal">
-          <i class="bi bi-trash me-1"></i>Delete
-        </button>
+        <span data-bs-toggle="tooltip" title="Edit server details">
+          <button type="button" class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal" data-bs-target="#editServerModal">
+            <i class="bi bi-pencil me-1"></i>Edit
+          </button>
+        </span>
+        <span data-bs-toggle="tooltip" title="Permanently delete this server">
+          <button type="button" class="btn btn-sm btn-outline-danger"
+                  data-bs-toggle="modal" data-bs-target="#deleteServerModal">
+            <i class="bi bi-trash me-1"></i>Delete
+          </button>
+        </span>
       </div>
 
     </div>
@@ -695,7 +700,8 @@
                   class="ms-auto"
                   onsubmit="return confirm('Delete this note?');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-link btn-sm text-danger p-0" title="Delete note">
+              <button type="submit" class="btn btn-link btn-sm text-danger p-0"
+                      data-bs-toggle="tooltip" title="Delete this note">
                 <i class="bi bi-trash" style="font-size:.8rem;"></i>
               </button>
             </form>

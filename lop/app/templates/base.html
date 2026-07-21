@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}{{ app_name | default('Linux Operations Portal') }}{% endblock %}</title>
+  <title>{% block title %}Linux Operations Portal{% endblock %}</title>
 
   <!-- Bootstrap 5 (CDN) -->
   <link
@@ -63,7 +63,9 @@
               class="btn btn-sm btn-outline-secondary"
               href="{{ url_for('main.health') }}"
               target="_blank"
-              title="Health check"
+              data-bs-toggle="tooltip"
+              data-bs-placement="bottom"
+              title="Open health check"
             >
               <i class="bi bi-activity"></i>
             </a>
@@ -85,6 +87,9 @@
           <a
             class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
             href="{{ url_for('dashboard.index') }}"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Dashboard"
           >
             <i class="bi bi-speedometer2"></i>
             <span>Dashboard</span>
@@ -95,6 +100,9 @@
           <a
             class="nav-link {% if request.endpoint and request.endpoint.startswith('inventory.') %}active{% endif %}"
             href="{{ url_for('inventory.index') }}"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Server Inventory"
           >
             <i class="bi bi-server"></i>
             <span>Inventory</span>
@@ -102,21 +110,24 @@
         </li>
 
         <li class="nav-item">
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true"
+             data-bs-toggle="tooltip" data-bs-placement="right" title="Coming soon">
             <i class="bi bi-shield-check"></i>
             <span>Patching</span>
           </a>
         </li>
 
         <li class="nav-item">
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true"
+             data-bs-toggle="tooltip" data-bs-placement="right" title="Coming soon">
             <i class="bi bi-search"></i>
             <span>Search</span>
           </a>
         </li>
 
         <li class="nav-item">
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true"
+             data-bs-toggle="tooltip" data-bs-placement="right" title="Coming soon">
             <i class="bi bi-file-earmark-bar-graph"></i>
             <span>Reports</span>
           </a>
@@ -126,6 +137,9 @@
           <a
             class="nav-link {% if request.endpoint and request.endpoint.startswith('settings.') %}active{% endif %}"
             href="{{ url_for('settings.index') }}"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Portal Settings"
           >
             <i class="bi bi-gear"></i>
             <span>Settings</span>
@@ -145,28 +159,60 @@
     <!-- Main content -->
     <main class="lop-main">
 
-      <!-- Flash messages -->
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="container-fluid pt-3">
-            {% for category, message in messages %}
-              <div
-                class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
-                role="alert"
-              >
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+      <!-- ── Breadcrumbs ─────────────────────────────────────────────── -->
+      {% block breadcrumbs %}{% endblock %}
 
-      <!-- Page content -->
+      <!-- ── Page content ───────────────────────────────────────────── -->
       {% block content %}{% endblock %}
 
     </main>
   </div><!-- /.lop-wrapper -->
+
+  <!-- ── Toast container (top-right, flash messages) ───────────────────── -->
+  <div id="lop-toast-container"
+       class="toast-container position-fixed end-0 p-3"
+       style="z-index: 1090; top: calc(var(--lop-navbar-height) + .5rem);">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        {% if category == 'error' %}
+          {% set bg_cls = 'lop-toast-danger' %}
+          {% set icon   = 'x-circle-fill' %}
+        {% elif category == 'warning' %}
+          {% set bg_cls = 'lop-toast-warning' %}
+          {% set icon   = 'exclamation-triangle-fill' %}
+        {% elif category == 'success' %}
+          {% set bg_cls = 'lop-toast-success' %}
+          {% set icon   = 'check-circle-fill' %}
+        {% else %}
+          {% set bg_cls = 'lop-toast-info' %}
+          {% set icon   = 'info-circle-fill' %}
+        {% endif %}
+        <div class="toast lop-toast {{ bg_cls }}"
+             role="alert" aria-live="assertive" aria-atomic="true"
+             data-bs-autohide="true" data-bs-delay="5000">
+          <div class="toast-header lop-toast-header {{ bg_cls }}">
+            <i class="bi bi-{{ icon }} me-2"></i>
+            <strong class="me-auto">
+              {% if category == 'error' %}Error
+              {% elif category == 'warning' %}Warning
+              {% elif category == 'success' %}Success
+              {% else %}Notice{% endif %}
+            </strong>
+            <button type="button" class="btn-close btn-close-white"
+                    data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+          <div class="toast-body">{{ message }}</div>
+        </div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <!-- ── Page loading overlay ───────────────────────────────────────────── -->
+  <div id="lop-loader" aria-hidden="true">
+    <div class="spinner-border text-success lop-loader-spinner" role="status">
+      <span class="visually-hidden">Loading…</span>
+    </div>
+  </div>
 
   <!-- Bootstrap 5 JS bundle -->
   <script

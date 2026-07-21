@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Settings – {{ app_name }}{% endblock %}
+{% block title %}Settings | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">
+      <i class="bi bi-gear me-1"></i>Settings
+    </li>
+  </ol>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid p-4">
@@ -25,31 +35,33 @@
     </div>
     <div class="card-body p-0">
       {% if locations %}
-        <table class="table lop-table mb-0">
-          <thead>
-            <tr>
-              <th style="width: 160px;">Code</th>
-              <th>Description</th>
-              <th style="width: 100px;" class="text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for loc in locations %}
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
               <tr>
-                <td>
-                  <i class="bi bi-building me-2 text-secondary"></i>
-                  <span class="fw-semibold">{{ loc.name }}</span>
-                </td>
-                <td class="text-secondary">{{ loc.description or '—' }}</td>
-                <td class="text-center">
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">
-                    Active
-                  </span>
-                </td>
+                <th style="width: 160px;">Code</th>
+                <th>Description</th>
+                <th style="width: 100px;" class="text-center">Status</th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for loc in locations %}
+                <tr>
+                  <td>
+                    <i class="bi bi-building me-2 text-secondary"></i>
+                    <span class="fw-semibold">{{ loc.name }}</span>
+                  </td>
+                  <td class="text-secondary">{{ loc.description or '—' }}</td>
+                  <td class="text-center">
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                      Active
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% else %}
         <div class="text-center text-secondary py-5">
           <i class="bi bi-geo-alt fs-4 d-block mb-2"></i>
@@ -71,36 +83,38 @@
     </div>
     <div class="card-body p-0">
       {% if environments %}
-        <table class="table lop-table mb-0">
-          <thead>
-            <tr>
-              <th style="width: 160px;">Name</th>
-              <th style="width: 120px;">Label</th>
-              <th style="width: 140px;">Colour</th>
-              <th style="width: 100px;" class="text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for env in environments %}
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
               <tr>
-                <td>
-                  <span class="fw-semibold">{{ env.name }}</span>
-                </td>
-                <td>
-                  <span class="badge lop-env-badge lop-env-{{ env.color }}">
-                    {{ env.label }}
-                  </span>
-                </td>
-                <td class="text-secondary small">{{ env.color }}</td>
-                <td class="text-center">
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">
-                    Active
-                  </span>
-                </td>
+                <th style="width: 160px;">Name</th>
+                <th style="width: 120px;">Label</th>
+                <th style="width: 140px;">Colour</th>
+                <th style="width: 100px;" class="text-center">Status</th>
               </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {% for env in environments %}
+                <tr>
+                  <td>
+                    <span class="fw-semibold">{{ env.name }}</span>
+                  </td>
+                  <td>
+                    <span class="badge lop-env-badge lop-env-{{ env.color }}">
+                      {{ env.label }}
+                    </span>
+                  </td>
+                  <td class="text-secondary small">{{ env.color }}</td>
+                  <td class="text-center">
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                      Active
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       {% else %}
         <div class="text-center text-secondary py-5">
           <i class="bi bi-layers fs-4 d-block mb-2"></i>

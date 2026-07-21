@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Inventory – {{ app_name }}{% endblock %}
+{% block title %}Inventory | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">
+      <i class="bi bi-server me-1"></i>Inventory
+    </li>
+  </ol>
+</div>
+{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -140,14 +150,16 @@
         {{ inv.total }} server{{ 's' if inv.total != 1 else '' }} registered
       </small>
     </div>
-    <button
-      type="button"
-      class="btn btn-success btn-sm"
-      data-bs-toggle="modal"
-      data-bs-target="#addServerModal"
-    >
-      <i class="bi bi-plus-lg me-1"></i>Add Server
-    </button>
+    <span data-bs-toggle="tooltip" title="Register a new server in the inventory">
+      <button
+        type="button"
+        class="btn btn-success btn-sm"
+        data-bs-toggle="modal"
+        data-bs-target="#addServerModal"
+      >
+        <i class="bi bi-plus-lg me-1"></i>Add Server
+      </button>
+    </span>
   </div>
 
   {# ── Search + Filter bar ─────────────────────────────────────────────── #}
