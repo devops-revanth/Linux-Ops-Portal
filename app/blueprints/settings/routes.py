@@ -27,6 +27,7 @@ from .queries import (
     revoke_api_token,
     toggle_user_active,
 )
+from ...audit import commit_audit
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def _render_settings(new_token: str | None = None):
         owners=data.owners,
         users=data.users,
         api_token=data.api_token,
+        audit_log=data.audit_log,
         new_token=new_token,
         valid_colors=VALID_COLORS,
         app_name=current_app.config["APP_NAME"],
@@ -54,7 +56,7 @@ def _render_settings(new_token: str | None = None):
 
 @settings_bp.route("/settings", methods=["GET"])
 def index():
-    """Settings overview — manage locations, environments, and owners."""
+    """Settings overview — manage locations, environments, owners, users, and API token."""
     return _render_settings()
 
 
@@ -62,12 +64,11 @@ def index():
 
 @settings_bp.route("/settings/locations/add", methods=["POST"])
 def add_location_route():
-    result = add_location(
-        name=request.form.get("name", ""),
-        description=request.form.get("description", ""),
-    )
+    name = request.form.get("name", "").strip()
+    result = add_location(name=name, description=request.form.get("description", ""))
     if result.success:
         flash("Location added successfully.", "success")
+        commit_audit("settings.location.add", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#locations")
@@ -75,14 +76,16 @@ def add_location_route():
 
 @settings_bp.route("/settings/locations/<int:location_id>/edit", methods=["POST"])
 def edit_location_route(location_id: int):
+    name = request.form.get("name", "").strip()
     result = edit_location(
         location_id=location_id,
-        name=request.form.get("name", ""),
+        name=name,
         description=request.form.get("description", ""),
         is_active=request.form.get("is_active") == "1",
     )
     if result.success:
         flash("Location updated successfully.", "success")
+        commit_audit("settings.location.edit", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#locations")
@@ -93,6 +96,7 @@ def delete_location_route(location_id: int):
     result = delete_location(location_id)
     if result.success:
         flash("Location deleted.", "success")
+        commit_audit("settings.location.delete", target=result.name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#locations")
@@ -102,13 +106,15 @@ def delete_location_route(location_id: int):
 
 @settings_bp.route("/settings/environments/add", methods=["POST"])
 def add_environment_route():
+    name = request.form.get("name", "").strip()
     result = add_environment(
-        name=request.form.get("name", ""),
+        name=name,
         label=request.form.get("label", ""),
         color=request.form.get("color", "secondary"),
     )
     if result.success:
         flash("Environment added successfully.", "success")
+        commit_audit("settings.environment.add", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#environments")
@@ -116,15 +122,17 @@ def add_environment_route():
 
 @settings_bp.route("/settings/environments/<int:env_id>/edit", methods=["POST"])
 def edit_environment_route(env_id: int):
+    name = request.form.get("name", "").strip()
     result = edit_environment(
         env_id=env_id,
-        name=request.form.get("name", ""),
+        name=name,
         label=request.form.get("label", ""),
         color=request.form.get("color", "secondary"),
         is_active=request.form.get("is_active") == "1",
     )
     if result.success:
         flash("Environment updated successfully.", "success")
+        commit_audit("settings.environment.edit", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#environments")
@@ -135,6 +143,7 @@ def delete_environment_route(env_id: int):
     result = delete_environment(env_id)
     if result.success:
         flash("Environment deleted.", "success")
+        commit_audit("settings.environment.delete", target=result.name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#environments")
@@ -144,12 +153,11 @@ def delete_environment_route(env_id: int):
 
 @settings_bp.route("/settings/owners/add", methods=["POST"])
 def add_owner_route():
-    result = add_owner(
-        name=request.form.get("name", ""),
-        email=request.form.get("email", ""),
-    )
+    name = request.form.get("name", "").strip()
+    result = add_owner(name=name, email=request.form.get("email", ""))
     if result.success:
         flash("Owner added successfully.", "success")
+        commit_audit("settings.owner.add", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#owners")
@@ -157,14 +165,16 @@ def add_owner_route():
 
 @settings_bp.route("/settings/owners/<int:owner_id>/edit", methods=["POST"])
 def edit_owner_route(owner_id: int):
+    name = request.form.get("name", "").strip()
     result = edit_owner(
         owner_id=owner_id,
-        name=request.form.get("name", ""),
+        name=name,
         email=request.form.get("email", ""),
         is_active=request.form.get("is_active") == "1",
     )
     if result.success:
         flash("Owner updated successfully.", "success")
+        commit_audit("settings.owner.edit", target=name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#owners")
@@ -175,6 +185,7 @@ def delete_owner_route(owner_id: int):
     result = delete_owner(owner_id)
     if result.success:
         flash("Owner deleted.", "success")
+        commit_audit("settings.owner.delete", target=result.name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#owners")
@@ -188,6 +199,7 @@ def generate_api_token_route():
     result, raw_token = generate_api_token()
     if result.success:
         flash("API token generated. Copy it now — it will not be shown again.", "success")
+        commit_audit("settings.api_token.generate", target="API token")
         return _render_settings(new_token=raw_token)
     else:
         flash(result.error, "danger")
@@ -200,6 +212,7 @@ def revoke_api_token_route():
     result = revoke_api_token()
     if result.success:
         flash("API token revoked. Ansible pushes will be rejected until a new token is generated.", "warning")
+        commit_audit("settings.api_token.revoke", target="API token")
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#api-settings")
@@ -209,12 +222,11 @@ def revoke_api_token_route():
 
 @settings_bp.route("/settings/users/add", methods=["POST"])
 def add_user_route():
-    result = add_user(
-        username=request.form.get("username", ""),
-        password=request.form.get("password", ""),
-    )
+    username = request.form.get("username", "").strip()
+    result = add_user(username=username, password=request.form.get("password", ""))
     if result.success:
         flash("User account created successfully.", "success")
+        commit_audit("settings.user.add", target=username)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#users")
@@ -222,12 +234,10 @@ def add_user_route():
 
 @settings_bp.route("/settings/users/<int:user_id>/change-password", methods=["POST"])
 def change_password_route(user_id: int):
-    result = change_password(
-        user_id=user_id,
-        new_password=request.form.get("password", ""),
-    )
+    result = change_password(user_id=user_id, new_password=request.form.get("password", ""))
     if result.success:
         flash("Password updated successfully.", "success")
+        commit_audit("settings.user.change_password", target=f"user id={user_id}")
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#users")
@@ -244,6 +254,10 @@ def toggle_user_active_route(user_id: int):
     if result.success:
         state = "activated" if is_active else "deactivated"
         flash(f"User account {state}.", "success")
+        commit_audit(
+            "settings.user.activate" if is_active else "settings.user.deactivate",
+            target=f"user id={user_id}",
+        )
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#users")
@@ -251,12 +265,10 @@ def toggle_user_active_route(user_id: int):
 
 @settings_bp.route("/settings/users/<int:user_id>/delete", methods=["POST"])
 def delete_user_route(user_id: int):
-    result = delete_user(
-        user_id=user_id,
-        current_user_id=current_user.id,
-    )
+    result = delete_user(user_id=user_id, current_user_id=current_user.id)
     if result.success:
         flash("User account deleted.", "success")
+        commit_audit("settings.user.delete", target=result.name)
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#users")

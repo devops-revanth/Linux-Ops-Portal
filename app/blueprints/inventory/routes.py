@@ -5,6 +5,7 @@ from flask import current_app, flash, redirect, render_template, request, url_fo
 
 from . import inventory_bp
 from .queries import DEFAULT_ORDER, DEFAULT_SORT, InventoryFilters, get_inventory_page
+from ...audit import log_action
 from ...extensions import db
 from ...models.environment import Environment
 from ...models.location import Location
@@ -130,6 +131,7 @@ def add_server():
 
     try:
         db.session.add(server)
+        log_action("inventory.server.add", target=hostname, details=ip_address)
         db.session.commit()
         flash(f'Server "{hostname}" added successfully.', "success")
         logger.info("Server created: %s (%s)", hostname, ip_address)
@@ -218,6 +220,7 @@ def edit_server(server_id: int):
     server.status            = status
 
     try:
+        log_action("inventory.server.edit", target=server.hostname)
         db.session.commit()
         flash(f'Server "{server.hostname}" updated successfully.', "success")
         logger.info("Server updated: id=%d hostname=%s", server_id, server.hostname)
@@ -238,6 +241,7 @@ def delete_server(server_id: int):
     hostname = server.hostname
     try:
         db.session.delete(server)
+        log_action("inventory.server.delete", target=hostname)
         db.session.commit()
         flash(f'Server "{hostname}" has been deleted.', "success")
         logger.info("Server deleted: id=%d hostname=%s", server_id, hostname)
@@ -264,6 +268,8 @@ def bulk_delete():
         hostnames = [s.hostname for s in servers]
         for srv in servers:
             db.session.delete(srv)
+        detail = ", ".join(hostnames[:10]) + (" …" if count > 10 else "")
+        log_action("inventory.server.bulk_delete", target=f"{count} server(s)", details=detail)
         db.session.commit()
         flash(
             f"Deleted {count} server{'s' if count != 1 else ''}: "
@@ -304,6 +310,11 @@ def bulk_env():
             Server.query.filter(Server.id.in_(ids))
             .update({"environment_id": env_id}, synchronize_session="fetch")
         )
+        log_action(
+            "inventory.server.bulk_env",
+            target=f"{updated} server(s)",
+            details=f"environment → {env_name}",
+        )
         db.session.commit()
         flash(
             f"Environment set to \"{env_name}\" for {updated} server{'s' if updated != 1 else ''}.",
@@ -341,6 +352,11 @@ def bulk_location():
             Server.query.filter(Server.id.in_(ids))
             .update({"location_id": location_id}, synchronize_session="fetch")
         )
+        log_action(
+            "inventory.server.bulk_location",
+            target=f"{updated} server(s)",
+            details=f"location → {loc_name}",
+        )
         db.session.commit()
         flash(
             f"Location set to \"{loc_name}\" for {updated} server{'s' if updated != 1 else ''}.",
@@ -371,6 +387,7 @@ def add_note(server_id: int):
     note = Note(server_id=server.id, body=body, author=author)
     try:
         db.session.add(note)
+        log_action("inventory.note.add", target=server.hostname)
         db.session.commit()
         flash("Note added.", "success")
         logger.info("Note added to server id=%d", server_id)
@@ -390,6 +407,7 @@ def delete_note(server_id: int, note_id: int):
     note = Note.query.filter_by(id=note_id, server_id=server_id).first_or_404()
     try:
         db.session.delete(note)
+        log_action("inventory.note.delete", target=f"server id={server_id}")
         db.session.commit()
         flash("Note deleted.", "success")
         logger.info("Note id=%d deleted from server id=%d", note_id, server_id)

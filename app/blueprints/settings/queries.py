@@ -29,18 +29,20 @@ class SettingsData:
     owners:       list = field(default_factory=list)
     users:        list = field(default_factory=list)
     api_token:    "ApiToken | None" = None
+    audit_log:    list = field(default_factory=list)
 
 
 @dataclass
 class QueryResult:
     success: bool = True
     error:   str  = ""
+    name:    str  = ""   # populated by delete/lookup operations for audit logging
 
 
 # ── Read helpers ──────────────────────────────────────────────────────────── #
 
 def get_settings_data() -> SettingsData:
-    """Return all locations, environments, owners, users, and the active API token."""
+    """Return all locations, environments, owners, users, active API token, and recent audit log."""
     data = SettingsData()
     try:
         data.locations    = Location.query.order_by(Location.name).all()
@@ -48,9 +50,25 @@ def get_settings_data() -> SettingsData:
         data.owners       = Owner.query.order_by(Owner.name).all()
         data.users        = User.query.order_by(User.username).all()
         data.api_token    = ApiToken.get_active()
+        data.audit_log    = get_audit_log()
     except Exception:
         logger.exception("Failed to load settings data")
     return data
+
+
+def get_audit_log(limit: int = 100) -> list:
+    """Return the most recent audit log entries, newest first."""
+    from ...models.audit_log import AuditLog  # local import avoids circular deps
+    try:
+        return (
+            AuditLog.query
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    except Exception:
+        logger.exception("Failed to load audit log")
+        return []
 
 
 # ── Location CRUD ─────────────────────────────────────────────────────────── #
@@ -130,11 +148,12 @@ def delete_location(location_id: int) -> QueryResult:
             ),
         )
 
+    name = loc.name
     try:
         db.session.delete(loc)
         db.session.commit()
-        logger.info("Location deleted: id=%d name=%s", location_id, loc.name)
-        return QueryResult()
+        logger.info("Location deleted: id=%d name=%s", location_id, name)
+        return QueryResult(name=name)
     except Exception:
         db.session.rollback()
         logger.exception("Failed to delete location id=%d", location_id)
@@ -234,11 +253,12 @@ def delete_environment(env_id: int) -> QueryResult:
             ),
         )
 
+    name = env.name
     try:
         db.session.delete(env)
         db.session.commit()
-        logger.info("Environment deleted: id=%d name=%s", env_id, env.name)
-        return QueryResult()
+        logger.info("Environment deleted: id=%d name=%s", env_id, name)
+        return QueryResult(name=name)
     except Exception:
         db.session.rollback()
         logger.exception("Failed to delete environment id=%d", env_id)
@@ -326,11 +346,12 @@ def delete_owner(owner_id: int) -> QueryResult:
             ),
         )
 
+    name = owner.name
     try:
         db.session.delete(owner)
         db.session.commit()
-        logger.info("Owner deleted: id=%d name=%s", owner_id, owner.name)
-        return QueryResult()
+        logger.info("Owner deleted: id=%d name=%s", owner_id, name)
+        return QueryResult(name=name)
     except Exception:
         db.session.rollback()
         logger.exception("Failed to delete owner id=%d", owner_id)
@@ -441,11 +462,12 @@ def delete_user(user_id: int, current_user_id: int) -> QueryResult:
     if total <= 1:
         return QueryResult(success=False, error="Cannot delete the last user account.")
 
+    username = user.username
     try:
         db.session.delete(user)
         db.session.commit()
-        logger.info("User deleted: id=%d (%s)", user_id, user.username)
-        return QueryResult()
+        logger.info("User deleted: id=%d (%s)", user_id, username)
+        return QueryResult(name=username)
     except Exception:
         db.session.rollback()
         logger.exception("Failed to delete user id=%d", user_id)

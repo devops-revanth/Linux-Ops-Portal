@@ -5,6 +5,7 @@ from flask import current_app, flash, redirect, render_template, request, url_fo
 
 from . import patching_bp
 from .queries import DEFAULT_ORDER, DEFAULT_SORT, PatchingFilters, get_patching_page
+from ...audit import log_action
 from ...extensions import db
 from ...models.server import Server
 
@@ -76,6 +77,7 @@ def bulk_active():
             Server.query.filter(Server.id.in_(ids))
             .update({"status": "active"}, synchronize_session="fetch")
         )
+        log_action("patching.bulk_active", target=f"{updated} server(s)")
         db.session.commit()
         flash(f"{updated} server{'s' if updated != 1 else ''} marked as Active.", "success")
         logger.info("Bulk active: %d server(s) — ids=%s", updated, ids)
@@ -98,6 +100,7 @@ def bulk_maintenance():
             Server.query.filter(Server.id.in_(ids))
             .update({"status": "maintenance"}, synchronize_session="fetch")
         )
+        log_action("patching.bulk_maintenance", target=f"{updated} server(s)")
         db.session.commit()
         flash(f"{updated} server{'s' if updated != 1 else ''} marked as Maintenance.", "success")
         logger.info("Bulk maintenance: %d server(s) — ids=%s", updated, ids)
