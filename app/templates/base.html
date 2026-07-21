@@ -136,8 +136,13 @@
         </li>
 
         <li class="nav-item">
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true"
-             data-bs-toggle="tooltip" data-bs-placement="right" title="Coming soon">
+          <a
+            class="nav-link {% if request.endpoint and request.endpoint.startswith('reports.') %}active{% endif %}"
+            href="{{ url_for('reports.index') }}"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Reports"
+          >
             <i class="bi bi-file-earmark-bar-graph"></i>
             <span>Reports</span>
           </a>

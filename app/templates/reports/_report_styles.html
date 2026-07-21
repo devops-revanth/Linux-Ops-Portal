@@ -1,0 +1,92 @@
+{# Shared styles included by all report templates via {% include %} #}
+<style>
+  /* ── Sort links ─────────────────────────────────────────────────────── */
+  .lop-sort-link { color: inherit; text-decoration: none; white-space: nowrap; }
+  .lop-sort-link:hover { color: var(--lop-text); }
+  .lop-sort-icon { color: var(--lop-muted); font-size: .65rem; margin-left: .15rem; }
+  .lop-sort-link.active .lop-sort-icon { color: #3fb950; }
+
+  /* ── Filter bar ─────────────────────────────────────────────────────── */
+  .lop-filter-bar { gap: .5rem; flex-wrap: wrap; }
+
+  /* ── Instant-search ─────────────────────────────────────────────────── */
+  #search-spinner { display: none; }
+
+  /* ── Hostname link ──────────────────────────────────────────────────── */
+  .lop-hostname-link {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem; color: #58a6ff; text-decoration: none; font-weight: 500;
+  }
+  .lop-hostname-link:hover { text-decoration: underline; color: #79bfff; }
+
+  /* ── Mono values ────────────────────────────────────────────────────── */
+  .lop-mono {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .8rem; color: var(--lop-muted);
+  }
+
+  /* ── Status badges ──────────────────────────────────────────────────── */
+  .lop-status-active         { --c: var(--bs-success); }
+  .lop-status-inactive       { --c: var(--bs-secondary); }
+  .lop-status-maintenance    { --c: var(--bs-warning); }
+  .lop-status-decommissioned { --c: var(--bs-danger); }
+  .lop-status-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .73rem; font-weight: 500; padding: .2rem .55rem;
+    border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+    background: color-mix(in srgb, var(--c) 10%, transparent);
+    color: var(--c); letter-spacing: .02em; white-space: nowrap;
+  }
+  .lop-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+
+  /* ── Environment pills ──────────────────────────────────────────────── */
+  .lop-env-pill {
+    display: inline-block; font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+    padding: .15rem .45rem; border-radius: 4px;
+  }
+
+  /* ── Patch status badges ────────────────────────────────────────────── */
+  .lop-patch-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .73rem; font-weight: 600; padding: .2rem .6rem;
+    border-radius: 20px; white-space: nowrap;
+  }
+  .lop-patch-up-to-date { background:rgba(35,134,54,.15); color:#3fb950; border:1px solid rgba(35,134,54,.35); }
+  .lop-patch-pending    { background:rgba(210,153,34,.15); color:#d4a017; border:1px solid rgba(210,153,34,.35); }
+  .lop-patch-failed     { background:rgba(248,81,73,.15);  color:#f85149; border:1px solid rgba(248,81,73,.35); }
+  .lop-patch-unknown    { background:rgba(139,148,158,.1); color:#8b949e; border:1px solid rgba(139,148,158,.3); }
+
+  /* ── Empty state ────────────────────────────────────────────────────── */
+  .lop-empty-state { padding:4rem 2rem; text-align:center; color:var(--lop-muted); }
+  .lop-empty-state i { font-size:2.5rem; display:block; margin-bottom:.75rem; opacity:.35; }
+  .lop-empty-state h6 { color:var(--lop-text); margin-bottom:.4rem; }
+
+  /* ── Pagination ─────────────────────────────────────────────────────── */
+  .lop-pagination .page-link { background:var(--lop-surface); border-color:var(--lop-border); color:var(--lop-muted); font-size:.82rem; padding:.3rem .65rem; }
+  .lop-pagination .page-link:hover { background:rgba(255,255,255,.06); color:var(--lop-text); }
+  .lop-pagination .page-item.active .page-link { background:rgba(35,134,54,.2); border-color:#238636; color:#3fb950; }
+  .lop-pagination .page-item.disabled .page-link { opacity:.4; }
+
+  /* ── Summary stat row ───────────────────────────────────────────────── */
+  .lop-stat-badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: .8rem; font-weight: 500; padding: .3rem .75rem;
+    border-radius: 6px; border: 1px solid;
+  }
+
+  /* ── Form overrides ─────────────────────────────────────────────────── */
+  .modal-content { background-color: var(--lop-surface) !important; border-color: var(--lop-border) !important; }
+  .form-control, .form-select {
+    background-color: var(--lop-bg) !important;
+    border-color: var(--lop-border) !important;
+    color: var(--lop-text) !important;
+  }
+  .form-control:focus, .form-select:focus {
+    border-color: #238636 !important;
+    box-shadow: 0 0 0 .2rem rgba(35,134,54,.25) !important;
+  }
+  .form-control::placeholder { color: var(--lop-muted) !important; }
+  .form-label { color: var(--lop-muted); font-size: .82rem; margin-bottom: .25rem; }
+</style>

@@ -1,0 +1,23 @@
+{# Instant search JS — shared by all report templates #}
+<script>
+(function () {
+  "use strict";
+  const form    = document.getElementById("filter-form");
+  const input   = document.getElementById("search-input");
+  const icon    = document.getElementById("search-icon");
+  const spinner = document.getElementById("search-spinner");
+  let timer;
+  if (input && form) {
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      if (icon)    icon.style.display    = "none";
+      if (spinner) spinner.style.display = "inline-block";
+      timer = setTimeout(function () {
+        const pageInput = form.querySelector('[name="page"]');
+        if (pageInput) pageInput.value = "1";
+        form.submit();
+      }, 400);
+    });
+  }
+})();
+</script>

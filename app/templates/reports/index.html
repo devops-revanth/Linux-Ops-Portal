@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Reports | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">
+      <i class="bi bi-file-earmark-bar-graph me-1"></i>Reports
+    </li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .lop-report-card {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    text-decoration: none;
+    color: var(--lop-text);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    transition: border-color .15s, box-shadow .15s, transform .12s;
+    height: 100%;
+  }
+  .lop-report-card:hover {
+    border-color: rgba(63,185,80,.55);
+    box-shadow: 0 0 0 1px rgba(63,185,80,.2), 0 4px 16px rgba(0,0,0,.35);
+    transform: translateY(-2px);
+    color: var(--lop-text);
+  }
+  .lop-report-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    margin-bottom: .25rem;
+  }
+  .lop-report-title {
+    font-size: .95rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  .lop-report-desc {
+    font-size: .8rem;
+    color: var(--lop-muted);
+    margin: 0;
+    flex: 1;
+  }
+  .lop-report-meta {
+    font-size: .72rem;
+    color: var(--lop-muted);
+    display: flex;
+    gap: .4rem;
+    flex-wrap: wrap;
+    margin-top: .25rem;
+  }
+  .lop-report-tag {
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--lop-border);
+    border-radius: 4px;
+    padding: .1rem .45rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h4 class="mb-0 fw-bold">
+        <i class="bi bi-file-earmark-bar-graph me-2 text-info"></i>Reports
+      </h4>
+      <small class="text-secondary">7 reports available — all support search, filter, sort, pagination, CSV and Excel export.</small>
+    </div>
+  </div>
+
+  <div class="row g-3">
+
+    {# ── 1. Server Inventory Report ───────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.inventory') }}" class="lop-report-card">
+        <div class="lop-report-icon text-primary"><i class="bi bi-server"></i></div>
+        <h6 class="lop-report-title">Server Inventory Report</h6>
+        <p class="lop-report-desc">
+          Full server inventory with hostname, IP, OS, kernel, CPU, RAM, environment,
+          location, owner, and status.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Search</span>
+          <span class="lop-report-tag">Filter by location / env / owner / status</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 2. Servers by Location ───────────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.by_location') }}" class="lop-report-card">
+        <div class="lop-report-icon text-warning"><i class="bi bi-building"></i></div>
+        <h6 class="lop-report-title">Servers by Location</h6>
+        <p class="lop-report-desc">
+          Location-distribution summary with per-status breakdown, followed by a
+          filterable server list drillable to a specific site.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Summary table</span>
+          <span class="lop-report-tag">Filter by location / env</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 3. Servers by Environment ────────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.by_environment') }}" class="lop-report-card">
+        <div class="lop-report-icon text-info"><i class="bi bi-layers"></i></div>
+        <h6 class="lop-report-title">Servers by Environment</h6>
+        <p class="lop-report-desc">
+          Environment-distribution summary with per-status counts, followed by a
+          filterable server list for any deployment tier.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Summary table</span>
+          <span class="lop-report-tag">Filter by env / location</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 4. Patch Compliance Report ───────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.patch_compliance') }}" class="lop-report-card">
+        <div class="lop-report-icon text-success"><i class="bi bi-shield-check"></i></div>
+        <h6 class="lop-report-title">Patch Compliance Report</h6>
+        <p class="lop-report-desc">
+          Full patch-compliance view with status summary, pending update counts,
+          last patched and last reboot dates.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Status summary</span>
+          <span class="lop-report-tag">Filter by patch status</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 5. Kernel Compliance Report ──────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.kernel_compliance') }}" class="lop-report-card">
+        <div class="lop-report-icon text-danger"><i class="bi bi-cpu"></i></div>
+        <h6 class="lop-report-title">Kernel Compliance Report</h6>
+        <p class="lop-report-desc">
+          Kernel version distribution across the fleet with current and previous
+          kernel tracking per server.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Version distribution</span>
+          <span class="lop-report-tag">Filter by kernel version</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 6. Owner Summary Report ──────────────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.owner_summary') }}" class="lop-report-card">
+        <div class="lop-report-icon text-secondary"><i class="bi bi-people"></i></div>
+        <h6 class="lop-report-title">Owner Summary Report</h6>
+        <p class="lop-report-desc">
+          Per-owner server counts broken down by status — active, inactive,
+          maintenance, and decommissioned.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Owner breakdown</span>
+          <span class="lop-report-tag">Status counts</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+    {# ── 7. Recently Synchronized Servers ────────────────────────── #}
+    <div class="col-md-6 col-xl-4">
+      <a href="{{ url_for('reports.recently_synced') }}" class="lop-report-card">
+        <div class="lop-report-icon" style="color:#d2a520;"><i class="bi bi-arrow-repeat"></i></div>
+        <h6 class="lop-report-title">Recently Synchronized Servers</h6>
+        <p class="lop-report-desc">
+          Servers ordered by last Ansible sync timestamp — quickly identify stale
+          servers or verify a recent synchronization run.
+        </p>
+        <div class="lop-report-meta">
+          <span class="lop-report-tag">Sync timeline</span>
+          <span class="lop-report-tag">Never-synced counter</span>
+          <span class="lop-report-tag">CSV</span>
+          <span class="lop-report-tag">Excel</span>
+        </div>
+      </a>
+    </div>
+
+  </div>{# /row #}
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{# Active filter pills — used across report templates.
+   Requires: f (filters object), report (page object with .locations and .environments) #}
+{% if f.search or f.location_id or f.env_id or (f.status is defined and f.status) or (f.patch_status is defined and f.patch_status) or (f.owner_id is defined and f.owner_id) or (f.kernel is defined and f.kernel) %}
+<div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+  <small class="text-secondary me-1">Active filters:</small>
+  {% if f.search %}
+    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">search: {{ f.search }}</span>
+  {% endif %}
+  {% if f.location_id is defined and f.location_id %}
+    {% for loc in report.locations %}{% if loc.id == f.location_id %}
+      <span class="badge bg-warning-subtle text-warning border border-warning-subtle">location: {{ loc.name }}</span>
+    {% endif %}{% endfor %}
+  {% endif %}
+  {% if f.env_id is defined and f.env_id %}
+    {% for env in report.environments %}{% if env.id == f.env_id %}
+      <span class="badge bg-info-subtle text-info border border-info-subtle">env: {{ env.name }}</span>
+    {% endif %}{% endfor %}
+  {% endif %}
+  {% if f.owner_id is defined and f.owner_id %}
+    {% for own in report.owners %}{% if own.id == f.owner_id %}
+      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">owner: {{ own.name }}</span>
+    {% endif %}{% endfor %}
+  {% endif %}
+  {% if f.status is defined and f.status %}
+    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">status: {{ f.status }}</span>
+  {% endif %}
+  {% if f.patch_status is defined and f.patch_status %}
+    <span class="badge
+      {% if f.patch_status == 'up-to-date' %}bg-success-subtle text-success border border-success-subtle
+      {% elif f.patch_status == 'pending'   %}bg-warning-subtle text-warning border border-warning-subtle
+      {% elif f.patch_status == 'failed'    %}bg-danger-subtle  text-danger  border border-danger-subtle
+      {% else                               %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
+      patch: {{ f.patch_status | replace('-',' ') | title }}
+    </span>
+  {% endif %}
+  {% if f.kernel is defined and f.kernel %}
+    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">kernel: {{ f.kernel }}</span>
+  {% endif %}
+</div>
+{% endif %}
