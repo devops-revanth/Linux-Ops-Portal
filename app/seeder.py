@@ -74,23 +74,54 @@ def _seed_environments() -> None:
 
 
 def _seed_admin_user() -> None:
-    """Create a default admin user if no users exist.
+    """Create an initial admin user if no users exist.
 
-    ⚠ IMPORTANT: Change the default password before exposing the portal
-    to any network.  The seeded credentials are for first-run convenience
-    only and must not be used in production.
+    Credentials are sourced from environment variables:
+      ADMIN_USERNAME  – defaults to "admin" if not set
+      ADMIN_PASSWORD  – must be set for a known password; if absent a
+                        cryptographically random password is generated,
+                        logged once at WARNING level, and must be copied
+                        from the application log before it is lost.
+
+    This function never creates a user with a predictable static password.
+    In production, always set ADMIN_PASSWORD before first deployment.
     """
+    import os
+    import secrets
+
     from .models.user import User
 
     if User.query.first() is not None:
         logger.debug("Seeder: users already present, skipping")
         return
 
-    admin = User(username="admin", email="admin@localhost")
-    admin.set_password("admin123")
+    username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
+
+    password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    generated = False
+    if not password:
+        # No password supplied — generate a strong random one.
+        # The operator MUST read it from the application log to log in.
+        password = secrets.token_urlsafe(20)
+        generated = True
+
+    admin = User(username=username, email="admin@localhost")
+    admin.set_password(password)
     db.session.add(admin)
     db.session.commit()
-    logger.warning(
-        "Seeder: created default admin user (username=admin, password=admin123). "
-        "CHANGE THIS PASSWORD before exposing the portal to any network."
-    )
+
+    if generated:
+        logger.warning(
+            "Seeder: created initial admin account — "
+            "username=%s  password=%s  "
+            "(auto-generated; copy it now — it will not be shown again). "
+            "Set the ADMIN_PASSWORD environment variable before the next deployment "
+            "to use a known password.",
+            username, password,
+        )
+    else:
+        logger.info(
+            "Seeder: created initial admin account (username=%s) "
+            "using the supplied ADMIN_PASSWORD.",
+            username,
+        )
