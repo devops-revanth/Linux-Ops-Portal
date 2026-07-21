@@ -18,6 +18,7 @@ from ...models.location import Location
 from ...models.owner import Owner
 from ...models.patching import Patching
 from ...models.server import Server
+from ...utils import sort_envs
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ def get_patching_page(
 
         # ── Dropdown options (for filter bar) ─────────────────────────
         result.locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
-        result.environments = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
+        result.environments = sort_envs(Environment.query.filter_by(is_active=True).all())
         result.patch_statuses = VALID_PATCH_STATUSES
 
     except Exception:

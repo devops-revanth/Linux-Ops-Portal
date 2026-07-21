@@ -14,6 +14,7 @@ from ...models.api_token import ApiToken
 from ...models.environment import Environment
 from ...models.location import Location
 from ...models.owner import Owner
+from ...utils import sort_envs
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def get_settings_data() -> SettingsData:
     data = SettingsData()
     try:
         data.locations    = Location.query.order_by(Location.name).all()
-        data.environments = Environment.query.order_by(Environment.id).all()
+        data.environments = sort_envs(Environment.query.all())
         data.owners       = Owner.query.order_by(Owner.name).all()
         data.api_token    = ApiToken.get_active()
     except Exception:

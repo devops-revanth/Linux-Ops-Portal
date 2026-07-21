@@ -14,6 +14,7 @@ from sqlalchemy import func
 
 from ...extensions import db
 from ...models.environment import Environment
+from ...utils import sort_envs
 from ...models.location import Location
 from ...models.patching import Patching
 from ...models.server import Server
@@ -97,12 +98,11 @@ def get_dashboard_stats() -> DashboardStats:
             .outerjoin(Server, Server.environment_id == Environment.id)
             .filter(Environment.is_active == True)  # noqa: E712
             .group_by(Environment.id, Environment.name, Environment.label, Environment.color)
-            .order_by(Environment.name)
             .all()
         )
         stats.environments = [
             EnvironmentCount(name=r[0], label=r[1], color=r[2], count=r[3])
-            for r in env_rows
+            for r in sort_envs(env_rows, key=lambda r: r[0])
         ]
 
         # ── Server count per location ─────────────────────────────────

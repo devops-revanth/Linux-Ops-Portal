@@ -11,6 +11,7 @@ from ...models.location import Location
 from ...models.note import Note
 from ...models.owner import Owner
 from ...models.server import Server
+from ...utils import sort_envs
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def server_detail(server_id: int):
     """Full server detail page — hardware, patching, packages, and notes."""
     server = Server.query.get_or_404(server_id)
     locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
-    environments = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
+    environments = sort_envs(Environment.query.filter_by(is_active=True).all())
     owners       = Owner.query.filter_by(is_active=True).order_by(Owner.name).all()
     return render_template(
         "inventory/server_detail.html",
