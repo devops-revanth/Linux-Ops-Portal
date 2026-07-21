@@ -91,9 +91,11 @@
           </a>
         </li>
 
-        <!-- Placeholder items – activated in later modules -->
         <li class="nav-item">
-          <a class="nav-link disabled" href="#" tabindex="-1" aria-disabled="true">
+          <a
+            class="nav-link {% if request.endpoint and request.endpoint.startswith('inventory.') %}active{% endif %}"
+            href="{{ url_for('inventory.index') }}"
+          >
             <i class="bi bi-server"></i>
             <span>Inventory</span>
           </a>
