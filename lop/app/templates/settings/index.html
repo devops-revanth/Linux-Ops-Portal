@@ -23,15 +23,21 @@
     <small class="text-secondary">Manage master data for the portal</small>
   </div>
 
-  {# ── Locations ─────────────────────────────────────────────────────────── #}
-  <div class="card border-0 mb-4">
+  {# ══════════════════════════════ LOCATIONS ════════════════════════════════ #}
+  <div class="card border-0 mb-4" id="locations">
     <div class="card-header d-flex align-items-center justify-content-between py-3">
       <h6 class="mb-0 fw-semibold">
         <i class="bi bi-geo-alt me-2 text-warning"></i>Locations
       </h6>
-      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-        {{ locations | length }} configured
-      </span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+          {{ locations | length }} configured
+        </span>
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal" data-bs-target="#modalAddLocation">
+          <i class="bi bi-plus-lg me-1"></i>Add
+        </button>
+      </div>
     </div>
     <div class="card-body p-0">
       {% if locations %}
@@ -39,9 +45,10 @@
           <table class="table lop-table mb-0">
             <thead>
               <tr>
-                <th style="width: 160px;">Code</th>
+                <th style="width:160px;">Code</th>
                 <th>Description</th>
-                <th style="width: 100px;" class="text-center">Status</th>
+                <th style="width:100px;" class="text-center">Status</th>
+                <th style="width:100px;" class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -53,9 +60,27 @@
                   </td>
                   <td class="text-secondary">{{ loc.description or '—' }}</td>
                   <td class="text-center">
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      Active
-                    </span>
+                    {% if loc.is_active %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactive</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalEditLocation{{ loc.id }}"
+                              title="Edit">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button class="btn btn-outline-danger"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalDeleteLocation{{ loc.id }}"
+                              title="Delete">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               {% endfor %}
@@ -65,21 +90,28 @@
       {% else %}
         <div class="text-center text-secondary py-5">
           <i class="bi bi-geo-alt fs-4 d-block mb-2"></i>
-          No locations configured.
+          No locations configured. <button class="btn btn-link btn-sm p-0"
+            data-bs-toggle="modal" data-bs-target="#modalAddLocation">Add one.</button>
         </div>
       {% endif %}
     </div>
   </div>
 
-  {# ── Environments ──────────────────────────────────────────────────────── #}
-  <div class="card border-0">
+  {# ══════════════════════════════ ENVIRONMENTS ═════════════════════════════ #}
+  <div class="card border-0 mb-4" id="environments">
     <div class="card-header d-flex align-items-center justify-content-between py-3">
       <h6 class="mb-0 fw-semibold">
         <i class="bi bi-layers me-2 text-info"></i>Environments
       </h6>
-      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-        {{ environments | length }} configured
-      </span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+          {{ environments | length }} configured
+        </span>
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal" data-bs-target="#modalAddEnvironment">
+          <i class="bi bi-plus-lg me-1"></i>Add
+        </button>
+      </div>
     </div>
     <div class="card-body p-0">
       {% if environments %}
@@ -87,28 +119,43 @@
           <table class="table lop-table mb-0">
             <thead>
               <tr>
-                <th style="width: 160px;">Name</th>
-                <th style="width: 120px;">Label</th>
-                <th style="width: 140px;">Colour</th>
-                <th style="width: 100px;" class="text-center">Status</th>
+                <th style="width:160px;">Name</th>
+                <th style="width:120px;">Label</th>
+                <th style="width:160px;">Colour</th>
+                <th style="width:100px;" class="text-center">Status</th>
+                <th style="width:100px;" class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for env in environments %}
                 <tr>
+                  <td><span class="fw-semibold">{{ env.name }}</span></td>
                   <td>
-                    <span class="fw-semibold">{{ env.name }}</span>
-                  </td>
-                  <td>
-                    <span class="badge lop-env-badge lop-env-{{ env.color }}">
-                      {{ env.label }}
-                    </span>
+                    <span class="badge lop-env-badge lop-env-{{ env.color }}">{{ env.label }}</span>
                   </td>
                   <td class="text-secondary small">{{ env.color }}</td>
                   <td class="text-center">
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      Active
-                    </span>
+                    {% if env.is_active %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactive</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalEditEnvironment{{ env.id }}"
+                              title="Edit">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button class="btn btn-outline-danger"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalDeleteEnvironment{{ env.id }}"
+                              title="Delete">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               {% endfor %}
@@ -118,11 +165,444 @@
       {% else %}
         <div class="text-center text-secondary py-5">
           <i class="bi bi-layers fs-4 d-block mb-2"></i>
-          No environments configured.
+          No environments configured. <button class="btn btn-link btn-sm p-0"
+            data-bs-toggle="modal" data-bs-target="#modalAddEnvironment">Add one.</button>
         </div>
       {% endif %}
     </div>
   </div>
 
+  {# ══════════════════════════════ OWNERS ═══════════════════════════════════ #}
+  <div class="card border-0 mb-4" id="owners">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-people me-2 text-success"></i>Owners
+      </h6>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+          {{ owners | length }} configured
+        </span>
+        <button class="btn btn-sm btn-outline-success"
+                data-bs-toggle="modal" data-bs-target="#modalAddOwner">
+          <i class="bi bi-plus-lg me-1"></i>Add
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      {% if owners %}
+        <div class="table-responsive">
+          <table class="table lop-table mb-0">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th style="width:100px;" class="text-center">Status</th>
+                <th style="width:100px;" class="text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for owner in owners %}
+                <tr>
+                  <td>
+                    <i class="bi bi-person me-2 text-secondary"></i>
+                    <span class="fw-semibold">{{ owner.name }}</span>
+                  </td>
+                  <td class="text-secondary">{{ owner.email or '—' }}</td>
+                  <td class="text-center">
+                    {% if owner.is_active %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactive</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                      <button class="btn btn-outline-secondary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalEditOwner{{ owner.id }}"
+                              title="Edit">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button class="btn btn-outline-danger"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modalDeleteOwner{{ owner.id }}"
+                              title="Delete">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center text-secondary py-5">
+          <i class="bi bi-people fs-4 d-block mb-2"></i>
+          No owners configured. <button class="btn btn-link btn-sm p-0"
+            data-bs-toggle="modal" data-bs-target="#modalAddOwner">Add one.</button>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>{# /container-fluid #}
+
+
+{# ═══════════════════════════════ MODALS ══════════════════════════════════ #}
+
+{# ── Add Location ─────────────────────────────────────────────────────── #}
+<div class="modal fade" id="modalAddLocation" tabindex="-1" aria-labelledby="modalAddLocationLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.add_location_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title" id="modalAddLocationLabel">
+            <i class="bi bi-geo-alt me-2 text-warning"></i>Add Location
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="addLocName" class="form-label">Code / Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="addLocName" name="name"
+                   placeholder="e.g. USEG" maxlength="100" required>
+          </div>
+          <div class="mb-1">
+            <label for="addLocDesc" class="form-label">Description</label>
+            <input type="text" class="form-control" id="addLocDesc" name="description"
+                   placeholder="e.g. US East – Global" maxlength="255">
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Add Location
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
+
+{# ── Edit / Delete Location modals (per row) ──────────────────────────── #}
+{% for loc in locations %}
+
+{# Edit #}
+<div class="modal fade" id="modalEditLocation{{ loc.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.edit_location_route', location_id=loc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title">
+            <i class="bi bi-pencil me-2 text-warning"></i>Edit Location
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Code / Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="name"
+                   value="{{ loc.name }}" maxlength="100" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <input type="text" class="form-control" name="description"
+                   value="{{ loc.description or '' }}" maxlength="255">
+          </div>
+          <div class="mb-1">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="is_active">
+              <option value="1" {% if loc.is_active %}selected{% endif %}>Active</option>
+              <option value="0" {% if not loc.is_active %}selected{% endif %}>Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Delete #}
+<div class="modal fade" id="modalDeleteLocation{{ loc.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.delete_location_route', location_id=loc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-danger">
+            <i class="bi bi-trash3 me-2"></i>Delete Location
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            Delete <strong>{{ loc.name }}</strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3 me-1"></i>Delete
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endfor %}
+
+
+{# ── Add Environment ───────────────────────────────────────────────────── #}
+<div class="modal fade" id="modalAddEnvironment" tabindex="-1" aria-labelledby="modalAddEnvironmentLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.add_environment_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title" id="modalAddEnvironmentLabel">
+            <i class="bi bi-layers me-2 text-info"></i>Add Environment
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="addEnvName" class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="addEnvName" name="name"
+                   placeholder="e.g. Production" maxlength="100" required>
+          </div>
+          <div class="mb-3">
+            <label for="addEnvLabel" class="form-label">Badge Label <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="addEnvLabel" name="label"
+                   placeholder="e.g. Prod" maxlength="50" required>
+            <div class="form-text">Short label shown in the badge.</div>
+          </div>
+          <div class="mb-1">
+            <label for="addEnvColor" class="form-label">Colour</label>
+            <select class="form-select" id="addEnvColor" name="color">
+              {% for c in valid_colors %}
+                <option value="{{ c }}">{{ c | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Add Environment
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Edit / Delete Environment modals (per row) ───────────────────────── #}
+{% for env in environments %}
+
+{# Edit #}
+<div class="modal fade" id="modalEditEnvironment{{ env.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.edit_environment_route', env_id=env.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title">
+            <i class="bi bi-pencil me-2 text-info"></i>Edit Environment
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="name"
+                   value="{{ env.name }}" maxlength="100" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Badge Label <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="label"
+                   value="{{ env.label }}" maxlength="50" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Colour</label>
+            <select class="form-select" name="color">
+              {% for c in valid_colors %}
+                <option value="{{ c }}" {% if env.color == c %}selected{% endif %}>
+                  {{ c | capitalize }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="is_active">
+              <option value="1" {% if env.is_active %}selected{% endif %}>Active</option>
+              <option value="0" {% if not env.is_active %}selected{% endif %}>Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Delete #}
+<div class="modal fade" id="modalDeleteEnvironment{{ env.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.delete_environment_route', env_id=env.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-danger">
+            <i class="bi bi-trash3 me-2"></i>Delete Environment
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            Delete <strong>{{ env.name }}</strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3 me-1"></i>Delete
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endfor %}
+
+
+{# ── Add Owner ─────────────────────────────────────────────────────────── #}
+<div class="modal fade" id="modalAddOwner" tabindex="-1" aria-labelledby="modalAddOwnerLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.add_owner_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title" id="modalAddOwnerLabel">
+            <i class="bi bi-person-plus me-2 text-success"></i>Add Owner
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="addOwnerName" class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="addOwnerName" name="name"
+                   placeholder="e.g. Platform Engineering" maxlength="150" required>
+          </div>
+          <div class="mb-1">
+            <label for="addOwnerEmail" class="form-label">Email</label>
+            <input type="email" class="form-control" id="addOwnerEmail" name="email"
+                   placeholder="e.g. platform@company.com" maxlength="255">
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-plus-lg me-1"></i>Add Owner
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Edit / Delete Owner modals (per row) ─────────────────────────────── #}
+{% for owner in owners %}
+
+{# Edit #}
+<div class="modal fade" id="modalEditOwner{{ owner.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.edit_owner_route', owner_id=owner.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title">
+            <i class="bi bi-pencil me-2 text-success"></i>Edit Owner
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="name"
+                   value="{{ owner.name }}" maxlength="150" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" name="email"
+                   value="{{ owner.email or '' }}" maxlength="255">
+          </div>
+          <div class="mb-1">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="is_active">
+              <option value="1" {% if owner.is_active %}selected{% endif %}>Active</option>
+              <option value="0" {% if not owner.is_active %}selected{% endif %}>Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Delete #}
+<div class="modal fade" id="modalDeleteOwner{{ owner.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('settings.delete_owner_route', owner_id=owner.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-danger">
+            <i class="bi bi-trash3 me-2"></i>Delete Owner
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            Delete <strong>{{ owner.name }}</strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3 me-1"></i>Delete
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endfor %}
+
 {% endblock %}

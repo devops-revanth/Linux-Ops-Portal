@@ -1,41 +1,24 @@
 # Linux Operations Portal (LOP)
 
-A production-quality internal web application for Linux Infrastructure Operations. Replaces manual Excel-based server inventories with a centralized portal that automatically collects and maintains Linux server inventory and patching information using Ansible.
+A production-quality internal web application for Linux Infrastructure Operations. Replaces manual Excel-based server inventories with a centralised portal that automatically collects and maintains Linux server inventory and patching information using Ansible — without ever SSHing directly to servers.
 
-## How to Run
+## Running the App
 
-The app is configured with a single workflow: **Linux Operations Portal**  
-Command: `cd lop && python run.py`
+The app starts automatically via the **Linux Operations Portal** workflow (`cd lop && python run.py`).
 
-The app reads `PORT` from the environment (default 5000). It connects to Replit's managed PostgreSQL via the runtime-managed `DATABASE_URL` env var.
+- Dev server: http://localhost:5000
+- Health check: http://localhost:5000/health
+- Dashboard: http://localhost:5000/dashboard
 
 ## Technology Stack
 
-- **Backend**: Python 3.12 · Flask 3.1 · Flask-SQLAlchemy · Flask-Migrate (Alembic)
-- **Database**: PostgreSQL (Replit managed) — `DATABASE_URL` is runtime-managed
-- **Frontend**: Bootstrap 5.3 dark theme · Jinja2 templates · Bootstrap Icons
-- **WSGI**: Gunicorn (production) / Flask dev server (development)
-
-## Environment Variables
-
-| Variable      | Source          | Notes                                      |
-|---------------|-----------------|--------------------------------------------|
-| `DATABASE_URL`| Runtime-managed | Auto-provided by Replit — do not set manually |
-| `SECRET_KEY`  | Shared env var  | Set in Replit Secrets/Env; required for sessions |
-| `FLASK_ENV`   | Shared env var  | `development` (current)                    |
-| `FLASK_APP`   | Shared env var  | `run.py`                                   |
-| `LOG_LEVEL`   | Shared env var  | `DEBUG` (current)                          |
-
-## Database Migrations
-
-Migrations are managed by Flask-Migrate (Alembic). To apply:
-
-```bash
-cd lop && flask db upgrade
-```
-
-Migration files live in `lop/migrations/versions/`.  
-The initial schema (`f199ced7abac_initial_schema.py`) creates all tables.
+| Layer       | Technology                              |
+|-------------|------------------------------------------|
+| Backend     | Python 3.12 · Flask 3.1                 |
+| ORM         | Flask-SQLAlchemy · Flask-Migrate (Alembic) |
+| Database    | Replit PostgreSQL (via DATABASE_URL)    |
+| Frontend    | Bootstrap 5.3 · Jinja2 · Bootstrap Icons |
+| CSRF        | Flask-WTF                               |
 
 ## Project Structure
 
@@ -43,59 +26,82 @@ The initial schema (`f199ced7abac_initial_schema.py`) creates all tables.
 lop/
 ├── app/
 │   ├── __init__.py           # Application factory (create_app)
-│   ├── config.py             # DevelopmentConfig / ProductionConfig / TestingConfig
-│   ├── extensions.py         # SQLAlchemy, Migrate, CSRF singletons
-│   ├── seeder.py             # Seeds locations and environments on startup
-│   ├── models/               # SQLAlchemy ORM models
-│   │   ├── server.py         # linux_servers — central inventory record
-│   │   ├── patching.py       # Patch status, kernel history, reboot dates
-│   │   ├── package.py        # Package catalogue + per-server versions
-│   │   ├── note.py           # Free-text notes per server
-│   │   ├── environment.py    # Production / Dev / Stage / Demo
-│   │   ├── location.py       # Data-centre / site locations
-│   │   └── owner.py          # Responsible team or individual
+│   ├── config.py             # Dev/Prod/Testing config classes
+│   ├── extensions.py         # db, migrate, csrf singletons
+│   ├── seeder.py             # Idempotent reference data seeder
+│   ├── models/               # SQLAlchemy models
+│   │   ├── server.py         # linux_servers table
+│   │   ├── location.py       # locations table
+│   │   ├── environment.py    # environments table
+│   │   ├── owner.py          # owners table
+│   │   ├── patching.py       # patching table
+│   │   ├── package.py        # packages + server_packages tables
+│   │   └── note.py           # notes table
 │   ├── blueprints/
-│   │   ├── main/             # Root redirect + health check
-│   │   ├── dashboard/        # Aggregated stats overview
-│   │   ├── inventory/        # Server list, add, edit, delete, detail, notes
-│   │   └── settings/         # Locations and environments management
-│   ├── templates/
-│   │   ├── base.html         # Bootstrap 5 dark theme shell + sidebar
-│   │   ├── dashboard/        # Dashboard stats page
-│   │   ├── inventory/        # Inventory list + server detail page
-│   │   ├── settings/         # Settings page
-│   │   └── errors/           # 403 · 404 · 500 custom error pages
-│   └── static/
-│       ├── css/lop.css       # Custom portal styles
-│       └── js/lop.js         # Bootstrap tooltips, popovers, flash dismiss
+│   │   ├── main/             # Root redirect + /health
+│   │   ├── dashboard/        # Live stats, environment & location cards
+│   │   ├── inventory/        # Server list, search, filters, CRUD
+│   │   └── settings/         # Locations, Environments, Owners CRUD
+│   ├── templates/            # Jinja2 HTML templates
+│   └── static/               # CSS (lop.css) + JS (lop.js)
 ├── migrations/               # Alembic migration files
 ├── requirements.txt
-├── run.py                    # Entry point — reads PORT env var
-└── .flaskenv                 # FLASK_APP=run.py, FLASK_ENV=development
+└── run.py                    # Entry point (reads PORT env var)
 ```
 
-## Seeded Reference Data
+## Implemented Modules
 
-Locations and environments are automatically seeded on first startup (idempotent):
+| Module       | Status      | Features                                        |
+|--------------|-------------|-------------------------------------------------|
+| Foundation   | ✅ Complete | Flask, PostgreSQL, SQLAlchemy, Alembic, Bootstrap 5 |
+| Dashboard    | ✅ Complete | Live stats, environment cards, location summary, patch status, auto-refresh |
+| Inventory    | ✅ Complete | Server list, search, filters, sorting, pagination, Add/Edit/Delete |
+| Server Detail| ✅ Complete | Overview, hardware, identity, patching, packages, notes tabs |
+| Settings     | ✅ Complete | CRUD for Locations, Environments, Owners with Bootstrap 5 modals |
+| Patching     | ⏳ Next     | Patch status dashboard, kernel history, reboot dates |
+| Reports      | ⏳ Planned  | Exportable server reports                       |
+| Ansible API  | ⏳ Planned  | REST API endpoints for Ansible push model       |
 
-**Locations**: USEG (US East – Global), UKDL (UK – Data Centre London), DEFR (DE – Frankfurt)  
-**Environments**: Development, Stage, Demo, Production
+## Database Migrations
 
-## Module Status
+```bash
+cd lop
+flask db migrate -m "describe change"   # generate migration
+flask db upgrade                         # apply migrations
+flask db downgrade                       # rollback one step
+```
 
-| Module         | Status    | URL pattern                |
-|----------------|-----------|----------------------------|
-| Dashboard      | ✅ Complete | `/dashboard`             |
-| Inventory      | ✅ Complete | `/inventory`             |
-| Server Details | ✅ Complete | `/inventory/<id>`        |
-| Patching       | ⏳ Pending  | —                        |
-| Reports        | ⏳ Pending  | —                        |
-| Settings       | ✅ Complete | `/settings`              |
-| Ansible API    | ⏳ Pending  | —                        |
+## Blueprint Architecture
+
+Each module follows this pattern:
+- **`queries.py`** — all database logic (reads, writes, validation)
+- **`routes.py`** — thin controllers, call queries and redirect/render
+- **`templates/<blueprint>/`** — Jinja2 templates extending `base.html`
+
+CSRF protection is global (Flask-WTF `CSRFProtect`). All POST forms include `{{ csrf_token() }}`.
+
+## Environment Variables
+
+| Variable        | Source                    | Description               |
+|-----------------|---------------------------|---------------------------|
+| `DATABASE_URL`  | Replit managed            | PostgreSQL connection     |
+| `SESSION_SECRET`| Replit Secret             | Flask SECRET_KEY fallback |
+| `FLASK_ENV`     | `.replit` userenv         | `development`             |
+| `LOG_LEVEL`     | `.replit` userenv         | `DEBUG`                   |
+| `PORT`          | Replit managed            | Workflow port (5000)      |
+
+## GitHub Repository
+
+https://github.com/devops-revanth/Linux-Ops-Portal
+
+**The GitHub repository is the single source of truth.** Always sync before making changes.
 
 ## User Preferences
 
-- Build one module at a time and wait for approval before proceeding to the next.
-- Do not redesign, refactor, or replace the existing Flask + PostgreSQL + Bootstrap 5 architecture.
-- Maintain clean modular design: separate blueprints, queries.py per blueprint, thin routes.
-- Do not generate multiple modules at once.
+- GitHub repository is the single source of truth — always pull latest before coding
+- Do not overwrite existing work or regenerate modules that already exist
+- All database logic must stay in `queries.py`; routes must stay lightweight
+- Use Bootstrap 5 modal dialogs for all CRUD operations in Settings
+- Maintain the existing dark theme throughout
+- Work iteratively — complete one module at a time before starting the next
+- Stop after completing the requested module and provide a review summary
