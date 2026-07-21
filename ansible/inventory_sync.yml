@@ -7,7 +7,7 @@
 # the LOP REST API via POST /api/v1/inventory.
 #
 # Usage:
-#   ansible-playbook -i inventory/hosts inventory_sync.yml
+#   ansible-playbook -i inventory.ini inventory_sync.yml
 #
 # Required variables (set in group_vars/all.yml or pass -e):
 #   lop_api_url   : Base URL of the portal, e.g. https://lop.example.com
