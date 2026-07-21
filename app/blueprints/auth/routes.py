@@ -58,7 +58,7 @@ def _try_freeipa_login(username: str, password: str) -> "User | None":
     """
     from ...freeipa import FreeIPAService
 
-    svc = FreeIPAService(current_app.config)
+    svc = FreeIPAService.from_db()
     if not svc.enabled:
         return None
 
@@ -107,7 +107,7 @@ def login():
 
         authenticated_user = None
 
-        # ── Step 1: FreeIPA (LDAP) ────────────────────────────────────── #
+        # ── Step 1: Directory (LDAP) ──────────────────────────────────── #
         authenticated_user = _try_freeipa_login(raw_username, raw_password)
 
         # ── Step 2: Local fallback ────────────────────────────────────── #
