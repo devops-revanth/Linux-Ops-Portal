@@ -86,6 +86,7 @@ def create_app(config_name: str | None = None) -> Flask:
     # Blueprints
     # ------------------------------------------------------------------ #
     from .blueprints.api import api_bp          # noqa: E402
+    from .blueprints.audit import audit_bp      # noqa: E402
     from .blueprints.auth import auth_bp        # noqa: E402
     from .blueprints.dashboard import dashboard_bp  # noqa: E402
     from .blueprints.inventory import inventory_bp  # noqa: E402
@@ -96,6 +97,7 @@ def create_app(config_name: str | None = None) -> Flask:
     from .blueprints.settings import settings_bp  # noqa: E402
 
     app.register_blueprint(api_bp)
+    app.register_blueprint(audit_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(dashboard_bp)

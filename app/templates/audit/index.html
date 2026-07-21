@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">
+      <i class="bi bi-journal-text me-1"></i>Audit Logs
+    </li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+
+  {# ── Page header ──────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="mb-0 fw-bold">
+        <i class="bi bi-journal-text me-2 text-secondary"></i>Audit Logs
+      </h4>
+      <small class="text-secondary">
+        {{ total | default(0) }} total
+        {% if filters.has_active_filters() %} — filtered{% endif %}
+        entries
+      </small>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('audit.export_csv', **request.args) }}"
+         class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-filetype-csv me-1"></i>CSV
+      </a>
+      <a href="{{ url_for('audit.export_excel', **request.args) }}"
+         class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-file-earmark-excel me-1"></i>Excel
+      </a>
+      <button class="btn btn-sm btn-outline-danger"
+              data-bs-toggle="modal" data-bs-target="#modalCleanup">
+        <i class="bi bi-trash3 me-1"></i>Cleanup
+      </button>
+    </div>
+  </div>
+
+  {# ── Filter bar ───────────────────────────────────────────────────────── #}
+  <div class="card border-0 mb-3">
+    <div class="card-body py-3">
+      <form method="GET" action="{{ url_for('audit.index') }}" id="filterForm">
+        <div class="row g-2 align-items-end">
+
+          {# Date from #}
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-secondary mb-1">From</label>
+            <input type="date" class="form-control form-control-sm"
+                   name="date_from" value="{{ filters.date_from }}">
+          </div>
+
+          {# Date to #}
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-secondary mb-1">To</label>
+            <input type="date" class="form-control form-control-sm"
+                   name="date_to" value="{{ filters.date_to }}">
+          </div>
+
+          {# User #}
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-secondary mb-1">User</label>
+            <select class="form-select form-select-sm" name="actor">
+              <option value="">All users</option>
+              {% for a in actors %}
+                <option value="{{ a }}" {% if filters.actor == a %}selected{% endif %}>
+                  {{ a }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Module #}
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-secondary mb-1">Module</label>
+            <select class="form-select form-select-sm" name="module">
+              <option value="">All modules</option>
+              {% for m in modules %}
+                <option value="{{ m }}" {% if filters.module == m %}selected{% endif %}>
+                  {{ m | title }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Result #}
+          <div class="col-6 col-md-1">
+            <label class="form-label small text-secondary mb-1">Result</label>
+            <select class="form-select form-select-sm" name="result">
+              <option value="">All</option>
+              <option value="success" {% if filters.result == 'success' %}selected{% endif %}>Success</option>
+              <option value="failed"  {% if filters.result == 'failed'  %}selected{% endif %}>Failed</option>
+            </select>
+          </div>
+
+          {# Search #}
+          <div class="col-12 col-md-2">
+            <label class="form-label small text-secondary mb-1">Search</label>
+            <input type="text" class="form-control form-control-sm"
+                   name="search" value="{{ filters.search }}"
+                   placeholder="user, action, target, IP…">
+          </div>
+
+          {# Hidden sort/order carry-through #}
+          <input type="hidden" name="sort"  value="{{ filters.sort }}">
+          <input type="hidden" name="order" value="{{ filters.order }}">
+
+          {# Buttons #}
+          <div class="col-12 col-md-1 d-flex gap-1">
+            <button type="submit" class="btn btn-sm btn-primary flex-grow-1">
+              <i class="bi bi-funnel"></i>
+            </button>
+            {% if filters.has_active_filters() %}
+              <a href="{{ url_for('audit.index') }}" class="btn btn-sm btn-outline-secondary"
+                 title="Clear filters">
+                <i class="bi bi-x-lg"></i>
+              </a>
+            {% endif %}
+          </div>
+
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Table ────────────────────────────────────────────────────────────── #}
+  <div class="card border-0 mb-3">
+    <div class="card-body p-0">
+      {% if entries %}
+        <div class="table-responsive">
+          <table class="table lop-table mb-0" id="auditTable">
+            <thead>
+              <tr>
+
+                {# Sortable columns — toggle asc/desc on click #}
+                {% macro sort_link(col, label) %}
+                  {% set next_order = 'asc' if (filters.sort == col and filters.order == 'desc') else 'desc' %}
+                  <a href="{{ url_for('audit.index',
+                       sort=col, order=next_order,
+                       date_from=filters.date_from, date_to=filters.date_to,
+                       actor=filters.actor, module=filters.module,
+                       action=filters.action, result=filters.result,
+                       search=filters.search) }}"
+                     class="text-decoration-none text-reset d-flex align-items-center gap-1">
+                    {{ label }}
+                    {% if filters.sort == col %}
+                      <i class="bi bi-caret-{{ 'up' if filters.order == 'asc' else 'down' }}-fill small"></i>
+                    {% else %}
+                      <i class="bi bi-caret-down small text-secondary opacity-50"></i>
+                    {% endif %}
+                  </a>
+                {% endmacro %}
+
+                <th style="width:155px;">{{ sort_link('created_at', 'Timestamp') }}</th>
+                <th style="width:100px;">{{ sort_link('actor', 'User') }}</th>
+                <th style="width:100px;">{{ sort_link('module', 'Module') }}</th>
+                <th style="width:200px;">Action</th>
+                <th>Target</th>
+                <th style="width:100px;" class="d-none d-xl-table-cell">{{ sort_link('result', 'Result') }}</th>
+                <th style="width:110px;" class="d-none d-lg-table-cell">IP Address</th>
+                <th style="width:80px;"  class="d-none d-xl-table-cell">Auth</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in entries %}
+                <tr class="audit-row" style="cursor:pointer;"
+                    data-entry-id="{{ entry.id }}"
+                    title="Click for full details">
+
+                  <td class="text-secondary small text-nowrap">
+                    {{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') if entry.created_at else '—' }}
+                  </td>
+
+                  <td>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                      <i class="bi bi-person me-1"></i>{{ entry.actor }}
+                    </span>
+                  </td>
+
+                  <td>
+                    {% set mod = entry.module or '' %}
+                    {% if mod == 'inventory' %}
+                      <span class="badge bg-info-subtle text-info border border-info-subtle">inventory</span>
+                    {% elif mod == 'patching' %}
+                      <span class="badge bg-warning-subtle text-warning border border-warning-subtle">patching</span>
+                    {% elif mod == 'auth' %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">auth</span>
+                    {% elif mod == 'settings' %}
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle">settings</span>
+                    {% elif mod == 'reports' %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">reports</span>
+                    {% elif mod == 'audit' %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">audit</span>
+                    {% elif mod == 'api' %}
+                      <span class="badge bg-warning-subtle text-warning border border-warning-subtle">api</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ mod or '—' }}</span>
+                    {% endif %}
+                  </td>
+
+                  <td class="small">
+                    {# Icon based on action verb #}
+                    {% set a = entry.action %}
+                    {% if 'delete' in a or 'revoke' in a %}
+                      <i class="bi bi-trash3 text-danger me-1"></i>
+                    {% elif 'add' in a or 'create' in a or 'generate' in a %}
+                      <i class="bi bi-plus-circle text-success me-1"></i>
+                    {% elif 'edit' in a or 'update' in a or 'change' in a %}
+                      <i class="bi bi-pencil text-warning me-1"></i>
+                    {% elif 'login' in a %}
+                      <i class="bi bi-box-arrow-in-right text-info me-1"></i>
+                    {% elif 'logout' in a %}
+                      <i class="bi bi-box-arrow-right text-secondary me-1"></i>
+                    {% elif 'export' in a %}
+                      <i class="bi bi-download text-secondary me-1"></i>
+                    {% elif 'bulk' in a %}
+                      <i class="bi bi-layers text-info me-1"></i>
+                    {% else %}
+                      <i class="bi bi-arrow-repeat text-secondary me-1"></i>
+                    {% endif %}
+                    <code class="text-secondary" style="font-size:.75rem;">{{ a }}</code>
+                  </td>
+
+                  <td class="small">{{ entry.target or '—' }}</td>
+
+                  <td class="d-none d-xl-table-cell">
+                    {% if entry.result == 'success' %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle">
+                        <i class="bi bi-check-circle me-1"></i>success
+                      </span>
+                    {% else %}
+                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                        <i class="bi bi-x-circle me-1"></i>failed
+                      </span>
+                    {% endif %}
+                  </td>
+
+                  <td class="text-secondary small font-monospace d-none d-lg-table-cell">
+                    {{ entry.ip_address or '—' }}
+                  </td>
+
+                  <td class="d-none d-xl-table-cell">
+                    {% if entry.auth_source == 'ldap' %}
+                      <span class="badge bg-info-subtle text-info border border-info-subtle">FreeIPA</span>
+                    {% elif entry.auth_source == 'local' %}
+                      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Local</span>
+                    {% else %}
+                      <span class="text-secondary small">—</span>
+                    {% endif %}
+                  </td>
+
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      {% else %}
+        <div class="text-center text-secondary py-5">
+          <i class="bi bi-journal-x fs-3 d-block mb-2"></i>
+          {% if filters.has_active_filters() %}
+            No audit entries match the current filters.
+            <a href="{{ url_for('audit.index') }}" class="btn btn-sm btn-outline-secondary ms-2">Clear filters</a>
+          {% else %}
+            No audit entries recorded yet. Actions taken through the portal will appear here.
+          {% endif %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  {# ── Pagination ───────────────────────────────────────────────────────── #}
+  {% if pagination and pagination.pages > 1 %}
+    <nav aria-label="Audit log pagination">
+      <ul class="pagination pagination-sm justify-content-center flex-wrap">
+
+        {# Previous #}
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('audit.index',
+               page=pagination.prev_num,
+               sort=filters.sort, order=filters.order,
+               date_from=filters.date_from, date_to=filters.date_to,
+               actor=filters.actor, module=filters.module,
+               action=filters.action, result=filters.result,
+               search=filters.search) }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+
+        {# Page numbers (show a window around current) #}
+        {% for p in pagination.iter_pages(left_edge=1, left_current=2, right_current=2, right_edge=1) %}
+          {% if p %}
+            <li class="page-item {% if p == pagination.page %}active{% endif %}">
+              <a class="page-link" href="{{ url_for('audit.index',
+                   page=p,
+                   sort=filters.sort, order=filters.order,
+                   date_from=filters.date_from, date_to=filters.date_to,
+                   actor=filters.actor, module=filters.module,
+                   action=filters.action, result=filters.result,
+                   search=filters.search) }}">{{ p }}</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+
+        {# Next #}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('audit.index',
+               page=pagination.next_num,
+               sort=filters.sort, order=filters.order,
+               date_from=filters.date_from, date_to=filters.date_to,
+               actor=filters.actor, module=filters.module,
+               action=filters.action, result=filters.result,
+               search=filters.search) }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+
+      </ul>
+      <p class="text-center text-secondary small">
+        Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }}–{{ [pagination.page * pagination.per_page, pagination.total] | min }}
+        of {{ pagination.total }} entries
+      </p>
+    </nav>
+  {% endif %}
+
+</div>{# /container-fluid #}
+
+
+{# ══════════════════════════════ DETAIL MODAL ════════════════════════════════ #}
+<div class="modal fade" id="modalDetail" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title">
+          <i class="bi bi-journal-text me-2 text-secondary"></i>Audit Entry Detail
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <div class="text-center text-secondary py-4">
+          <div class="spinner-border spinner-border-sm" role="status"></div>
+          <span class="ms-2">Loading…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+{# ══════════════════════════════ CLEANUP MODAL ═══════════════════════════════ #}
+<div class="modal fade" id="modalCleanup" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('audit.cleanup') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title text-warning">
+            <i class="bi bi-trash3 me-2"></i>Purge Old Entries
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-secondary small mb-3">
+            Permanently delete audit log entries older than the selected period.
+            This action cannot be undone.
+          </p>
+          <div class="mb-0">
+            <label class="form-label">Delete entries older than</label>
+            <select class="form-select" name="days">
+              {% for days, label in retention_options %}
+                <option value="{{ days }}" {% if days == 90 %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-trash3 me-1"></i>Purge Entries
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ── Detail modal ─────────────────────────────────────────────────────────── //
+document.querySelectorAll('.audit-row').forEach(row => {
+  row.addEventListener('click', () => {
+    const id = row.dataset.entryId;
+    const modal = new bootstrap.Modal(document.getElementById('modalDetail'));
+    const body  = document.getElementById('detailBody');
+    body.innerHTML = `
+      <div class="text-center text-secondary py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <span class="ms-2">Loading…</span>
+      </div>`;
+    modal.show();
+
+    fetch(`/audit/${id}/detail`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          body.innerHTML = `<div class="alert alert-danger">${d.error}</div>`;
+          return;
+        }
+        const resultBadge = d.result === 'success'
+          ? '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>success</span>'
+          : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-x-circle me-1"></i>failed</span>';
+        const authBadge = d.auth_source === 'ldap'
+          ? '<span class="badge bg-info-subtle text-info border border-info-subtle">FreeIPA</span>'
+          : d.auth_source === 'local'
+            ? '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Local</span>'
+            : '—';
+        body.innerHTML = `
+          <dl class="row mb-0 small">
+            <dt class="col-sm-3 text-secondary">Timestamp</dt>
+            <dd class="col-sm-9 font-monospace">${d.timestamp}</dd>
+            <dt class="col-sm-3 text-secondary">User</dt>
+            <dd class="col-sm-9"><span class="badge bg-primary-subtle text-primary border border-primary-subtle"><i class="bi bi-person me-1"></i>${d.actor}</span></dd>
+            <dt class="col-sm-3 text-secondary">Module</dt>
+            <dd class="col-sm-9">${d.module}</dd>
+            <dt class="col-sm-3 text-secondary">Action</dt>
+            <dd class="col-sm-9"><code>${d.action}</code></dd>
+            <dt class="col-sm-3 text-secondary">Object / Target</dt>
+            <dd class="col-sm-9">${d.target}</dd>
+            <dt class="col-sm-3 text-secondary">Details</dt>
+            <dd class="col-sm-9 font-monospace" style="white-space:pre-wrap;word-break:break-all;">${d.details}</dd>
+            <dt class="col-sm-3 text-secondary">Result</dt>
+            <dd class="col-sm-9">${resultBadge}</dd>
+            <dt class="col-sm-3 text-secondary">Client IP</dt>
+            <dd class="col-sm-9 font-monospace">${d.ip_address}</dd>
+            <dt class="col-sm-3 text-secondary">Auth Source</dt>
+            <dd class="col-sm-9">${authBadge}</dd>
+            <dt class="col-sm-3 text-secondary">User Agent</dt>
+            <dd class="col-sm-9 text-secondary" style="word-break:break-all;">${d.user_agent}</dd>
+            <dt class="col-sm-3 text-secondary">Session ID</dt>
+            <dd class="col-sm-9 font-monospace text-secondary">${d.session_id}</dd>
+            <dt class="col-sm-3 text-secondary">Before Values</dt>
+            <dd class="col-sm-9"><pre class="mb-0 small bg-dark rounded p-2" style="max-height:150px;overflow:auto;">${d.before_values}</pre></dd>
+            <dt class="col-sm-3 text-secondary">After Values</dt>
+            <dd class="col-sm-9"><pre class="mb-0 small bg-dark rounded p-2" style="max-height:150px;overflow:auto;">${d.after_values}</pre></dd>
+          </dl>`;
+      })
+      .catch(err => {
+        body.innerHTML = `<div class="alert alert-danger">Failed to load entry: ${err.message}</div>`;
+      });
+  });
+});
+</script>
+{% endblock %}

@@ -7,6 +7,9 @@ Login flow:
   2. Fall back to local password check (covers the emergency admin and
      any account explicitly set as auth_source="local").
 
+All login/logout/failed-login events are written to the audit log with
+the client IP, User-Agent, result, and auth_source captured automatically.
+
 Logout always clears the Flask-Login session.
 """
 import logging
@@ -18,6 +21,7 @@ from wtforms import BooleanField, PasswordField, StringField, SubmitField
 from wtforms.validators import DataRequired, Length
 from flask_wtf import FlaskForm
 
+from ...audit import commit_audit
 from ...extensions import db
 from ...models.user import User
 from . import auth_bp
@@ -61,12 +65,10 @@ def _try_freeipa_login(username: str, password: str) -> "User | None":
     result = svc.authenticate(username, password)
     if not result.success:
         if result.error and "not found" not in result.error.lower():
-            # Log LDAP errors that are not "user not found" — they may indicate
-            # a misconfiguration or server problem.
             logger.warning("FreeIPA auth error for '%s': %s", username, result.error)
         return None
 
-    # Upsert local User row — keep auth_source="ldap" to distinguish from local
+    # Upsert local User row
     user = User.query.filter_by(username=username).first()
     if user is None:
         user = User(username=username, auth_source="ldap")
@@ -74,7 +76,6 @@ def _try_freeipa_login(username: str, password: str) -> "User | None":
         db.session.add(user)
         logger.info("FreeIPA: auto-created local user record for '%s'", username)
 
-    # Sync LDAP attributes on every login so changes propagate immediately
     user.role         = result.role
     user.display_name = result.display_name or None
     user.email        = result.email or None
@@ -113,7 +114,6 @@ def login():
         if authenticated_user is None:
             local_user = User.query.filter_by(username=raw_username).first()
             if local_user and local_user.is_active and local_user.check_password(raw_password):
-                # Update last_login for local accounts too
                 local_user.last_login = datetime.now(timezone.utc)
                 try:
                     db.session.commit()
@@ -130,6 +130,12 @@ def login():
                 request.remote_addr,
                 authenticated_user.auth_source,
             )
+            commit_audit(
+                "auth.login",
+                target=authenticated_user.username,
+                result="success",
+                auth_source=authenticated_user.auth_source,
+            )
             next_page = request.args.get("next", "")
             if next_page and next_page.startswith("/") and not next_page.startswith("//"):
                 return redirect(next_page)
@@ -138,6 +144,12 @@ def login():
             logger.warning(
                 "Failed login attempt for username='%s' from %s",
                 raw_username, request.remote_addr,
+            )
+            commit_audit(
+                "auth.login",
+                target=raw_username,
+                result="failed",
+                details="Invalid username or password",
             )
             flash("Invalid username or password.", "danger")
 
@@ -148,6 +160,8 @@ def login():
 def logout():
     """Log out the current user and redirect to the login page."""
     username = current_user.username if current_user.is_authenticated else "unknown"
+    auth_source = getattr(current_user, "auth_source", None) if current_user.is_authenticated else None
+    commit_audit("auth.logout", target=username, result="success", auth_source=auth_source)
     logout_user()
     logger.info("User '%s' logged out", username)
     flash("You have been logged out.", "info")

@@ -57,7 +57,6 @@ def _render_settings(new_token: str | None = None):
         owners=data.owners,
         users=data.users,
         api_token=data.api_token,
-        audit_log=data.audit_log,
         new_token=new_token,
         valid_colors=VALID_COLORS,
         app_name=current_app.config["APP_NAME"],

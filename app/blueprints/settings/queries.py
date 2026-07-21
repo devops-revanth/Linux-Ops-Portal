@@ -29,7 +29,6 @@ class SettingsData:
     owners:       list = field(default_factory=list)
     users:        list = field(default_factory=list)
     api_token:    "ApiToken | None" = None
-    audit_log:    list = field(default_factory=list)
 
 
 @dataclass
@@ -42,7 +41,7 @@ class QueryResult:
 # ── Read helpers ──────────────────────────────────────────────────────────── #
 
 def get_settings_data() -> SettingsData:
-    """Return all locations, environments, owners, users, active API token, and recent audit log."""
+    """Return all locations, environments, owners, users, and the active API token."""
     data = SettingsData()
     try:
         data.locations    = Location.query.order_by(Location.name).all()
@@ -50,25 +49,9 @@ def get_settings_data() -> SettingsData:
         data.owners       = Owner.query.order_by(Owner.name).all()
         data.users        = User.query.order_by(User.username).all()
         data.api_token    = ApiToken.get_active()
-        data.audit_log    = get_audit_log()
     except Exception:
         logger.exception("Failed to load settings data")
     return data
-
-
-def get_audit_log(limit: int = 100) -> list:
-    """Return the most recent audit log entries, newest first."""
-    from ...models.audit_log import AuditLog  # local import avoids circular deps
-    try:
-        return (
-            AuditLog.query
-            .order_by(AuditLog.created_at.desc())
-            .limit(limit)
-            .all()
-        )
-    except Exception:
-        logger.exception("Failed to load audit log")
-        return []
 
 
 # ── Location CRUD ─────────────────────────────────────────────────────────── #
