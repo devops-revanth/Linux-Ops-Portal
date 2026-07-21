@@ -5,6 +5,7 @@ All database logic lives in queries.py.
 import logging
 
 from flask import current_app, flash, redirect, render_template, request, url_for
+from flask_login import current_user
 
 from . import settings_bp
 from .queries import (
@@ -12,15 +13,19 @@ from .queries import (
     add_environment,
     add_location,
     add_owner,
+    add_user,
+    change_password,
     delete_environment,
     delete_location,
     delete_owner,
+    delete_user,
     edit_environment,
     edit_location,
     edit_owner,
     generate_api_token,
     get_settings_data,
     revoke_api_token,
+    toggle_user_active,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +40,7 @@ def _render_settings(new_token: str | None = None):
         locations=data.locations,
         environments=data.environments,
         owners=data.owners,
+        users=data.users,
         api_token=data.api_token,
         new_token=new_token,
         valid_colors=VALID_COLORS,
@@ -197,3 +203,60 @@ def revoke_api_token_route():
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#api-settings")
+
+
+# ── User Management ────────────────────────────────────────────────────── #
+
+@settings_bp.route("/settings/users/add", methods=["POST"])
+def add_user_route():
+    result = add_user(
+        username=request.form.get("username", ""),
+        password=request.form.get("password", ""),
+    )
+    if result.success:
+        flash("User account created successfully.", "success")
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#users")
+
+
+@settings_bp.route("/settings/users/<int:user_id>/change-password", methods=["POST"])
+def change_password_route(user_id: int):
+    result = change_password(
+        user_id=user_id,
+        new_password=request.form.get("password", ""),
+    )
+    if result.success:
+        flash("Password updated successfully.", "success")
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#users")
+
+
+@settings_bp.route("/settings/users/<int:user_id>/toggle-active", methods=["POST"])
+def toggle_user_active_route(user_id: int):
+    is_active = request.form.get("is_active") == "1"
+    result = toggle_user_active(
+        user_id=user_id,
+        is_active=is_active,
+        current_user_id=current_user.id,
+    )
+    if result.success:
+        state = "activated" if is_active else "deactivated"
+        flash(f"User account {state}.", "success")
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#users")
+
+
+@settings_bp.route("/settings/users/<int:user_id>/delete", methods=["POST"])
+def delete_user_route(user_id: int):
+    result = delete_user(
+        user_id=user_id,
+        current_user_id=current_user.id,
+    )
+    if result.success:
+        flash("User account deleted.", "success")
+    else:
+        flash(result.error, "danger")
+    return redirect(url_for("settings.index") + "#users")

@@ -14,6 +14,7 @@ from ...models.api_token import ApiToken
 from ...models.environment import Environment
 from ...models.location import Location
 from ...models.owner import Owner
+from ...models.user import User
 from ...utils import sort_envs
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class SettingsData:
     locations:    list = field(default_factory=list)
     environments: list = field(default_factory=list)
     owners:       list = field(default_factory=list)
+    users:        list = field(default_factory=list)
     api_token:    "ApiToken | None" = None
 
 
@@ -38,12 +40,13 @@ class QueryResult:
 # ── Read helpers ──────────────────────────────────────────────────────────── #
 
 def get_settings_data() -> SettingsData:
-    """Return all locations, environments, owners, and the active API token."""
+    """Return all locations, environments, owners, users, and the active API token."""
     data = SettingsData()
     try:
         data.locations    = Location.query.order_by(Location.name).all()
         data.environments = sort_envs(Environment.query.all())
         data.owners       = Owner.query.order_by(Owner.name).all()
+        data.users        = User.query.order_by(User.username).all()
         data.api_token    = ApiToken.get_active()
     except Exception:
         logger.exception("Failed to load settings data")
@@ -332,6 +335,121 @@ def delete_owner(owner_id: int) -> QueryResult:
         db.session.rollback()
         logger.exception("Failed to delete owner id=%d", owner_id)
         return QueryResult(success=False, error="Database error — could not delete owner.")
+
+
+# ── User CRUD ─────────────────────────────────────────────────────────────── #
+
+MIN_PASSWORD_LENGTH = 8
+
+
+def add_user(username: str, password: str) -> QueryResult:
+    """Create a new portal user account."""
+    username = username.strip()
+    if not username:
+        return QueryResult(success=False, error="Username is required.")
+    if len(username) > 64:
+        return QueryResult(success=False, error="Username must be 64 characters or fewer.")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return QueryResult(
+            success=False,
+            error=f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
+        )
+
+    if User.query.filter(
+        db.func.lower(User.username) == username.lower()
+    ).first():
+        return QueryResult(
+            success=False,
+            error=f'A user named "{username}" already exists.',
+        )
+
+    try:
+        user = User(username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        logger.info("User created: %s", username)
+        return QueryResult()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to create user: %s", username)
+        return QueryResult(success=False, error="Database error — could not create user.")
+
+
+def change_password(user_id: int, new_password: str) -> QueryResult:
+    """Change a user's password."""
+    user = User.query.get(user_id)
+    if not user:
+        return QueryResult(success=False, error="User not found.")
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return QueryResult(
+            success=False,
+            error=f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
+        )
+    try:
+        user.set_password(new_password)
+        db.session.commit()
+        logger.info("Password changed for user id=%d (%s)", user_id, user.username)
+        return QueryResult()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to change password for user id=%d", user_id)
+        return QueryResult(success=False, error="Database error — could not update password.")
+
+
+def toggle_user_active(user_id: int, is_active: bool, current_user_id: int) -> QueryResult:
+    """Activate or deactivate a user account."""
+    user = User.query.get(user_id)
+    if not user:
+        return QueryResult(success=False, error="User not found.")
+
+    if not is_active and user_id == current_user_id:
+        return QueryResult(success=False, error="You cannot deactivate your own account.")
+
+    # Prevent deactivating the last active user
+    if not is_active:
+        active_count = User.query.filter_by(is_active=True).count()
+        if active_count <= 1:
+            return QueryResult(
+                success=False,
+                error="Cannot deactivate the last active user.",
+            )
+
+    try:
+        user.is_active = is_active
+        db.session.commit()
+        state = "activated" if is_active else "deactivated"
+        logger.info("User %s id=%d (%s)", state, user_id, user.username)
+        return QueryResult()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to toggle active for user id=%d", user_id)
+        return QueryResult(success=False, error="Database error — could not update user.")
+
+
+def delete_user(user_id: int, current_user_id: int) -> QueryResult:
+    """Delete a user account.  Blocked for the currently logged-in user."""
+    user = User.query.get(user_id)
+    if not user:
+        return QueryResult(success=False, error="User not found.")
+
+    if user_id == current_user_id:
+        return QueryResult(success=False, error="You cannot delete your own account.")
+
+    # Prevent deleting the last user entirely
+    total = User.query.count()
+    if total <= 1:
+        return QueryResult(success=False, error="Cannot delete the last user account.")
+
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        logger.info("User deleted: id=%d (%s)", user_id, user.username)
+        return QueryResult()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to delete user id=%d", user_id)
+        return QueryResult(success=False, error="Database error — could not delete user.")
 
 
 # ── API Token management ───────────────────────────────────────────────── #
