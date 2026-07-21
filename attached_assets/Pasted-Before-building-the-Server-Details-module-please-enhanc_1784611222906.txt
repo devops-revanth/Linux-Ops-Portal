@@ -1,0 +1,109 @@
+Before building the Server Details module, please enhance the Inventory module.
+
+Requirements
+
+1. Add an "Add Server" button
+- Place a green "+ Add Server" button in the top-right corner of the Inventory page.
+- Clicking it should open a simple "Add Server" form.
+- The form should allow creating a server manually.
+
+Fields:
+- Hostname
+- IP Address
+- Environment (dropdown)
+- Location (dropdown)
+- Owner
+- Operating System
+- Kernel Version
+- CPU
+- RAM
+- Status
+
+The dropdown values must come from the database (Locations and Environments), not hardcoded values.
+
+------------------------------------------------
+
+2. Improve the Inventory table
+
+Columns should be:
+
+- Hostname
+- IP Address
+- Environment
+- OS
+- Kernel
+- CPU
+- RAM
+- Location
+- Owner
+- Status
+
+Rename "Operating System" to simply "OS".
+
+CPU and RAM may initially be blank until populated by Ansible.
+
+------------------------------------------------
+
+3. Improve Status display
+
+Instead of plain text, display coloured badges.
+
+Examples:
+
+🟢 Active
+🟡 Maintenance
+🔴 Decommissioned
+
+------------------------------------------------
+
+4. Improve Search
+
+The search box should search:
+
+- Hostname
+- IP Address
+- Owner
+
+Keep the existing filters for:
+- Location
+- Environment
+- Status
+
+------------------------------------------------
+
+5. Improve Empty State
+
+Replace:
+
+"Servers are added automatically when Ansible pushes data via the REST API."
+
+with
+
+"No servers found.
+
+Add your first server manually or synchronize the inventory using Ansible."
+
+------------------------------------------------
+
+6. Hostname Navigation
+
+Hostname should remain clickable.
+
+Clicking a hostname must open the future Server Details page.
+
+If Server Details is not yet implemented, create the route placeholder.
+
+------------------------------------------------
+
+7. Maintain Architecture
+
+- Keep the existing blueprint structure.
+- Keep queries separate from routes.
+- Do not modify the Dashboard.
+- Do not introduce sample/demo servers.
+- Keep Bootstrap 5 dark theme.
+- Keep responsive design.
+
+------------------------------------------------
+
+After completing these Inventory improvements, stop and wait for my approval before building the Server Details module.
