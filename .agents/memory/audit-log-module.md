@@ -7,7 +7,7 @@ description: Architecture of the dedicated Audit Logs blueprint and extended Aud
 Audit log lives at `/audit` (blueprint name "audit"). The settings page no longer has a Change Log card — all audit browsing goes through the dedicated page.
 
 ## AuditLog extended columns (migration d8e3f921a047)
-module, ip_address, auth_source, result (success/failed), user_agent, session_id, before_values, after_values. Migration head order: …audit_logs → add_freeipa_columns → add_extended_audit_log_columns.
+module, ip_address, auth_source, result (success/failed), user_agent, session_id, before_values, after_values. Migration head order: …audit_logs → add_freeipa_columns → add_extended_audit_log_columns → add_directory_services_tables.
 
 ## audit.py helpers auto-capture
 `log_action()` and `commit_audit()` call `_request_context()` which reads `request.remote_addr`, `User-Agent`, `session["_id"]`, and `current_user.auth_source` automatically. Callers only need to pass explicit overrides or `result="failed"` / `before_values` / `after_values` when needed.

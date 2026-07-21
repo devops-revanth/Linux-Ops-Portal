@@ -2,3 +2,5 @@
 - [User model extensions](user-model.md) — role, auth_source, display_name, last_login added in migration c4f7a812b3e9 (head after 811d76d3ea4d).
 - [Workflow port collision](workflow-port-collision.md) — "Linux Operations Portal" and "artifacts/api-server: LOP" both bind port 5000; only the artifact workflow should run.
 - [Audit log module](audit-log-module.md) — dedicated /audit blueprint; AuditLog extended with 8 new columns; audit.py auto-captures ip/ua/session/auth_source from request context.
+- [Directory Services](directory-services.md) — DB-stored LDAP config (DirectoryConfig singleton), Fernet-encrypted bind password, configurable group→role mappings (LdapGroupMapping); use FreeIPAService.from_db() for new code.
+- [User Management module](user-management.md) — dedicated /users blueprint; NOT in Settings; LDAP users cannot reset passwords; all other CRUD available.
