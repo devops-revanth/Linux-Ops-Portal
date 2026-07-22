@@ -768,6 +768,301 @@
     </div>
   </div>
 
+  {# ══════════════════════════════ VMWARE VCENTER ══════════════════════════════ #}
+  <div class="card border-0 mb-4" id="vmware-vcenter">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-hdd-network me-2 text-info"></i>VMware vCenter
+      </h6>
+      <div class="d-flex align-items-center gap-2">
+        {% if vmware_cfg %}
+          {% set cs = vmware_cfg.connection_status %}
+          <span class="badge
+            {% if cs == 'Connected' %}bg-success-subtle text-success border border-success-subtle
+            {% elif cs == 'Authentication Failed' %}bg-danger-subtle text-danger border border-danger-subtle
+            {% elif cs == 'SSL Error' %}bg-warning-subtle text-warning border border-warning-subtle
+            {% elif cs == 'Connection Timeout' %}bg-warning-subtle text-warning border border-warning-subtle
+            {% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
+            <i class="bi bi-{% if cs == 'Connected' %}check-circle{% else %}x-circle{% endif %} me-1"></i>
+            {{ cs }}
+          </span>
+          {% if vmware_cfg.enabled %}
+            <span class="badge bg-info-subtle text-info border border-info-subtle">Enabled</span>
+          {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+          {% endif %}
+        {% endif %}
+        <button class="btn btn-sm btn-outline-secondary"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#vmwareForm"
+                aria-expanded="false"
+                aria-controls="vmwareForm">
+          <i class="bi bi-pencil me-1"></i>Configure
+        </button>
+      </div>
+    </div>
+
+    <div class="card-body">
+
+      {# ── Summary row ───────────────────────────────────────────────────── #}
+      {% if vmware_cfg %}
+      <div class="row g-3 mb-3" style="font-size:.85rem;">
+        <div class="col-sm-3">
+          <span class="text-secondary">vCenter</span><br>
+          <span class="fw-semibold">{{ vmware_cfg.vcenter_host or '—' }}</span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">Schedule</span><br>
+          <span class="fw-semibold">{{ vmware_cfg.sync_schedule | capitalize }}</span>
+        </div>
+        <div class="col-sm-3">
+          <span class="text-secondary">Last Successful Sync</span><br>
+          <span class="fw-semibold">
+            {% if vmware_cfg.last_sync_ok_at %}{{ vmware_cfg.last_sync_ok_at | lop_ts }}{% else %}Never{% endif %}
+          </span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">VMs Imported</span><br>
+          <span class="fw-semibold">{{ vmware_cfg.last_sync_vms or 0 }}</span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">Last Duration</span><br>
+          <span class="fw-semibold">
+            {% if vmware_cfg.last_sync_duration_s %}{{ "%.1f"|format(vmware_cfg.last_sync_duration_s) }}s{% else %}—{% endif %}
+          </span>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-secondary small mb-3">
+        VMware vCenter integration is not yet configured. Click <strong>Configure</strong> to get started.
+      </p>
+      {% endif %}
+
+      {# ── Action buttons ────────────────────────────────────────────────── #}
+      {% if vmware_cfg and vmware_cfg.enabled %}
+      <div class="d-flex gap-2 mb-3">
+        <form method="POST" action="{{ url_for('vmware.sync_vmware') }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-success" id="vmware-sync-btn">
+            <i class="bi bi-arrow-repeat me-1"></i>Sync Now
+          </button>
+        </form>
+        <span id="vmware-sync-status" class="text-secondary small align-self-center ms-2" style="font-size:.82rem;"></span>
+      </div>
+      {% endif %}
+
+      {# ── Configuration form (collapsed) ────────────────────────────────── #}
+      <div class="collapse" id="vmwareForm">
+        <div class="border border-secondary rounded p-3">
+
+          <form method="POST" action="{{ url_for('vmware.save_vmware') }}" id="vmware-config-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# Enable toggle #}
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox"
+                       id="vmware-enabled" name="enabled" value="1"
+                       {{ 'checked' if vmware_cfg and vmware_cfg.enabled }}>
+                <label class="form-check-label fw-medium" for="vmware-enabled">
+                  Enable VMware Integration
+                </label>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              {# vCenter host #}
+              <div class="col-md-7">
+                <label class="form-label" for="vcenter-host">vCenter Server / FQDN</label>
+                <input type="text" class="form-control form-control-sm"
+                       id="vcenter-host" name="vcenter_host"
+                       value="{{ vmware_cfg.vcenter_host or '' if vmware_cfg else '' }}"
+                       placeholder="vcenter.corp.example.com">
+              </div>
+              {# Port #}
+              <div class="col-md-2">
+                <label class="form-label" for="vcenter-port">Port</label>
+                <input type="number" class="form-control form-control-sm"
+                       id="vcenter-port" name="port"
+                       value="{{ vmware_cfg.port if vmware_cfg else 443 }}"
+                       min="1" max="65535">
+              </div>
+              {# SSL #}
+              <div class="col-md-3 d-flex align-items-end pb-1">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox"
+                         id="vcenter-ignore-ssl" name="ignore_ssl" value="1"
+                         {{ 'checked' if vmware_cfg and vmware_cfg.ignore_ssl }}>
+                  <label class="form-check-label small" for="vcenter-ignore-ssl">
+                    Ignore Invalid SSL Certificate
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              {# Username #}
+              <div class="col-md-5">
+                <label class="form-label" for="vcenter-user">Username</label>
+                <input type="text" class="form-control form-control-sm"
+                       id="vcenter-user" name="username"
+                       value="{{ vmware_cfg.username or '' if vmware_cfg else '' }}"
+                       placeholder="administrator@vsphere.local"
+                       autocomplete="off">
+              </div>
+              {# Password #}
+              <div class="col-md-5">
+                <label class="form-label" for="vcenter-pass">Password</label>
+                <input type="password" class="form-control form-control-sm"
+                       id="vcenter-pass" name="password"
+                       placeholder="{{ '••••••••' if vmware_cfg and vmware_cfg.password_enc else 'Enter password' }}"
+                       autocomplete="new-password">
+                {% if vmware_cfg and vmware_cfg.password_enc %}
+                  <div class="form-text text-secondary" style="font-size:.72rem;">
+                    Leave blank to keep the existing password.
+                  </div>
+                {% endif %}
+              </div>
+              {# Test connection button #}
+              <div class="col-md-2 d-flex align-items-end">
+                <button type="button" class="btn btn-sm btn-outline-info w-100"
+                        id="vmware-test-btn"
+                        onclick="testVmwareConnection()">
+                  <i class="bi bi-plug me-1"></i>Test
+                </button>
+              </div>
+            </div>
+
+            {# Test result #}
+            <div id="vmware-test-result" class="mb-3" style="display:none;">
+              <div id="vmware-test-msg" class="small p-2 rounded border"></div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              {# Default Location #}
+              <div class="col-md-4">
+                <label class="form-label" for="vcenter-loc">Default Location (optional)</label>
+                <select class="form-select form-select-sm" id="vcenter-loc" name="default_location_id">
+                  <option value="">— None —</option>
+                  {% for loc in locations %}
+                    <option value="{{ loc.id }}"
+                      {{ 'selected' if vmware_cfg and vmware_cfg.default_location_id == loc.id }}>
+                      {{ loc.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              {# Default Environment #}
+              <div class="col-md-4">
+                <label class="form-label" for="vcenter-env">Default Environment (optional)</label>
+                <select class="form-select form-select-sm" id="vcenter-env" name="default_environment_id">
+                  <option value="">— None —</option>
+                  {% for env in environments %}
+                    <option value="{{ env.id }}"
+                      {{ 'selected' if vmware_cfg and vmware_cfg.default_environment_id == env.id }}>
+                      {{ env.name }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              {# Sync Schedule #}
+              <div class="col-md-4">
+                <label class="form-label" for="vcenter-schedule">Sync Schedule</label>
+                <select class="form-select form-select-sm" id="vcenter-schedule" name="sync_schedule">
+                  {% for val, label in vmware_sync_schedules %}
+                    <option value="{{ val }}"
+                      {{ 'selected' if vmware_cfg and vmware_cfg.sync_schedule == val
+                         else ('selected' if not vmware_cfg and val == 'disabled') }}>
+                      {{ label }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="bi bi-floppy me-1"></i>Save Settings
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#vmwareForm">
+                Cancel
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  {# ── VMware AJAX scripts ────────────────────────────────────────────────── #}
+  <script>
+  function testVmwareConnection() {
+    const btn = document.getElementById('vmware-test-btn');
+    const resultDiv = document.getElementById('vmware-test-result');
+    const msgDiv = document.getElementById('vmware-test-msg');
+    const form = document.getElementById('vmware-config-form');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing…';
+    resultDiv.style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+    fd.append('vcenter_host', document.getElementById('vcenter-host').value);
+    fd.append('port', document.getElementById('vcenter-port').value);
+    fd.append('username', document.getElementById('vcenter-user').value);
+    fd.append('password', document.getElementById('vcenter-pass').value);
+    fd.append('ignore_ssl', document.getElementById('vcenter-ignore-ssl').checked ? '1' : '0');
+
+    fetch('{{ url_for("vmware.test_vmware") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        resultDiv.style.display = 'block';
+        if (data.success) {
+          msgDiv.className = 'small p-2 rounded border text-success border-success-subtle bg-success-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + data.message;
+        } else {
+          msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle bg-danger-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>' + data.message;
+        }
+      })
+      .catch(err => {
+        resultDiv.style.display = 'block';
+        msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle';
+        msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed: ' + err;
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plug me-1"></i>Test';
+      });
+  }
+
+  // Poll sync status when page loads (if enabled)
+  {% if vmware_cfg and vmware_cfg.enabled %}
+  (function pollVmwareStatus() {
+    const statusEl = document.getElementById('vmware-sync-status');
+    fetch('{{ url_for("vmware.vmware_sync_status") }}')
+      .then(r => r.json())
+      .then(data => {
+        if (data.running) {
+          if (statusEl) statusEl.textContent = '⟳ Sync in progress…';
+          setTimeout(pollVmwareStatus, 3000);
+        } else if (data.log && data.log.status === 'completed') {
+          if (statusEl) statusEl.textContent =
+            `Last sync: ${data.log.imported} imported, ${data.log.updated} updated`;
+        } else if (data.log && data.log.status === 'failed') {
+          if (statusEl) statusEl.textContent = '✗ Last sync failed: ' + (data.log.error || '');
+        }
+      })
+      .catch(() => {});
+  })();
+  {% endif %}
+  </script>
+
   {# ══════════════════════════════ API SETTINGS ═════════════════════════════ #}
   <div class="card border-0 mb-4" id="api-settings">
     <div class="card-header d-flex align-items-center justify-content-between py-3">

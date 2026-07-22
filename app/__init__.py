@@ -64,6 +64,8 @@ def create_app(config_name: str | None = None) -> Flask:
             patching,
             server,
             user,
+            vmware_config,
+            vmware_server_meta,
         )
 
         # User loader for Flask-Login
@@ -96,6 +98,7 @@ def create_app(config_name: str | None = None) -> Flask:
     from .blueprints.search import search_bp    # noqa: E402
     from .blueprints.settings import settings_bp  # noqa: E402
     from .blueprints.users import users_bp      # noqa: E402
+    from .blueprints.vmware import vmware_bp    # noqa: E402
 
     app.register_blueprint(api_bp)
     app.register_blueprint(audit_bp)
@@ -108,6 +111,7 @@ def create_app(config_name: str | None = None) -> Flask:
     app.register_blueprint(search_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(vmware_bp)
 
     # ------------------------------------------------------------------ #
     # Error handlers

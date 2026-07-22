@@ -47,6 +47,7 @@ class InventoryFilters:
     location_id: int | None = None
     env_id:      int | None = None
     status:      str = ""
+    source:      str = ""   # "" = all | "manual" | "vmware" | "ansible"
     sort:        str = DEFAULT_SORT
     order:       str = DEFAULT_ORDER
 
@@ -103,6 +104,9 @@ def get_inventory_page(filters: InventoryFilters, page: int, per_page: int) -> I
 
         if filters.status:
             q = q.filter(Server.status == filters.status)
+
+        if filters.source:
+            q = q.filter(Server.source == filters.source)
 
         # ── Total (before pagination) ─────────────────────────────────
         result.total = q.count()

@@ -48,6 +48,11 @@ class DashboardStats:
     last_ansible_sync:    datetime | None = None
     environments:         list[EnvironmentCount] = field(default_factory=list)
     locations:            list[LocationCount]     = field(default_factory=list)
+    # VMware stats
+    vmware_imported:      int = 0
+    vmware_connected:     int = 0   # vCenters with status "Connected"
+    vmware_last_sync:     datetime | None = None
+    vmware_sync_status:   str = "Not Configured"
 
 
 def get_dashboard_stats() -> DashboardStats:
@@ -154,6 +159,29 @@ def get_dashboard_stats() -> DashboardStats:
             )
             for r in loc_rows
         ]
+
+        # ── VMware stats ──────────────────────────────────────────────
+        try:
+            from ...models.vmware_config import VmwareConfig
+            cfg = VmwareConfig.query.first()
+            if cfg and cfg.enabled:
+                stats.vmware_imported = (
+                    db.session.query(func.count(Server.id))
+                    .filter(Server.source == "vmware")
+                    .scalar() or 0
+                )
+                stats.vmware_connected = 1 if cfg.connection_status == "Connected" else 0
+                stats.vmware_last_sync = cfg.last_sync_ok_at
+                if cfg.last_sync_ok_at:
+                    stats.vmware_sync_status = "Completed"
+                elif cfg.last_sync_fail_at:
+                    stats.vmware_sync_status = "Failed"
+                else:
+                    stats.vmware_sync_status = "Never Synced"
+            elif cfg and not cfg.enabled:
+                stats.vmware_sync_status = "Disabled"
+        except Exception:
+            pass
 
     except Exception:
         logger.exception("Failed to query dashboard stats")

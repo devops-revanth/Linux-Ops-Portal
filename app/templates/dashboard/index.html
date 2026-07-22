@@ -153,6 +153,85 @@
     {% endif %}
   </div>{# /row 2 #}
 
+  {# ── VMware Stats Row (shown only when VMware is enabled) ─────────────── #}
+  {% if stats.vmware_imported or stats.vmware_connected or stats.vmware_last_sync %}
+  <div class="row g-3 mb-4">
+
+    {# Imported VMs #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-info-subtle text-info">
+            <i class="bi bi-hdd-network fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number">{{ stats.vmware_imported }}</div>
+            <div class="lop-stat-label">VMware VMs</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Connected vCenters #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap {% if stats.vmware_connected %}bg-success-subtle text-success{% else %}bg-secondary-subtle text-secondary{% endif %}">
+            <i class="bi bi-{% if stats.vmware_connected %}check-circle{% else %}x-circle{% endif %} fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number">{{ stats.vmware_connected }}</div>
+            <div class="lop-stat-label">Connected vCenters</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Last VMware Sync #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-primary-subtle text-primary">
+            <i class="bi bi-arrow-repeat fs-3"></i>
+          </div>
+          <div>
+            {% if stats.vmware_last_sync %}
+              <div class="lop-stat-number" style="font-size:.9rem; line-height:1.4;">
+                {{ stats.vmware_last_sync | lop_ts(date_only=True) }}
+              </div>
+              <div class="text-secondary" style="font-size:.75rem;">
+                {{ stats.vmware_last_sync | lop_time }}
+              </div>
+            {% else %}
+              <div class="lop-stat-number" style="font-size:.9rem;">—</div>
+            {% endif %}
+            <div class="lop-stat-label">Last VMware Sync</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Sync Status #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap
+            {% if stats.vmware_sync_status == 'Completed' %}bg-success-subtle text-success
+            {% elif stats.vmware_sync_status == 'Failed'  %}bg-danger-subtle text-danger
+            {% else %}bg-secondary-subtle text-secondary{% endif %}">
+            <i class="bi bi-{% if stats.vmware_sync_status == 'Completed' %}check-lg{% elif stats.vmware_sync_status == 'Failed' %}exclamation-triangle{% else %}dash{% endif %} fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number" style="font-size:.9rem;">{{ stats.vmware_sync_status }}</div>
+            <div class="lop-stat-label">VMware Sync Status</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# /vmware row #}
+  {% endif %}
+
   {# ── Row 3: Location Summary + Patch Status ───────────────────────────── #}
   <div class="row g-3">
 

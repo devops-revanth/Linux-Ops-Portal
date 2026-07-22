@@ -48,6 +48,7 @@ def index():
     location_id = request.args.get("location_id", type=int)
     env_id      = request.args.get("env_id",      type=int)
     status      = request.args.get("status",      "").strip()
+    source      = request.args.get("source",      "").strip()
     sort        = request.args.get("sort",  DEFAULT_SORT)
     order       = request.args.get("order", DEFAULT_ORDER)
     page        = request.args.get("page",  1, type=int)
@@ -56,12 +57,15 @@ def index():
         order = DEFAULT_ORDER
     if page < 1:
         page = 1
+    if source not in ("", "manual", "vmware", "ansible"):
+        source = ""
 
     filters = InventoryFilters(
         search=search,
         location_id=location_id,
         env_id=env_id,
         status=status,
+        source=source,
         sort=sort,
         order=order,
     )

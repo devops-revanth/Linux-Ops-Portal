@@ -569,6 +569,74 @@
         </div>
       </div>
 
+      {# VMware Section (only shown for VMware-imported servers) #}
+      {% if server.vmware_meta %}
+        {% set vm = server.vmware_meta %}
+        <p class="lop-section-title mt-3"><i class="bi bi-hdd-network me-1 text-info"></i>VMware</p>
+        <div class="lop-field-group">
+          <div class="lop-field">
+            <span class="lop-field-label">vCenter</span>
+            <span class="lop-field-value lop-meta-mono {% if not vm.vcenter_host %}lop-field-empty{% endif %}"
+                  style="font-size:.82rem;">{{ vm.vcenter_host or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Datacenter</span>
+            <span class="lop-field-value {% if not vm.datacenter %}lop-field-empty{% endif %}">{{ vm.datacenter or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Cluster</span>
+            <span class="lop-field-value {% if not vm.cluster %}lop-field-empty{% endif %}">{{ vm.cluster or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">ESXi Host</span>
+            <span class="lop-field-value lop-meta-mono {% if not vm.esxi_host %}lop-field-empty{% endif %}"
+                  style="font-size:.82rem;">{{ vm.esxi_host or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Datastore</span>
+            <span class="lop-field-value {% if not vm.datastore %}lop-field-empty{% endif %}">{{ vm.datastore or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Folder</span>
+            <span class="lop-field-value text-secondary {% if not vm.folder %}lop-field-empty{% endif %}"
+                  style="font-size:.82rem;">{{ vm.folder or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Power State</span>
+            <span class="lop-field-value">
+              {% if vm.power_state == 'poweredOn' %}
+                <span class="lop-dot-badge"><span class="lop-dot-circle lop-dot-green"></span>Powered On</span>
+              {% elif vm.power_state == 'poweredOff' %}
+                <span class="lop-dot-badge"><span class="lop-dot-circle lop-dot-gray"></span>Powered Off</span>
+              {% elif vm.power_state %}
+                <span class="text-secondary small">{{ vm.power_state }}</span>
+              {% else %}
+                <span class="lop-field-empty">—</span>
+              {% endif %}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">VM UUID</span>
+            <span class="lop-field-value lop-meta-mono {% if not vm.vm_uuid %}lop-field-empty{% endif %}"
+                  style="font-size:.75rem;">{{ vm.vm_uuid or '—' }}</span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">VMware Tools</span>
+            <span class="lop-field-value {% if not vm.tools_status %}lop-field-empty{% endif %}">
+              {{ vm.tools_status or '—' }}
+              {% if vm.tools_version %}<span class="text-secondary ms-1" style="font-size:.8rem;">v{{ vm.tools_version }}</span>{% endif %}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Last VMware Sync</span>
+            <span class="lop-field-value text-secondary" style="font-size:.82rem;">
+              {% if vm.last_synced_at %}{{ vm.last_synced_at | lop_ts }}
+              {% else %}<span class="lop-field-empty">Never</span>{% endif %}
+            </span>
+          </div>
+        </div>
+      {% endif %}
+
     </div>{# /overview #}
 
     {# ══════════════════════════════════ Patching Tab ══════════════════════ #}

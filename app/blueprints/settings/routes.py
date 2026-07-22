@@ -61,6 +61,23 @@ def _get_localization_config():
         return None
 
 
+def _get_vmware_config():
+    """Load VmwareConfig safely (returns None if table not yet migrated)."""
+    try:
+        from ...models.vmware_config import VmwareConfig
+        return VmwareConfig.get()
+    except Exception:
+        return None
+
+
+def _get_vmware_schedule_choices():
+    try:
+        from ...models.vmware_config import SYNC_SCHEDULE_CHOICES
+        return SYNC_SCHEDULE_CHOICES
+    except Exception:
+        return []
+
+
 def _render_settings(new_token: str | None = None):
     data = get_settings_data()
     compliance_cfg = _get_compliance_config()
@@ -83,6 +100,8 @@ def _render_settings(new_token: str | None = None):
         timezone_choices    = TIMEZONE_CHOICES,
         date_format_choices = DATE_FORMAT_CHOICES,
         time_format_choices = TIME_FORMAT_CHOICES,
+        vmware_cfg          = _get_vmware_config(),
+        vmware_sync_schedules = _get_vmware_schedule_choices(),
         app_name    = current_app.config["APP_NAME"],
         app_version = current_app.config["APP_VERSION"],
         app_base_url = current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),

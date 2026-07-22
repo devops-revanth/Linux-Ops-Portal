@@ -45,6 +45,20 @@ class Server(db.Model):
     ram_gb: float = db.Column(db.Float, nullable=True)
 
     # ------------------------------------------------------------------ #
+    # Source tracking
+    # ------------------------------------------------------------------ #
+    source: str = db.Column(
+        db.String(20),
+        nullable=False,
+        default="manual",
+        server_default="manual",
+    )  # manual | vmware | ansible
+    vmware_vm_uuid: str = db.Column(
+        db.String(36), nullable=True, index=True,
+        comment="VMware VM UUID for deduplication"
+    )
+
+    # ------------------------------------------------------------------ #
     # Status (manually set)
     # ------------------------------------------------------------------ #
     status: str = db.Column(
@@ -83,6 +97,9 @@ class Server(db.Model):
     )
     notes = db.relationship(
         "Note", back_populates="server", cascade="all, delete-orphan", order_by="Note.created_at.desc()"
+    )
+    vmware_meta = db.relationship(
+        "VmwareServerMeta", back_populates="server", uselist=False, cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
