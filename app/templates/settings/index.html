@@ -1132,7 +1132,7 @@
       </p>
       {% endif %}
 
-      {# ── Action buttons (Validate + Discover) ─────────────────────────── #}
+      {# ── Action buttons (Validate + Discover + Collect Facts) ────────────── #}
       {% if ansible_cfg and ansible_cfg.enabled and ansible_cfg.connection_status == 'Connected' %}
       <div class="d-flex gap-2 mb-3 flex-wrap">
         <button type="button" class="btn btn-sm btn-outline-primary"
@@ -1143,7 +1143,42 @@
                 onclick="ansibleDiscover()">
           <i class="bi bi-search me-1"></i>Discover Playbooks
         </button>
+        <button type="button" class="btn btn-sm btn-outline-success" id="ansible-collect-btn"
+                onclick="ansibleCollectFacts()">
+          <i class="bi bi-cloud-download me-1"></i>Collect Facts Now
+        </button>
         <span id="ansible-action-status" class="text-secondary small align-self-center ms-2" style="font-size:.82rem;"></span>
+      </div>
+
+      {# ── Last fact sync status ───────────────────────────────────────────── #}
+      {% if ansible_cfg.last_fact_sync_at %}
+      <div class="border border-secondary rounded p-2 mb-3 d-flex gap-4 flex-wrap" style="font-size:.82rem;">
+        <div>
+          <span class="text-secondary">Last Fact Sync</span><br>
+          <strong>{{ ansible_cfg.last_fact_sync_at | lop_ts }}</strong>
+        </div>
+        <div>
+          <span class="text-secondary">Status</span><br>
+          {% set st = ansible_cfg.last_fact_sync_status %}
+          <span class="badge
+            {% if st == 'completed' %}bg-success
+            {% elif st == 'partial' %}bg-warning text-dark
+            {% elif st == 'failed' %}bg-danger
+            {% elif st == 'running' %}bg-info text-dark
+            {% else %}bg-secondary{% endif %}">
+            {{ st | title if st else '—' }}
+          </span>
+        </div>
+        <div>
+          <span class="text-secondary">Servers OK&nbsp;/&nbsp;Failed</span><br>
+          <strong>{{ ansible_cfg.last_fact_sync_ok or 0 }}&nbsp;/&nbsp;{{ ansible_cfg.last_fact_sync_failed or 0 }}</strong>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Fact collection live result ─────────────────────────────────────── #}
+      <div id="ansible-collect-result" style="display:none;" class="mb-3">
+        <div id="ansible-collect-msg" class="small p-2 rounded border"></div>
       </div>
 
       {# ── Inventory validation result ────────────────────────────────────── #}
@@ -1349,6 +1384,32 @@
               </div>
             </div>
 
+            {# Scheduled Fact Collection #}
+            <hr class="border-secondary my-3">
+            <p class="fw-medium mb-2" style="font-size:.85rem;">Scheduled Fact Collection</p>
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox"
+                         id="ansible-sync-enabled" name="sync_enabled" value="1"
+                         {{ 'checked' if ansible_cfg and ansible_cfg.sync_enabled }}>
+                  <label class="form-check-label small" for="ansible-sync-enabled">
+                    Enable Scheduled Collection
+                  </label>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="ansible-sync-schedule">Collection Interval</label>
+                <select class="form-select form-select-sm" id="ansible-sync-schedule" name="sync_schedule">
+                  <option value="disabled" {{ 'selected' if not ansible_cfg or ansible_cfg.sync_schedule in ('disabled', None) }}>Disabled</option>
+                  <option value="hourly"   {{ 'selected' if ansible_cfg and ansible_cfg.sync_schedule == 'hourly' }}>Hourly</option>
+                  <option value="6h"       {{ 'selected' if ansible_cfg and ansible_cfg.sync_schedule == '6h' }}>Every 6 Hours</option>
+                  <option value="12h"      {{ 'selected' if ansible_cfg and ansible_cfg.sync_schedule == '12h' }}>Every 12 Hours</option>
+                  <option value="daily"    {{ 'selected' if ansible_cfg and ansible_cfg.sync_schedule == 'daily' }}>Daily</option>
+                </select>
+              </div>
+            </div>
+
             <div class="d-flex gap-2 pt-2">
               <button type="submit" class="btn btn-sm btn-success">
                 <i class="bi bi-floppy me-1"></i>Save Settings
@@ -1492,6 +1553,81 @@
       .catch(err => {
         if (statusEl) statusEl.textContent = '✗ Request failed: ' + err;
       });
+  }
+
+  // ── Collect Facts Now ──────────────────────────────────────────────────── //
+  function ansibleCollectFacts() {
+    var btn      = document.getElementById('ansible-collect-btn');
+    var statusEl = document.getElementById('ansible-action-status');
+    var resDiv   = document.getElementById('ansible-collect-result');
+    var msgDiv   = document.getElementById('ansible-collect-msg');
+    if (!btn || !resDiv || !msgDiv) return;
+
+    btn.disabled = true;
+    if (statusEl) statusEl.textContent = '⟳ Starting fact collection…';
+    resDiv.style.display = 'none';
+
+    var fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch('{{ url_for("ansible.collect_facts") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        resDiv.style.display = 'block';
+        if (data.success) {
+          msgDiv.className = 'small p-2 rounded border text-success border-success-subtle bg-success-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-cloud-download me-1"></i>' + data.message;
+          if (statusEl) statusEl.textContent = '⟳ Collecting facts in background…';
+          // Poll for status every 10 seconds
+          _startFactCollectionPoller(statusEl, btn);
+        } else {
+          msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle bg-danger-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>' + data.message;
+          if (statusEl) statusEl.textContent = '✗ ' + data.message;
+          btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        resDiv.style.display = 'block';
+        msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle bg-danger-subtle';
+        msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed: ' + err;
+        if (statusEl) statusEl.textContent = '✗ Request failed';
+        btn.disabled = false;
+      });
+  }
+
+  var _factPollTimer = null;
+  function _startFactCollectionPoller(statusEl, btn) {
+    var attempts = 0;
+    var maxAttempts = 36; // up to 6 minutes
+    if (_factPollTimer) clearInterval(_factPollTimer);
+    _factPollTimer = setInterval(function() {
+      attempts++;
+      fetch('{{ url_for("ansible.collect_status") }}')
+        .then(r => r.json())
+        .then(data => {
+          if (!data.running) {
+            clearInterval(_factPollTimer);
+            _factPollTimer = null;
+            if (btn) btn.disabled = false;
+            var ok = data.servers_ok || 0;
+            var failed = data.servers_failed || 0;
+            var st = data.status || 'unknown';
+            if (statusEl) statusEl.textContent =
+              '✓ Fact collection ' + st + ' — ' + ok + ' ok, ' + failed + ' failed';
+            // Refresh page to show updated stats
+            setTimeout(function() { location.reload(); }, 2000);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(_factPollTimer);
+            _factPollTimer = null;
+            if (btn) btn.disabled = false;
+            if (statusEl) statusEl.textContent = '⚠ Collection still running — refresh page for status';
+          } else {
+            if (statusEl) statusEl.textContent = '⟳ Collecting facts… (' + (attempts * 10) + 's)';
+          }
+        })
+        .catch(() => { /* silent — keep polling */ });
+    }, 10000);
   }
   </script>
 

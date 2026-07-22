@@ -38,6 +38,12 @@ class LocationCount:
 
 
 @dataclass
+class OsDistributionCount:
+    os_name: str
+    count: int
+
+
+@dataclass
 class DashboardStats:
     total_servers:        int = 0
     active_servers:       int = 0
@@ -58,6 +64,14 @@ class DashboardStats:
     ansible_inv_hosts:    int = 0
     ansible_playbooks:    int = 0
     ansible_last_valid:   datetime | None = None
+    # Ansible fact collection stats (live data)
+    ansible_synced_servers:    int = 0
+    ansible_packages_total:    int = 0
+    ansible_last_fact_sync:    datetime | None = None
+    ansible_last_sync_status:  str = ""
+    ansible_last_sync_ok:      int = 0
+    ansible_last_sync_failed:  int = 0
+    os_distribution:           list[OsDistributionCount] = field(default_factory=list)
 
 
 def get_dashboard_stats() -> DashboardStats:
@@ -197,6 +211,45 @@ def get_dashboard_stats() -> DashboardStats:
                 stats.ansible_inv_hosts  = acfg.last_inventory_hosts or 0
                 stats.ansible_playbooks  = acfg.last_playbooks_found or 0
                 stats.ansible_last_valid = acfg.last_validation_at
+                # Live fact collection stats
+                stats.ansible_last_fact_sync   = getattr(acfg, "last_fact_sync_at", None)
+                stats.ansible_last_sync_status = getattr(acfg, "last_fact_sync_status", "") or ""
+                stats.ansible_last_sync_ok     = getattr(acfg, "last_fact_sync_ok", 0) or 0
+                stats.ansible_last_sync_failed = getattr(acfg, "last_fact_sync_failed", 0) or 0
+        except Exception:
+            pass
+
+        # ── Ansible live fact stats ────────────────────────────────────
+        try:
+            from ...models.package import ServerPackage
+            stats.ansible_synced_servers = (
+                db.session.query(func.count(Server.id))
+                .filter(Server.last_ansible_sync != None)  # noqa: E711
+                .scalar() or 0
+            )
+            stats.ansible_packages_total = (
+                db.session.query(func.count(ServerPackage.id)).scalar() or 0
+            )
+        except Exception:
+            pass
+
+        # ── OS distribution breakdown ──────────────────────────────────
+        try:
+            os_rows = (
+                db.session.query(
+                    Server.operating_system,
+                    func.count(Server.id).label("cnt"),
+                )
+                .filter(Server.operating_system != None)  # noqa: E711
+                .group_by(Server.operating_system)
+                .order_by(func.count(Server.id).desc())
+                .limit(8)
+                .all()
+            )
+            stats.os_distribution = [
+                OsDistributionCount(os_name=r[0] or "Unknown", count=r[1])
+                for r in os_rows
+            ]
         except Exception:
             pass
 

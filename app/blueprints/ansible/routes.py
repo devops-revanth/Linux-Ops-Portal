@@ -9,8 +9,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from flask import jsonify, flash, redirect, request, url_for
-from flask_login import login_required
+import threading
+
+from flask import jsonify, flash, redirect, request, url_for, current_app
+from flask_login import login_required, current_user
 
 from . import ansible_bp
 from ...audit import commit_audit
@@ -24,6 +26,9 @@ from ...models.ansible_config import (
 from ...services.ansible_service import AnsibleService
 
 logger = logging.getLogger(__name__)
+
+# Thread-safe flag: True while a fact collection run is in progress
+_fact_collection_running = threading.Lock()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────── #
@@ -288,3 +293,126 @@ def discover_playbooks():
         "playbooks": playbooks,
         "errors":    errors,
     })
+
+
+# ── Collect Facts Now (AJAX) ───────────────────────────────────────────────── #
+
+@ansible_bp.route("/settings/ansible/collect", methods=["POST"])
+@login_required
+def collect_facts():
+    """
+    AJAX: trigger a full Ansible fact collection run.
+
+    Runs in a background thread so the HTTP response returns immediately.
+    Returns JSON with job_id; the client polls /collect-status for progress.
+    """
+    cfg = _get_cfg()
+    if cfg is None:
+        return jsonify({"success": False, "message": "No Ansible configuration found."})
+
+    if not cfg.enabled:
+        return jsonify({"success": False, "message": "Ansible integration is not enabled."})
+
+    if cfg.connection_status != "Connected":
+        return jsonify({
+            "success": False,
+            "message": (
+                f"Control node is not connected (status: {cfg.connection_status}). "
+                f"Test the connection in the settings form first."
+            )
+        })
+
+    # Reject if a collection is already running
+    if not _fact_collection_running.acquire(blocking=False):
+        return jsonify({
+            "success": False,
+            "message": "A fact collection is already in progress. Please wait."
+        })
+
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            from ...services.ansible_fact_service import collect_facts as _collect
+            _collect(cfg, app, triggered_by="manual")
+        except Exception as exc:
+            logger.error("Background fact collection failed: %s", exc)
+        finally:
+            _fact_collection_running.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    commit_audit(
+        "ansible.facts.collect.trigger",
+        details="triggered_by=manual (background thread started)",
+        result="success",
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Fact collection started. This may take several minutes depending on inventory size.",
+    })
+
+
+@ansible_bp.route("/settings/ansible/collect-status", methods=["GET"])
+@login_required
+def collect_status():
+    """AJAX: return the status of the last fact collection run."""
+    cfg = _get_cfg()
+    if cfg is None:
+        return jsonify({"running": False, "status": "Not Configured"})
+
+    running = not _fact_collection_running.acquire(blocking=False)
+    if not running:
+        _fact_collection_running.release()
+
+    return jsonify({
+        "running":       running,
+        "status":        getattr(cfg, "last_fact_sync_status", None) or "Never Run",
+        "last_sync_at":  (
+            cfg.last_fact_sync_at.isoformat()
+            if getattr(cfg, "last_fact_sync_at", None) else None
+        ),
+        "servers_ok":    getattr(cfg, "last_fact_sync_ok", 0) or 0,
+        "servers_failed":getattr(cfg, "last_fact_sync_failed", 0) or 0,
+    })
+
+
+# ── Save Ansible settings + reschedule ────────────────────────────────────── #
+
+@ansible_bp.route("/settings/ansible/reschedule", methods=["POST"])
+@login_required
+def save_ansible_schedule():
+    """AJAX: save the sync schedule and restart the APScheduler job."""
+    cfg = _get_cfg()
+    if cfg is None:
+        return jsonify({"success": False, "message": "No Ansible configuration found."})
+
+    sync_enabled  = request.form.get("sync_enabled") == "1"
+    sync_schedule = request.form.get("sync_schedule", "disabled")
+    valid_schedules = {"hourly", "6h", "12h", "daily", "disabled"}
+    if sync_schedule not in valid_schedules:
+        sync_schedule = "disabled"
+
+    try:
+        cfg.sync_enabled  = sync_enabled
+        cfg.sync_schedule = sync_schedule if sync_enabled else "disabled"
+        db.session.commit()
+
+        from ...scheduler import reschedule_ansible
+        reschedule_ansible(
+            current_app._get_current_object(),
+            cfg.sync_schedule,
+        )
+
+        commit_audit(
+            "ansible.schedule.save",
+            details=f"sync_enabled={sync_enabled} schedule={cfg.sync_schedule}",
+            result="success",
+        )
+        return jsonify({"success": True, "message": "Schedule saved."})
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("Failed to save Ansible schedule")
+        return jsonify({"success": False, "message": str(exc)})

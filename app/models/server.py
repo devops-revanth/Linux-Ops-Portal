@@ -44,6 +44,19 @@ class Server(db.Model):
     cpu_model: str = db.Column(db.String(255), nullable=True)
     ram_gb: float = db.Column(db.Float, nullable=True)
 
+    # ── Extended Ansible-owned fields (Phase 2 fact collection) ──────── #
+    architecture: str = db.Column(db.String(20), nullable=True)
+    swap_gb: float = db.Column(db.Float, nullable=True)
+    timezone: str = db.Column(db.String(50), nullable=True)
+    selinux_status: str = db.Column(db.String(30), nullable=True)
+    uptime_seconds: int = db.Column(db.BigInteger, nullable=True)
+    boot_time: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
+    default_gateway: str = db.Column(db.String(45), nullable=True)
+    dns_servers: str = db.Column(db.Text, nullable=True)       # comma-separated
+    primary_interface: str = db.Column(db.String(50), nullable=True)
+    mac_address: str = db.Column(db.String(20), nullable=True)
+    virtualization_type: str = db.Column(db.String(30), nullable=True)
+
     # ------------------------------------------------------------------ #
     # Source tracking
     # ------------------------------------------------------------------ #

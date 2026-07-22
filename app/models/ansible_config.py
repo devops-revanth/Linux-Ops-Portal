@@ -91,6 +91,18 @@ class AnsibleConfig(db.Model):
     last_playbooks_found: int = db.Column(db.Integer, nullable=False, default=0)
     last_validation_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # ── Scheduled fact collection ────────────────────────────────────────── #
+    sync_enabled: bool = db.Column(db.Boolean, nullable=False, default=False)
+    sync_schedule: str = db.Column(
+        db.String(20), nullable=False, default="disabled"
+    )  # hourly | 6h | 12h | daily | disabled
+
+    # ── Last fact collection run ─────────────────────────────────────────── #
+    last_fact_sync_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_fact_sync_status: str = db.Column(db.String(20), nullable=True)
+    last_fact_sync_ok: int = db.Column(db.Integer, nullable=False, default=0)
+    last_fact_sync_failed: int = db.Column(db.Integer, nullable=False, default=0)
+
     updated_at: datetime = db.Column(
         db.DateTime(timezone=True),
         nullable=False,

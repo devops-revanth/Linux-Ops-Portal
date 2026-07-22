@@ -7,3 +7,4 @@
 - [User Management module](user-management.md) — dedicated /users blueprint; NOT in Settings; LDAP users cannot reset passwords; all other CRUD available.
 - [Sprint 1 UI Polish](sprint1-ui.md) — Packages blueprint, compliance model, per-page selectors, timezone JS, inventory column renames; all tests green.
 - [Sprint 2 enterprise redesign](sprint2-redesign.md) — Packages=fleet(4 stat cards); Patching=new columns+YES/NO updates; server detail=2 pkg tabs; ComplianceConfig DB singleton; demo seeder 3 RHEL servers.
+- [Ansible Phase 2 facts](ansible-phase2-facts.md) — --tree collection; bulk DB; migration g7h8i9j0k1l2; Patching has no last_ansible_sync; no double create_index in migrations.
