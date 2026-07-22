@@ -1,3 +1,4 @@
+- [Lifecycle management framework](lifecycle-framework.md) — enterprise installer/updater/backup/health in scripts/; lop CLI; VERSION file; /health JSON expansion.
 - [FreeIPA auth architecture](freeipa-auth.md) — LDAP-first login with local fallback; sentinel password for LDAP accounts; role mapping from memberOf groups.
 - [User model extensions](user-model.md) — role, auth_source, display_name, last_login added in migration c4f7a812b3e9 (head after 811d76d3ea4d).
 - [Workflow port collision](workflow-port-collision.md) — "Linux Operations Portal" and "artifacts/api-server: LOP" both bind port 5000; only the artifact workflow should run.
