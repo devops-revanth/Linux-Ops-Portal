@@ -115,16 +115,45 @@ check_pnpm() {
     return 0
 }
 
+# check_rsync  (STRONGLY RECOMMENDED)
+# rsync is used by install.sh and update.sh for fast, atomic file syncing.
+# A cp-based fallback exists, but rsync is strongly preferred for production.
+check_rsync() {
+    if cmd_exists rsync; then
+        local ver
+        ver=$(rsync --version 2>/dev/null | head -1 | awk '{print $3}')
+        log_success "rsync: found ${ver}"
+        return 0
+    fi
+    log_warn "rsync: not found — installing (strongly recommended for installs and updates)..."
+    case "$OS_FAMILY" in
+        rhel)   pkg_install rsync ;;
+        debian) pkg_install rsync ;;
+    esac
+}
+
 # ── Required system packages for building Python C extensions ────────────────
+#
+# Notes on integration-specific dependencies:
+#   • pyVmomi  — pure Python; no system packages required beyond those below.
+#   • paramiko — pure Python; depends on the 'cryptography' package which
+#                requires libffi and openssl headers (already included below).
+#                LOP uses paramiko to SSH to an EXISTING Ansible control node.
+#                LOP does NOT install Ansible itself.
+#   • APScheduler — pure Python; no system packages required.
+#
 check_build_deps() {
     log_step "Checking build dependencies..."
     case "$OS_FAMILY" in
         rhel)
             local pkgs_needed=()
-            pkg_installed gcc          || pkgs_needed+=(gcc)
-            pkg_installed libpq-devel  || pkgs_needed+=(libpq-devel)
-            pkg_installed libffi-devel || pkgs_needed+=(libffi-devel)
+            pkg_installed gcc           || pkgs_needed+=(gcc)
+            pkg_installed libpq-devel   || pkgs_needed+=(libpq-devel)
+            pkg_installed libffi-devel  || pkgs_needed+=(libffi-devel)
             pkg_installed openssl-devel || pkgs_needed+=(openssl-devel)
+            # python3-devel provides Python C headers needed when building
+            # any extension from source (e.g. cryptography without a wheel).
+            pkg_installed python3-devel || pkgs_needed+=(python3-devel)
             if [[ ${#pkgs_needed[@]} -gt 0 ]]; then
                 log_warn "Missing build deps: ${pkgs_needed[*]} — installing..."
                 pkg_install "${pkgs_needed[@]}"
@@ -138,6 +167,10 @@ check_build_deps() {
             pkg_installed libpq-dev     || pkgs_needed+=(libpq-dev)
             pkg_installed libffi-dev    || pkgs_needed+=(libffi-dev)
             pkg_installed libssl-dev    || pkgs_needed+=(libssl-dev)
+            # python3-dev provides Python C headers for the default interpreter;
+            # version-specific headers (e.g. python3.12-dev) are installed
+            # automatically by python_install_best_available() via os.sh.
+            pkg_installed python3-dev   || pkgs_needed+=(python3-dev)
             if [[ ${#pkgs_needed[@]} -gt 0 ]]; then
                 log_warn "Missing build deps: ${pkgs_needed[*]} — installing..."
                 pkg_install "${pkgs_needed[@]}"
@@ -155,6 +188,7 @@ verify_all_deps() {
     check_git
     check_curl
     check_openssl
+    check_rsync         # strongly recommended (cp fallback available)
     check_build_deps
     check_postgres_client
     check_nodejs   # optional

@@ -225,6 +225,111 @@ check_memory() {
     fi
 }
 
+check_scheduler() {
+    # APScheduler runs embedded inside the Flask/gunicorn worker processes.
+    # It is started during app initialisation and shares the process lifetime
+    # with the backend.  If the backend API is healthy, the scheduler is up.
+    local backend_status="${RESULTS['Backend API: GET /health']:-}"
+    if [[ "$backend_status" == PASS* ]]; then
+        record "Scheduler: APScheduler" "PASS" "embedded in backend process (service is healthy)"
+    elif [[ "$backend_status" == WARN* ]]; then
+        record "Scheduler: APScheduler" "WARN" "backend is degraded — scheduler status unknown"
+    else
+        record "Scheduler: APScheduler" "FAIL" "backend is down — scheduler is not running"
+        return
+    fi
+
+    # Show the VMware sync schedule if configured (stored in the database).
+    if [[ -f "$LOP_CONF_FILE" ]] && cmd_exists psql; then
+        local db_url
+        db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
+        if [[ -n "$db_url" ]]; then
+            local sync_schedule vmware_enabled
+            # Graceful: table may not exist on very old schema versions
+            sync_schedule=$(psql -tAq "$db_url" \
+                -c "SELECT COALESCE(sync_schedule,'none') FROM vmware_config LIMIT 1;" \
+                2>/dev/null | tr -d '[:space:]' || echo "")
+            vmware_enabled=$(psql -tAq "$db_url" \
+                -c "SELECT enabled FROM vmware_config LIMIT 1;" \
+                2>/dev/null | tr -d '[:space:]' || echo "")
+            if [[ "$vmware_enabled" == "t" ]] && [[ -n "$sync_schedule" ]] && [[ "$sync_schedule" != "none" ]]; then
+                record "Scheduler: VMware sync" "PASS" "enabled — schedule=${sync_schedule}"
+            else
+                record "Scheduler: VMware sync" "PASS" "not scheduled (VMware disabled or sync_schedule=none)"
+            fi
+        fi
+    fi
+}
+
+check_integrations() {
+    # Query the database directly for integration connection status.
+    # All integration credentials are stored Fernet-encrypted in the DB;
+    # this check only reads status strings, never credential values.
+    if ! [[ -f "$LOP_CONF_FILE" ]] || ! cmd_exists psql; then
+        record "Integration: VMware" "WARN" "cannot verify — psql or config not available"
+        record "Integration: Ansible" "WARN" "cannot verify — psql or config not available"
+        return
+    fi
+
+    local db_url
+    db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
+    if [[ -z "$db_url" ]]; then
+        record "Integration: VMware" "WARN" "DATABASE_URL not set"
+        record "Integration: Ansible" "WARN" "DATABASE_URL not set"
+        return
+    fi
+
+    # ── VMware vCenter ────────────────────────────────────────────────────────
+    local vm_row
+    vm_row=$(psql -tAq "$db_url" \
+        -c "SELECT enabled::text || '|' || COALESCE(vcenter_host,'') || '|' || COALESCE(connection_status,'Not Tested') || '|' || COALESCE(last_sync_count::text,'0') FROM vmware_config LIMIT 1;" \
+        2>/dev/null | tr -d '\n' || echo "")
+
+    if [[ -z "$vm_row" ]]; then
+        record "Integration: VMware" "PASS" "not configured"
+    else
+        local vm_en vm_host vm_status vm_count
+        IFS='|' read -r vm_en vm_host vm_status vm_count <<< "$vm_row"
+        if [[ "$vm_en" == "true" ]] || [[ "$vm_en" == "t" ]]; then
+            if [[ "$vm_status" == "Connected" ]]; then
+                record "Integration: VMware" "PASS" \
+                    "Connected — host=${vm_host} imported=${vm_count} VMs"
+            else
+                record "Integration: VMware" "WARN" \
+                    "enabled but status=${vm_status} — host=${vm_host}"
+            fi
+        else
+            record "Integration: VMware" "PASS" "disabled (connection_status=${vm_status})"
+        fi
+    fi
+
+    # ── Ansible control node ──────────────────────────────────────────────────
+    local an_row
+    an_row=$(psql -tAq "$db_url" \
+        -c "SELECT enabled::text || '|' || COALESCE(control_node,'') || '|' || COALESCE(connection_status,'Not Tested') || '|' || COALESCE(last_inventory_hosts::text,'0') || '|' || COALESCE(ansible_version,'') FROM ansible_config LIMIT 1;" \
+        2>/dev/null | tr -d '\n' || echo "")
+
+    if [[ -z "$an_row" ]]; then
+        record "Integration: Ansible" "PASS" "not configured"
+    else
+        local an_en an_host an_status an_hosts an_ver
+        IFS='|' read -r an_en an_host an_status an_hosts an_ver <<< "$an_row"
+        if [[ "$an_en" == "true" ]] || [[ "$an_en" == "t" ]]; then
+            local ver_str=""
+            [[ -n "$an_ver" ]] && ver_str=" ansible=${an_ver}"
+            if [[ "$an_status" == "Connected" ]]; then
+                record "Integration: Ansible" "PASS" \
+                    "Connected — host=${an_host} inventory=${an_hosts} hosts${ver_str}"
+            else
+                record "Integration: Ansible" "WARN" \
+                    "enabled but status=${an_status} — host=${an_host}"
+            fi
+        else
+            record "Integration: Ansible" "PASS" "disabled (connection_status=${an_status})"
+        fi
+    fi
+}
+
 # ── Text output ───────────────────────────────────────────────────────────────
 print_text_report() {
     local ts
@@ -237,6 +342,8 @@ print_text_report() {
         "Service"
         "Backend API"
         "Database"
+        "Scheduler"
+        "Integration"
         "Python"
         "Version"
         "Disk"
@@ -302,6 +409,8 @@ main() {
     check_backend_api
     check_database
     check_schema_versions
+    check_scheduler
+    check_integrations
     check_python_runtime
     check_versions
     check_disk

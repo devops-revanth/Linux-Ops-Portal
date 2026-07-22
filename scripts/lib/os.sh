@@ -149,10 +149,12 @@ pg_package_names() {
 
 # python_package_name <version>
 # Echoes the correct Python package name for a given minor version.
+# Includes devel/dev headers so that C extensions can be built from source
+# when pre-built wheels are unavailable (e.g. the 'cryptography' package).
 python_package_name() {
     local minor="$1"   # e.g. "12" for 3.12
     case "$OS_FAMILY" in
-        rhel)   echo "python3.${minor}" ;;
+        rhel)   echo "python3.${minor} python3.${minor}-devel" ;;
         debian) echo "python3.${minor} python3.${minor}-venv python3.${minor}-dev" ;;
     esac
 }

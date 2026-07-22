@@ -220,6 +220,88 @@ main() {
             && cat "$LOP_CHECKSUMS_DIR/alembic_head.txt" || echo "(not found)"
     } > "$work_dir/update_state.txt" 2>&1
 
+    # ── 14. Integration & scheduler status ───────────────────────────────────
+    # Queries integration config from the database (status strings only —
+    # all credentials are Fernet-encrypted in the DB and are NOT included here).
+    {
+        # Load env so we can get DATABASE_URL
+        if [[ -f "$LOP_CONF_FILE" ]]; then
+            set -a; source "$LOP_CONF_FILE"; set +a 2>/dev/null || true
+        fi
+        local _db_url
+        _db_url="${DATABASE_URL:-}"
+
+        echo "=== Scheduler (APScheduler — embedded in Flask/gunicorn) ==="
+        if cmd_exists systemctl; then
+            if systemctl is-active --quiet lop-backend 2>/dev/null; then
+                echo "APScheduler: RUNNING (backend service is active)"
+            else
+                echo "APScheduler: NOT RUNNING (backend service is inactive)"
+            fi
+        else
+            echo "APScheduler: unknown (systemctl not available)"
+        fi
+
+        echo ""
+        echo "=== VMware vCenter Integration ==="
+        if cmd_exists psql && [[ -n "$_db_url" ]]; then
+            psql -tA "$_db_url" 2>/dev/null <<'EOSQL' || echo "(table not found — migration may be pending)"
+SELECT
+  'enabled:          ' || enabled::text,
+  'vcenter_host:     ' || COALESCE(vcenter_host, '(not set)'),
+  'connection_status:' || COALESCE(connection_status, 'Not Tested'),
+  'sync_schedule:    ' || COALESCE(sync_schedule, 'none'),
+  'last_sync_at:     ' || COALESCE(last_sync_at::text, 'never'),
+  'last_sync_count:  ' || COALESCE(last_sync_count::text, '0') || ' VMs',
+  'last_sync_status: ' || COALESCE(last_sync_status, '—')
+FROM vmware_config
+LIMIT 1;
+EOSQL
+        else
+            echo "(psql not available or DATABASE_URL not set)"
+        fi
+
+        echo ""
+        echo "=== Ansible Integration ==="
+        if cmd_exists psql && [[ -n "$_db_url" ]]; then
+            psql -tA "$_db_url" 2>/dev/null <<'EOSQL' || echo "(table not found — migration may be pending)"
+SELECT
+  'enabled:             ' || enabled::text,
+  'control_node:        ' || COALESCE(control_node, '(not set)'),
+  'port:                ' || port::text,
+  'auth_method:         ' || COALESCE(auth_method, '—'),
+  'connection_status:   ' || COALESCE(connection_status, 'Not Tested'),
+  'ansible_version:     ' || COALESCE(ansible_version, '—'),
+  'python_version:      ' || COALESCE(python_version, '—'),
+  'last_inventory_hosts:' || last_inventory_hosts::text,
+  'last_playbooks_found:' || last_playbooks_found::text,
+  'last_connected_at:   ' || COALESCE(last_connected_at::text, 'never'),
+  'last_validation_at:  ' || COALESCE(last_validation_at::text, 'never')
+FROM ansible_config
+LIMIT 1;
+EOSQL
+        else
+            echo "(psql not available or DATABASE_URL not set)"
+        fi
+
+        echo ""
+        echo "=== FreeIPA / LDAP Integration ==="
+        if cmd_exists psql && [[ -n "$_db_url" ]]; then
+            psql -tA "$_db_url" 2>/dev/null <<'EOSQL' || echo "(table not found)"
+SELECT
+  'enabled:           ' || enabled::text,
+  'ldap_uri:          ' || COALESCE(ldap_uri, '(not set)'),
+  'connection_status: ' || COALESCE(connection_status, 'Not Tested'),
+  'last_connected_at: ' || COALESCE(last_connected_at::text, 'never')
+FROM directory_config
+LIMIT 1;
+EOSQL
+        else
+            echo "(psql not available or DATABASE_URL not set)"
+        fi
+
+    } > "$work_dir/integrations.txt" 2>&1
+
     # ── Create archive ────────────────────────────────────────────────────────
     mkdir -p "$OUTPUT_DIR"
     tar -czf "$archive" -C "$LOP_TMP_DIR" "$bundle_name" 2>/dev/null \
@@ -246,6 +328,7 @@ main() {
     printf "  network.txt           — ports and health check\n"
     printf "  config_masked.txt     — configuration (secrets masked)\n"
     printf "  update_state.txt      — checksum/update state\n"
+    printf "  integrations.txt      — VMware, Ansible, LDAP integration status (no credentials)\n"
     printf "\nShare this file when requesting support.\n\n"
 }
 
