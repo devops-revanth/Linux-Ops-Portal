@@ -292,7 +292,7 @@
               <td>{% if srv.operating_system %}{{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>{% include "reports/_status_badge.html" %}</td>
-              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
             </tr>
             {% endfor %}
           {% else %}

@@ -205,11 +205,11 @@
               <td>{% include "reports/_status_badge.html" %}</td>
               <td>
                 {% if srv.last_ansible_sync %}
-                  <span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}</span>
+                  <span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
               <td>
-                <span class="text-secondary" style="font-size:.82rem;">{{ srv.created_at.strftime('%Y-%m-%d') }}</span>
+                <span class="text-secondary" style="font-size:.82rem;">{{ srv.created_at | lop_ts(date_only=True) }}</span>
               </td>
             </tr>
             {% endfor %}

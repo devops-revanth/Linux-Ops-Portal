@@ -165,7 +165,7 @@
               <td>
                 {% if srv.last_ansible_sync %}
                   <span class="text-secondary" style="font-size:.82rem;">
-                    {{ srv.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}
+                    {{ srv.last_ansible_sync | lop_ts }}
                   </span>
                 {% else %}
                   <span class="badge bg-warning-subtle text-warning border border-warning-subtle">

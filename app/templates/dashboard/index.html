@@ -27,7 +27,7 @@
       {% if stats.last_ansible_sync %}
         <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-2">
           <i class="bi bi-arrow-repeat me-1"></i>
-          Last sync: <span data-utc="{{ stats.last_ansible_sync.isoformat() }}">{{ stats.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}</span>
+          Last sync: {{ stats.last_ansible_sync | lop_ts }}
         </span>
       {% else %}
         <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-2">
@@ -88,13 +88,11 @@
           <div>
             <div class="text-secondary small fw-medium">Last Inventory Sync</div>
             {% if stats.last_ansible_sync %}
-              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;"
-                   data-utc="{{ stats.last_ansible_sync.isoformat() }}">
-                {{ stats.last_ansible_sync.strftime('%b %d, %Y') }}
+              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;">
+                {{ stats.last_ansible_sync | lop_ts }}
               </div>
               <div class="text-secondary" style="font-size: .75rem;">
-                <span data-utc="{{ stats.last_ansible_sync.isoformat() }}"
-                      style="display:none;"></span>{{ stats.last_ansible_sync.strftime('%H:%M') }} local
+                {{ lop_tz }}
               </div>
             {% else %}
               <div class="lop-stat-number text-secondary" style="font-size: 1.1rem;">

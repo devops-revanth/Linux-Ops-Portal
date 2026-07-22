@@ -197,9 +197,9 @@
                   <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{{ p.pending_updates }}</span>
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>{% if p and p.last_patch_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_patch_date.strftime('%Y-%m-%d') }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if p and p.last_reboot_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_reboot_date.strftime('%Y-%m-%d') }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% if p and p.last_patch_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_patch_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% if p and p.last_reboot_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_reboot_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
             </tr>
             {% endfor %}

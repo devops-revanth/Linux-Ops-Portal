@@ -309,7 +309,7 @@
               <div class="small text-secondary mb-1">Last Successful Connection</div>
               <div class="fw-semibold small">
                 {% if dir_config.last_connected_at %}
-                  {{ dir_config.last_connected_at.strftime('%Y-%m-%d %H:%M') }}
+                  {{ dir_config.last_connected_at | lop_ts }}
                 {% else %}
                   <span class="text-secondary">Never tested</span>
                 {% endif %}
@@ -635,7 +635,54 @@
           </button>
           {% if compliance_cfg and compliance_cfg.updated_at %}
           <span class="text-secondary" style="font-size:.75rem;">
-            Last updated {{ compliance_cfg.updated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            Last updated {{ compliance_cfg.updated_at | lop_ts }}
+          </span>
+          {% endif %}
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  {# ══════════════════════════════ LOCALIZATION ════════════════════════════ #}
+  <div class="card border-0 mb-4" id="localization">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-globe me-2 text-primary"></i>Localization
+      </h6>
+    </div>
+    <div class="card-body">
+
+      <p class="text-secondary small mb-3">
+        All timestamps are stored in UTC. Choose the timezone used to display
+        dates and times across the portal.
+      </p>
+
+      <form method="POST" action="{{ url_for('settings.save_localization_route') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3" style="max-width: 420px;">
+          <label class="form-label fw-medium" for="tz_select">Display Timezone</label>
+          <select class="form-select form-select-sm" id="tz_select" name="timezone">
+            {% for tz in timezone_choices %}
+              <option value="{{ tz }}"
+                {% if localization_cfg and localization_cfg.timezone == tz %}selected{% endif %}>
+                {{ tz }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-text text-secondary" style="font-size:.75rem;">
+            IANA timezone name — e.g. <code>America/Chicago</code> or <code>UTC</code>.
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-floppy me-1"></i>Save Timezone
+          </button>
+          {% if localization_cfg %}
+          <span class="text-secondary" style="font-size:.75rem;">
+            Current: <strong>{{ localization_cfg.timezone }}</strong>
           </span>
           {% endif %}
         </div>

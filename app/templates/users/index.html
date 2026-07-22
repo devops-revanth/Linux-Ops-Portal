@@ -180,11 +180,11 @@
                   </td>
 
                   <td class="text-secondary small d-none d-xl-table-cell">
-                    {{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else '—' }}
+                    {{ u.last_login | lop_ts if u.last_login else '—' }}
                   </td>
 
                   <td class="text-secondary small d-none d-xl-table-cell">
-                    {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}
+                    {{ u.created_at | lop_ts(date_only=True) if u.created_at else '—' }}
                   </td>
 
                   <td class="text-center">

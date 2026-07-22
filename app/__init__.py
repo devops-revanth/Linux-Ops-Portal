@@ -114,6 +114,11 @@ def create_app(config_name: str | None = None) -> Flask:
     # ------------------------------------------------------------------ #
     _register_error_handlers(app)
 
+    # ------------------------------------------------------------------ #
+    # Jinja2 filters and context processors
+    # ------------------------------------------------------------------ #
+    _register_template_helpers(app)
+
     app.logger.info(
         "LOP started  env=%s  debug=%s", config_name, app.debug
     )
@@ -124,6 +129,83 @@ def create_app(config_name: str | None = None) -> Flask:
 # --------------------------------------------------------------------------- #
 # Private helpers
 # --------------------------------------------------------------------------- #
+
+def _register_template_helpers(app: Flask) -> None:
+    """Register Jinja2 filters and context processors for timestamp display."""
+    from datetime import datetime as _dt, timezone as _utc
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # Python 3.9+
+
+    def _get_tz_name() -> str:
+        """Return the configured IANA timezone, cached on g for the request."""
+        import flask
+        name = flask.g.get("_lop_tz_name")
+        if name is None:
+            try:
+                from .models.localization_config import LocalizationConfig
+                name = LocalizationConfig.get().timezone
+            except Exception:
+                name = "UTC"
+            flask.g._lop_tz_name = name
+        return name
+
+    def _to_local(dt) -> "_dt | None":
+        """Convert a UTC-stored datetime to the configured local timezone."""
+        if not isinstance(dt, _dt):
+            return None
+        tz_name = _get_tz_name()
+        try:
+            tz = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, Exception):
+            tz = ZoneInfo("UTC")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_utc.utc)
+        return dt.astimezone(tz)
+
+    def lop_ts(dt, date_only: bool = False) -> str:
+        """
+        Format a UTC datetime using the configured application timezone.
+
+        Full:      "Jul 21, 2026 08:55 AM CDT"
+        Date only: "Jul 21, 2026"
+        """
+        local = _to_local(dt)
+        if local is None:
+            return "—"
+        if date_only:
+            return local.strftime("%b %d, %Y")
+        return local.strftime("%b %d, %Y %I:%M %p %Z")
+
+    def lop_rel(dt) -> str:
+        """Return a relative time string such as '19 days ago'."""
+        local = _to_local(dt)
+        if local is None:
+            return ""
+        diff = _dt.now(_utc.utc) - local.astimezone(_utc.utc)
+        days = diff.days
+        if days <= 0:
+            return "today"
+        if days == 1:
+            return "1 day ago"
+        if days < 30:
+            return f"{days} days ago"
+        if days < 60:
+            return "1 month ago"
+        if days < 365:
+            return f"{days // 30} months ago"
+        yrs = days // 365
+        return f"{yrs} year{'s' if yrs > 1 else ''} ago"
+
+    app.jinja_env.filters["lop_ts"]  = lop_ts
+    app.jinja_env.filters["lop_rel"] = lop_rel
+
+    @app.context_processor
+    def _inject_lop_tz():
+        """Inject lop_tz (IANA name) into every template context."""
+        try:
+            return {"lop_tz": _get_tz_name()}
+        except Exception:
+            return {"lop_tz": "UTC"}
+
 
 def _configure_logging(app: Flask) -> None:
     """

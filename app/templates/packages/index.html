@@ -439,11 +439,9 @@
               {# Last Patched #}
               <td>
                 {% if p and p.last_patch_date %}
-                  <span class="text-secondary" style="font-size:.82rem;"
-                        data-utc="{{ p.last_patch_date.isoformat() }}"
-                        data-relative="true"
-                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
+                  <span class="text-secondary" style="font-size:.82rem;">
+                    {{ p.last_patch_date | lop_ts(date_only=True) }}
+                    <br><span style="font-size:.72rem;color:var(--lop-muted);">({{ p.last_patch_date | lop_rel }})</span>
                   </span>
                 {% else %}
                   <span class="lop-na">—</span>

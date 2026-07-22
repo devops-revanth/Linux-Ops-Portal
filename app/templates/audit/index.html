@@ -174,7 +174,7 @@
                     title="Click for full details">
 
                   <td class="text-secondary small text-nowrap">
-                    {{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') if entry.created_at else '—' }}
+                    {{ entry.created_at | lop_ts if entry.created_at else '—' }}
                   </td>
 
                   <td>

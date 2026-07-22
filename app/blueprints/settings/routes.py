@@ -34,6 +34,7 @@ from ...audit import commit_audit
 from ...freeipa import FreeIPAService
 from ...models.directory_config import DIRECTORY_TYPES, DEFAULT_USER_FILTERS, DEFAULT_GROUP_FILTERS
 from ...models.ldap_group_mapping import VALID_ROLES as MAPPING_VALID_ROLES
+from ...models.localization_config import LocalizationConfig, TIMEZONE_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,14 @@ def _get_compliance_config():
     try:
         from ...models.compliance_config import ComplianceConfig
         return ComplianceConfig.get()
+    except Exception:
+        return None
+
+
+def _get_localization_config():
+    """Load LocalizationConfig safely."""
+    try:
+        return LocalizationConfig.get()
     except Exception:
         return None
 
@@ -67,6 +76,8 @@ def _render_settings(new_token: str | None = None):
         default_user_filters  = DEFAULT_USER_FILTERS,
         default_group_filters = DEFAULT_GROUP_FILTERS,
         compliance_cfg      = compliance_cfg,
+        localization_cfg    = _get_localization_config(),
+        timezone_choices    = TIMEZONE_CHOICES,
         app_name    = current_app.config["APP_NAME"],
         app_version = current_app.config["APP_VERSION"],
         app_base_url = current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),
@@ -279,6 +290,32 @@ def save_compliance_route():
         flash("An error occurred while saving compliance settings.", "danger")
 
     return redirect(url_for("settings.index") + "#patch-compliance")
+
+
+# ── Localization ──────────────────────────────────────────────────────────── #
+
+@settings_bp.route("/settings/localization/save", methods=["POST"])
+@login_required
+def save_localization_route():
+    """Save the display timezone setting."""
+    tz = request.form.get("timezone", "UTC").strip()
+    if tz not in TIMEZONE_CHOICES:
+        flash("Invalid timezone selection.", "danger")
+        return redirect(url_for("settings.index") + "#localization")
+    try:
+        from ...extensions import db as _db
+        cfg = _get_localization_config()
+        if cfg is None:
+            cfg = LocalizationConfig(timezone=tz)
+            _db.session.add(cfg)
+        else:
+            cfg.timezone = tz
+        _db.session.commit()
+        flash(f"Timezone updated to {tz}.", "success")
+        commit_audit("settings.localization.save", target=tz)
+    except Exception:
+        flash("An error occurred while saving the timezone.", "danger")
+    return redirect(url_for("settings.index") + "#localization")
 
 
 # ── Directory Services ─────────────────────────────────────────────────────── #

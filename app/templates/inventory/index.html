@@ -363,6 +363,7 @@
 
             <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
+            <th>{{ sort_link('fqdn',             'FQDN') }}</th>
             <th>{{ sort_link('ip_address',       'Management IP') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
             <th>{{ sort_link('operating_system', 'OS') }}</th>
@@ -387,9 +388,15 @@
                    class="lop-hostname-link">
                   <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
                 </a>
-                <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem; opacity:.7;">
-                  {{ srv.fqdn if srv.fqdn else 'Not Available' }}
-                </div>
+              </td>
+
+              {# FQDN #}
+              <td>
+                {% if srv.fqdn %}
+                  <span class="lop-mono" style="font-size:.82rem;">{{ srv.fqdn }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
               </td>
 
               {# IP address #}
@@ -470,7 +477,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="10">
+              <td colspan="11">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}

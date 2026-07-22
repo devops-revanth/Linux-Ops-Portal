@@ -284,25 +284,6 @@
   <!-- Portal JS -->
   <script src="{{ url_for('static', filename='js/lop.js') }}"></script>
 
-  <!-- Timezone: convert [data-utc] elements to browser local time -->
-  <script>
-  (function () {
-    "use strict";
-    document.querySelectorAll("[data-utc]").forEach(function (el) {
-      var iso = el.dataset.utc;
-      if (!iso) return;
-      try {
-        var d = new Date(iso);
-        if (isNaN(d.getTime())) return;
-        el.textContent = d.toLocaleDateString(undefined, {
-          year: "numeric", month: "2-digit", day: "2-digit"
-        });
-        el.title = d.toLocaleString();
-      } catch (e) {}
-    });
-  }());
-  </script>
-
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

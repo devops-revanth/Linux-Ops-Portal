@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Related-model columns require the join already present in the query.
 SORTABLE_COLUMNS: dict[str, object] = {
     "hostname":          Server.hostname,
+    "fqdn":              Server.fqdn,
     "ip_address":        Server.ip_address,
     "environment":       Environment.name,
     "operating_system":  Server.operating_system,
@@ -87,6 +88,7 @@ def get_inventory_page(filters: InventoryFilters, page: int, per_page: int) -> I
             q = q.filter(
                 or_(
                     Server.hostname.ilike(term),
+                    Server.fqdn.ilike(term),
                     Server.ip_address.ilike(term),
                     Owner.name.ilike(term),
                 )

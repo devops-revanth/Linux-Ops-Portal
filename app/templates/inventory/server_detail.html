@@ -349,20 +349,16 @@
           {% if server.last_ansible_sync %}
           <div class="lop-meta-item">
             <span class="lop-meta-label">Last Inventory</span>
-            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
-                  data-utc="{{ server.last_ansible_sync.isoformat() }}"
-                  title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
-              {{ server.last_ansible_sync.strftime('%Y-%m-%d') }}
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;">
+              {{ server.last_ansible_sync | lop_ts(date_only=True) }}
             </span>
           </div>
           {% endif %}
           {% if server.patching and server.patching.last_patch_date %}
           <div class="lop-meta-item">
             <span class="lop-meta-label">Last Patch</span>
-            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
-                  data-utc="{{ server.patching.last_patch_date.isoformat() }}"
-                  title="{{ server.patching.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-              {{ server.patching.last_patch_date.strftime('%Y-%m-%d') }}
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;">
+              {{ server.patching.last_patch_date | lop_ts(date_only=True) }}
             </span>
           </div>
           {% endif %}
@@ -386,10 +382,7 @@
         {% if server.last_ansible_sync %}
         <span class="lop-sync-badge align-self-center">
           <i class="bi bi-arrow-repeat me-1"></i>
-          Synced <span data-utc="{{ server.last_ansible_sync.isoformat() }}"
-                       title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
-            {{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}
-          </span>
+          Synced {{ server.last_ansible_sync | lop_ts }}
         </span>
         {% endif %}
         <span data-bs-toggle="tooltip" title="Edit server details">
@@ -521,19 +514,19 @@
         <div class="lop-field">
           <span class="lop-field-label">Added</span>
           <span class="lop-field-value text-secondary" style="font-size:.82rem;">
-            {{ server.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+            {{ server.created_at | lop_ts }}
           </span>
         </div>
         <div class="lop-field">
           <span class="lop-field-label">Last Updated</span>
           <span class="lop-field-value text-secondary" style="font-size:.82rem;">
-            {{ server.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
+            {{ server.updated_at | lop_ts }}
           </span>
         </div>
         <div class="lop-field">
           <span class="lop-field-label">Last Ansible Sync</span>
           <span class="lop-field-value text-secondary" style="font-size:.82rem;">
-            {% if server.last_ansible_sync %}{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+            {% if server.last_ansible_sync %}{{ server.last_ansible_sync | lop_ts }}
             {% else %}<span class="lop-field-empty">Never</span>{% endif %}
           </span>
         </div>
@@ -637,7 +630,7 @@
             <thead>
               <tr>
                 <th>Event</th>
-                <th>Date / Time (UTC)</th>
+                <th>Date / Time ({{ lop_tz }})</th>
               </tr>
             </thead>
             <tbody>
@@ -645,7 +638,7 @@
                 <td><i class="bi bi-shield-check me-2 text-secondary"></i>Last Patch Applied</td>
                 <td>
                   {% if p.last_patch_date %}
-                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M') }}</span>
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_patch_date | lop_ts }}</span>
                   {% else %}
                     <span class="lop-field-empty">Never recorded</span>
                   {% endif %}
@@ -655,7 +648,7 @@
                 <td><i class="bi bi-arrow-counterclockwise me-2 text-secondary"></i>Last Reboot</td>
                 <td>
                   {% if p.last_reboot_date %}
-                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M') }}</span>
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.last_reboot_date | lop_ts }}</span>
                   {% else %}
                     <span class="lop-field-empty">Never recorded</span>
                   {% endif %}
@@ -665,7 +658,7 @@
                 <td><i class="bi bi-arrow-repeat me-2 text-secondary"></i>Last Inventory Sync</td>
                 <td>
                   {% if server.last_ansible_sync %}
-                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}</span>
+                    <span class="lop-meta-mono" style="font-size:.82rem;">{{ server.last_ansible_sync | lop_ts }}</span>
                   {% else %}
                     <span class="lop-field-empty">Never synced</span>
                   {% endif %}
@@ -674,7 +667,7 @@
               <tr>
                 <td><i class="bi bi-clock me-2 text-secondary"></i>Patching Record Updated</td>
                 <td>
-                  <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.updated_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                  <span class="lop-meta-mono" style="font-size:.82rem;">{{ p.updated_at | lop_ts }}</span>
                 </td>
               </tr>
             </tbody>
@@ -824,10 +817,8 @@
                 </td>
                 <td>
                   {% if sp.collected_at %}
-                    <span class="text-secondary" style="font-size:.78rem;"
-                          data-utc="{{ sp.collected_at.isoformat() }}"
-                          title="{{ sp.collected_at.strftime('%Y-%m-%d %H:%M UTC') }}">
-                      {{ sp.collected_at.strftime('%Y-%m-%d') }}
+                    <span class="text-secondary" style="font-size:.78rem;">
+                      {{ sp.collected_at | lop_ts(date_only=True) }}
                     </span>
                   {% else %}
                     <span class="text-secondary">—</span>
@@ -918,9 +909,9 @@
             <i class="bi bi-person-circle"></i>
             <span>{{ note.author or 'Anonymous' }}</span>
             <span class="text-secondary">·</span>
-            <span>{{ note.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+            <span>{{ note.created_at | lop_ts }}</span>
             {% if note.updated_at != note.created_at %}
-              <span class="text-secondary">(edited {{ note.updated_at.strftime('%Y-%m-%d %H:%M') }})</span>
+              <span class="text-secondary">(edited {{ note.updated_at | lop_ts }})</span>
             {% endif %}
             <form method="POST"
                   action="{{ url_for('inventory.delete_note', server_id=server.id, note_id=note.id) }}"
