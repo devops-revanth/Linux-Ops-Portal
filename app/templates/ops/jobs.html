@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Ansible Jobs | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.catalog') }}">Ansible</a></li>
+    <li class="breadcrumb-item active">Jobs</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ops-nav-tabs .nav-link { color: var(--lop-muted); border-bottom: 2px solid transparent; padding: .45rem .9rem; font-size: .85rem; }
+  .ops-nav-tabs .nav-link:hover { color: var(--lop-text); }
+  .ops-nav-tabs .nav-link.active { color: var(--lop-text); border-bottom-color: var(--bs-primary); background: transparent; }
+  .job-status-running   { color: #58a6ff; }
+  .job-status-pending   { color: #8b949e; }
+  .job-status-completed { color: #3fb950; }
+  .job-status-failed    { color: #f85149; }
+  .job-status-cancelled { color: #8b949e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-4">
+
+  {# ── Module tab bar ────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <ul class="nav ops-nav-tabs">
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.catalog') }}"><i class="bi bi-grid-3x3-gap me-1"></i>Playbooks</a></li>
+      <li class="nav-item"><a class="nav-link active" href="{{ url_for('ops.jobs') }}"><i class="bi bi-play-circle me-1"></i>Jobs</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.templates') }}"><i class="bi bi-bookmark me-1"></i>Templates</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.schedules') }}"><i class="bi bi-calendar-check me-1"></i>Schedules</a></li>
+    </ul>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('ops.catalog') }}" class="btn btn-sm btn-primary">
+        <i class="bi bi-play me-1"></i>Launch Playbook
+      </a>
+    </div>
+  </div>
+
+  {# ── Status filter tabs ─────────────────────────────────────────────────── #}
+  <div class="card lop-card mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="d-flex gap-1">
+          {% for st, label, cls in [
+            ('', 'All', 'secondary'),
+            ('running',   'Running',   'primary'),
+            ('pending',   'Pending',   'secondary'),
+            ('completed', 'Completed', 'success'),
+            ('failed',    'Failed',    'danger'),
+            ('cancelled', 'Cancelled', 'secondary'),
+          ] %}
+          <a href="{{ url_for('ops.jobs', status=st, q=search) }}"
+             class="btn btn-sm {% if status_filter == st %}btn-{{ cls }}{% else %}btn-outline-{{ cls }}{% endif %}">
+            {{ label }}
+            {% if st and status_counts.get(st, 0) > 0 %}
+            <span class="badge bg-{{ cls }} bg-opacity-50 ms-1">{{ status_counts[st] }}</span>
+            {% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        <form method="GET" class="d-flex gap-2 ms-auto">
+          <input type="hidden" name="status" value="{{ status_filter }}">
+          <div class="input-group input-group-sm" style="max-width:220px;">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="search" name="q" class="form-control" placeholder="Search jobs…" value="{{ search }}">
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Go</button>
+          {% if search or status_filter %}
+          <a href="{{ url_for('ops.jobs') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── Jobs table ─────────────────────────────────────────────────────────── #}
+  <div class="card lop-card">
+    {% if not jobs %}
+    <div class="card-body text-center py-5 text-secondary">
+      <i class="bi bi-play-circle fs-1 d-block mb-3 opacity-25"></i>
+      No jobs found. <a href="{{ url_for('ops.catalog') }}">Launch a playbook</a> to get started.
+    </div>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table lop-table mb-0">
+        <thead>
+          <tr>
+            <th style="width:60px;">#</th>
+            <th>Playbook</th>
+            <th>Started By</th>
+            <th>Started</th>
+            <th>Duration</th>
+            <th>Target</th>
+            <th class="text-center">Status</th>
+            <th class="text-end pe-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr>
+            <td class="text-secondary lop-mono small">{{ job.id }}</td>
+            <td>
+              <a href="{{ url_for('ops.job_detail', job_id=job.id) }}" class="fw-medium text-decoration-none">
+                {{ job.playbook_name or job.playbook_path.rsplit('/', 1)[-1] }}
+              </a>
+              {% if job.check_mode %}
+              <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">DRY RUN</span>
+              {% endif %}
+            </td>
+            <td class="text-secondary small">{{ job.triggered_by or '—' }}</td>
+            <td class="text-secondary small">
+              {% if job.started_at %}{{ job.started_at | lop_dt }}
+              {% elif job.created_at %}{{ job.created_at | lop_dt }}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-secondary small">
+              {% if job.duration_seconds is not none %}
+                {% set d = job.duration_seconds %}
+                {% if d >= 3600 %}{{ (d // 3600) }}h {{ ((d % 3600) // 60) }}m
+                {% elif d >= 60 %}{{ (d // 60) }}m {{ (d % 60) }}s
+                {% else %}{{ d }}s{% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-secondary small lop-mono">
+              {{ (job.limit_expression or 'All hosts') | truncate(30) }}
+            </td>
+            <td class="text-center">
+              {% set sc = {'running': 'primary', 'pending': 'secondary', 'completed': 'success', 'failed': 'danger', 'cancelled': 'secondary'} %}
+              {% set si = {'running': 'bi-arrow-repeat', 'pending': 'bi-hourglass', 'completed': 'bi-check-circle-fill', 'failed': 'bi-x-circle-fill', 'cancelled': 'bi-dash-circle'} %}
+              <span class="badge bg-{{ sc.get(job.status, 'secondary') }}">
+                <i class="bi {{ si.get(job.status, 'bi-circle') }} me-1{% if job.status == 'running' %} lop-spin{% endif %}"></i>
+                {{ job.status | title }}
+              </span>
+            </td>
+            <td class="text-end pe-3">
+              <div class="d-flex gap-1 justify-content-end">
+                <a href="{{ url_for('ops.job_detail', job_id=job.id) }}"
+                   class="btn btn-xs btn-outline-secondary" title="View">
+                  <i class="bi bi-eye"></i>
+                </a>
+                {% if job.status in ('running', 'pending') %}
+                <button class="btn btn-xs btn-outline-danger" title="Cancel"
+                        onclick="cancelJob({{ job.id }}, this)">
+                  <i class="bi bi-stop-circle"></i>
+                </button>
+                {% endif %}
+                <a href="{{ url_for('ops.job_download', job_id=job.id) }}"
+                   class="btn btn-xs btn-outline-secondary" title="Download log">
+                  <i class="bi bi-download"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Pagination #}
+    {% if total_pages > 1 %}
+    <div class="card-footer border-top border-secondary d-flex align-items-center justify-content-between py-2 px-3">
+      <span class="text-secondary small">{{ total }} jobs</span>
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% for p in range(1, total_pages + 1) %}
+          <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('ops.jobs', page=p, status=status_filter, q=search) }}">{{ p }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+  <div id="cancelToast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="cancelToastMsg">Job cancelled.</div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+function cancelJob(id, btn) {
+  if (!confirm('Cancel job #' + id + '?')) return;
+  btn.disabled = true;
+  fetch('/ansible/jobs/' + id + '/cancel', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    var t = new bootstrap.Toast(document.getElementById('cancelToast'), {delay:3000});
+    document.getElementById('cancelToastMsg').textContent = data.message;
+    document.getElementById('cancelToast').className =
+      'toast align-items-center border-0 text-bg-' + (data.success ? 'success' : 'danger');
+    t.show();
+    if (data.success) setTimeout(() => location.reload(), 1500);
+    else btn.disabled = false;
+  }).catch(err => { btn.disabled = false; alert(err); });
+}
+
+// Auto-refresh page if any jobs are running
+{% if status_counts.running > 0 or status_counts.pending > 0 %}
+setTimeout(() => location.reload(), 10000);
+{% endif %}
+</script>
+{% endblock %}

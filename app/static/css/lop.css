@@ -346,3 +346,38 @@ html, body {
     padding-right: 1rem;
   }
 }
+
+/* ── Ops / Ansible workspace utilities ─────────────────── */
+.btn-xs {
+  padding: .15rem .45rem;
+  font-size: .72rem;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+@keyframes lop-spin-anim {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.lop-spin {
+  display: inline-block;
+  animation: lop-spin-anim .75s linear infinite;
+}
+
+@keyframes lop-pulse-anim {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .3; }
+}
+.lop-pulse {
+  animation: lop-pulse-anim 1.2s ease-in-out infinite;
+}
+
+/* ── ANSI output terminal helpers ──────────────────────── */
+.ansi-ok          { color: #3fb950; }
+.ansi-changed     { color: #e3b341; }
+.ansi-failed      { color: #f85149; }
+.ansi-skipped     { color: #8b949e; }
+.ansi-unreachable { color: #ff7b72; }
+.ansi-play        { color: #79c0ff; font-weight: 700; }
+.ansi-task        { color: #a5d6ff; }
+.ansi-recap       { color: #d2a8ff; font-weight: 700; }

@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Schedules | Ansible | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.catalog') }}">Ansible</a></li>
+    <li class="breadcrumb-item active">Schedules</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ops-nav-tabs .nav-link { color: var(--lop-muted); border-bottom: 2px solid transparent; padding: .45rem .9rem; font-size: .85rem; }
+  .ops-nav-tabs .nav-link:hover { color: var(--lop-text); }
+  .ops-nav-tabs .nav-link.active { color: var(--lop-text); border-bottom-color: var(--bs-primary); background: transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <ul class="nav ops-nav-tabs">
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.catalog') }}"><i class="bi bi-grid-3x3-gap me-1"></i>Playbooks</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.jobs') }}"><i class="bi bi-play-circle me-1"></i>Jobs</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.templates') }}"><i class="bi bi-bookmark me-1"></i>Templates</a></li>
+      <li class="nav-item"><a class="nav-link active" href="{{ url_for('ops.schedules') }}"><i class="bi bi-calendar-check me-1"></i>Schedules</a></li>
+    </ul>
+    <button class="btn btn-sm btn-primary" onclick="openScheduleModal()">
+      <i class="bi bi-plus me-1"></i>New Schedule
+    </button>
+  </div>
+
+  {% if not templates %}
+  <div class="alert alert-secondary py-2 px-3 small mb-3">
+    <i class="bi bi-info-circle me-2"></i>Create a <a href="{{ url_for('ops.templates') }}">job template</a> first before scheduling.
+  </div>
+  {% endif %}
+
+  <div class="card lop-card">
+    {% if not schedules %}
+    <div class="card-body text-center py-5 text-secondary">
+      <i class="bi bi-calendar-check fs-1 d-block mb-3 opacity-25"></i>
+      <p class="mb-0">No schedules configured.</p>
+      <p class="small">Schedule a job template to run automatically on a recurring basis.</p>
+      {% if templates %}
+      <button class="btn btn-sm btn-outline-primary mt-1" onclick="openScheduleModal()">
+        <i class="bi bi-plus me-1"></i>Create Schedule
+      </button>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table lop-table mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Template</th>
+            <th>Schedule</th>
+            <th>Last Run</th>
+            <th>Next Run</th>
+            <th class="text-center">Enabled</th>
+            <th class="text-end pe-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in schedules %}
+          <tr class="{% if not s.is_enabled %}opacity-50{% endif %}">
+            <td class="fw-medium">{{ s.name }}</td>
+            <td class="text-secondary small">{{ s.template.name if s.template else '—' }}</td>
+            <td class="small">
+              {% if s.schedule_type == 'cron' %}
+              <span class="lop-mono">{{ s.cron_expression or '—' }}</span>
+              {% else %}
+              <span class="text-capitalize">{{ s.schedule_type }}</span>
+              {% endif %}
+            </td>
+            <td class="text-secondary small">{{ s.last_run_at | lop_rel if s.last_run_at else '—' }}</td>
+            <td class="text-secondary small">{{ s.next_run_at | lop_rel if s.next_run_at else '—' }}</td>
+            <td class="text-center">
+              <div class="form-check form-switch d-inline-flex justify-content-center mb-0">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       {% if s.is_enabled %}checked{% endif %}
+                       onchange="toggleSchedule({{ s.id }}, this)">
+              </div>
+            </td>
+            <td class="text-end pe-3">
+              <div class="d-flex gap-1 justify-content-end">
+                <button class="btn btn-xs btn-success" title="Run now"
+                        onclick="runScheduleNow({{ s.id }}, '{{ s.name | e }}')">
+                  <i class="bi bi-play-fill"></i>
+                </button>
+                <button class="btn btn-xs btn-outline-danger" title="Delete"
+                        onclick="deleteSchedule({{ s.id }}, '{{ s.name | e }}')">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Schedule modal ──────────────────────────────────────────────────────── #}
+<div class="modal fade" id="scheduleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:var(--lop-surface);border:1px solid var(--lop-border);">
+      <div class="modal-header border-bottom border-secondary">
+        <h5 class="modal-title fw-semibold">New Schedule</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-medium">Schedule Name <span class="text-danger">*</span></label>
+          <input type="text" id="s-name" class="form-control form-control-sm" placeholder="e.g. Nightly Security Patch">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-medium">Job Template <span class="text-danger">*</span></label>
+          <select id="s-template" class="form-select form-select-sm">
+            <option value="">Select template…</option>
+            {% for t in templates %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-medium">Schedule Type <span class="text-danger">*</span></label>
+          <select id="s-type" class="form-select form-select-sm" onchange="scheduleTypeChanged()">
+            <option value="once">Once (manual trigger only)</option>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="cron">Cron Expression</option>
+          </select>
+        </div>
+        <div id="cron-group" class="mb-3" style="display:none;">
+          <label class="form-label small fw-medium">Cron Expression</label>
+          <input type="text" id="s-cron" class="form-control form-control-sm lop-mono" placeholder="0 2 * * 0">
+          <div class="form-text">5 fields: minute hour day-of-month month day-of-week</div>
+        </div>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="s-enabled" checked>
+          <label class="form-check-label small" for="s-enabled">Enable immediately</label>
+        </div>
+        <div id="sched-error" class="text-danger small mt-2" style="display:none;"></div>
+      </div>
+      <div class="modal-footer border-top border-secondary">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveSchedule()">Save Schedule</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+  <div id="schedToast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="schedToastMsg">Done.</div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openScheduleModal() {
+  document.getElementById('s-name').value     = '';
+  document.getElementById('s-template').value = '';
+  document.getElementById('s-type').value     = 'once';
+  document.getElementById('s-cron').value     = '';
+  document.getElementById('s-enabled').checked = true;
+  document.getElementById('sched-error').style.display = 'none';
+  document.getElementById('cron-group').style.display  = 'none';
+  new bootstrap.Modal(document.getElementById('scheduleModal')).show();
+}
+
+function scheduleTypeChanged() {
+  document.getElementById('cron-group').style.display =
+    document.getElementById('s-type').value === 'cron' ? '' : 'none';
+}
+
+function saveSchedule() {
+  var errEl = document.getElementById('sched-error');
+  errEl.style.display = 'none';
+  var name   = document.getElementById('s-name').value.trim();
+  var tmplId = document.getElementById('s-template').value;
+  var stype  = document.getElementById('s-type').value;
+  if (!name)   { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
+  if (!tmplId) { errEl.textContent = 'Select a template.'; errEl.style.display = ''; return; }
+
+  var payload = {
+    name:            name,
+    template_id:     tmplId,
+    schedule_type:   stype,
+    cron_expression: stype === 'cron' ? document.getElementById('s-cron').value.trim() : '',
+    is_enabled:      document.getElementById('s-enabled').checked,
+  };
+
+  fetch('{{ url_for("ops.schedule_save") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+    body: JSON.stringify(payload),
+  }).then(r => r.json()).then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('scheduleModal')).hide();
+      var t = new bootstrap.Toast(document.getElementById('schedToast'), {delay:2500});
+      document.getElementById('schedToast').className = 'toast align-items-center border-0 text-bg-success';
+      document.getElementById('schedToastMsg').textContent = data.message;
+      t.show();
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      errEl.textContent   = data.message;
+      errEl.style.display = '';
+    }
+  });
+}
+
+function toggleSchedule(id, el) {
+  fetch('/ansible/schedules/' + id + '/toggle', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (!data.success) { el.checked = !el.checked; alert(data.message); }
+  }).catch(() => { el.checked = !el.checked; });
+}
+
+function deleteSchedule(id, name) {
+  if (!confirm('Delete schedule "' + name + '"?')) return;
+  fetch('/ansible/schedules/' + id + '/delete', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (data.success) location.reload();
+    else alert(data.message);
+  });
+}
+
+function runScheduleNow(id, name) {
+  if (!confirm('Run schedule "' + name + '" immediately?')) return;
+  fetch('/ansible/schedules/' + id + '/run-now', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (data.success) window.location.href = data.redirect;
+    else alert(data.message);
+  });
+}
+</script>
+{% endblock %}

@@ -187,6 +187,148 @@ def _run_scheduled_vmware_sync(app) -> None:
 _run_scheduled_sync = _run_scheduled_vmware_sync
 
 
+def reschedule_playbooks(app) -> None:
+    """
+    Sync all enabled PlaybookSchedule records into APScheduler.
+    Removes any stale jobs for deleted/disabled schedules.
+    Silently no-ops if the scheduler is not running.
+    """
+    scheduler = app.extensions.get("vmware_scheduler")
+    if scheduler is None:
+        return
+
+    try:
+        with app.app_context():
+            from .models.playbook import PlaybookSchedule
+
+            # Remove all existing playbook schedule jobs
+            for job in scheduler.get_jobs():
+                if job.id.startswith("playbook_sched_"):
+                    try:
+                        scheduler.remove_job(job.id)
+                    except Exception:
+                        pass
+
+            # Re-add enabled schedules
+            for sched in PlaybookSchedule.query.filter_by(is_enabled=True).all():
+                _add_playbook_job(scheduler, app, sched)
+    except Exception as exc:
+        logger.warning("reschedule_playbooks failed: %s", exc)
+
+
+def _add_playbook_job(scheduler, app, sched) -> None:
+    """Register a single PlaybookSchedule into APScheduler."""
+    job_id = f"playbook_sched_{sched.id}"
+
+    try:
+        if sched.schedule_type == "cron" and sched.cron_expression:
+            # Parse 5-field cron: "min hour dom mon dow"
+            fields = sched.cron_expression.strip().split()
+            if len(fields) == 5:
+                minute, hour, day, month, day_of_week = fields
+                scheduler.add_job(
+                    id=job_id,
+                    func=_run_scheduled_playbook,
+                    args=[app, sched.id],
+                    trigger="cron",
+                    minute=minute,
+                    hour=hour,
+                    day=day,
+                    month=month,
+                    day_of_week=day_of_week,
+                    replace_existing=True,
+                    misfire_grace_time=600,
+                )
+            else:
+                logger.warning("Invalid cron expression for schedule %d: %r", sched.id, sched.cron_expression)
+        else:
+            interval_map = {
+                "hourly":  {"hours": 1},
+                "daily":   {"hours": 24},
+                "weekly":  {"weeks": 1},
+                "monthly": {"days": 30},
+            }
+            kwargs = interval_map.get(sched.schedule_type)
+            if kwargs:
+                scheduler.add_job(
+                    id=job_id,
+                    func=_run_scheduled_playbook,
+                    args=[app, sched.id],
+                    trigger="interval",
+                    replace_existing=True,
+                    misfire_grace_time=600,
+                    **kwargs,
+                )
+            # 'once' schedules are triggered manually; not added to APScheduler
+    except Exception as exc:
+        logger.warning("Failed to register playbook schedule %d: %s", sched.id, exc)
+
+
+def _run_scheduled_playbook(app, schedule_id: int) -> None:
+    """APScheduler job target for scheduled playbook execution."""
+    import threading
+    try:
+        with app.app_context():
+            from .models.playbook import PlaybookSchedule, PlaybookJob
+            from .models.ansible_config import AnsibleConfig
+            from .extensions import db
+            from datetime import datetime, timezone
+
+            sched = PlaybookSchedule.query.get(schedule_id)
+            if sched is None or not sched.is_enabled:
+                return
+
+            t = sched.template
+            if t is None:
+                logger.warning("Playbook schedule %d has no template", schedule_id)
+                return
+
+            cfg = AnsibleConfig.query.first()
+            if cfg is None or not cfg.enabled:
+                return
+
+            settings = t.get_settings()
+            playbook_path = (settings.get("playbook_path") or "").strip()
+            if not playbook_path:
+                logger.warning("Schedule %d template has no playbook_path", schedule_id)
+                return
+
+            now = datetime.now(timezone.utc)
+            job = PlaybookJob(
+                playbook_id   = t.playbook_id,
+                playbook_path = playbook_path,
+                playbook_name = settings.get("playbook_name") or playbook_path.rsplit("/", 1)[-1],
+                template_id   = t.id,
+                triggered_by  = f"schedule:{sched.name}",
+                status        = "pending",
+                limit_expression = settings.get("limit_expression"),
+                inventory_type   = settings.get("inventory_type") or "default",
+                inventory_value  = settings.get("inventory_value"),
+                become     = str(settings.get("become", "")).lower() in ("1", "true", "yes"),
+                check_mode = str(settings.get("check_mode", "")).lower() in ("1", "true", "yes"),
+                forks      = int(settings.get("forks") or 5),
+                verbosity  = int(settings.get("verbosity") or 0),
+                tags       = settings.get("tags"),
+                skip_tags  = settings.get("skip_tags"),
+                extra_vars = settings.get("extra_vars"),
+                created_at = now,
+            )
+            db.session.add(job)
+            sched.last_run_at = now
+            db.session.commit()
+
+            job_id = job.id
+
+        # Launch outside the app_context so the thread gets its own
+        from .services.playbook_service import launch_job
+        threading.Thread(
+            target=launch_job, args=(job_id, app), daemon=True
+        ).start()
+
+    except Exception as exc:
+        logger.error("Scheduled playbook job (schedule_id=%d) failed: %s", schedule_id, exc)
+
+
 def _run_scheduled_ansible_facts(app) -> None:
     """APScheduler job target for Ansible fact collection — runs inside a new app context."""
     try:

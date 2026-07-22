@@ -143,6 +143,19 @@
 
         <li class="nav-item">
           <a
+            class="nav-link {% if request.endpoint and request.endpoint.startswith('ops.') %}active{% endif %}"
+            href="{{ url_for('ops.catalog') }}"
+            data-bs-toggle="tooltip"
+            data-bs-placement="right"
+            title="Ansible"
+          >
+            <i class="bi bi-gear-wide-connected"></i>
+            <span>Ansible</span>
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a
             class="nav-link {% if request.endpoint and request.endpoint.startswith('search.') %}active{% endif %}"
             href="{{ url_for('search.index') }}"
             data-bs-toggle="tooltip"

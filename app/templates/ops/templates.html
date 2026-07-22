@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Job Templates | Ansible | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.catalog') }}">Ansible</a></li>
+    <li class="breadcrumb-item active">Templates</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ops-nav-tabs .nav-link { color: var(--lop-muted); border-bottom: 2px solid transparent; padding: .45rem .9rem; font-size: .85rem; }
+  .ops-nav-tabs .nav-link:hover { color: var(--lop-text); }
+  .ops-nav-tabs .nav-link.active { color: var(--lop-text); border-bottom-color: var(--bs-primary); background: transparent; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <ul class="nav ops-nav-tabs">
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.catalog') }}"><i class="bi bi-grid-3x3-gap me-1"></i>Playbooks</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.jobs') }}"><i class="bi bi-play-circle me-1"></i>Jobs</a></li>
+      <li class="nav-item"><a class="nav-link active" href="{{ url_for('ops.templates') }}"><i class="bi bi-bookmark me-1"></i>Templates</a></li>
+      <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.schedules') }}"><i class="bi bi-calendar-check me-1"></i>Schedules</a></li>
+    </ul>
+    <button class="btn btn-sm btn-primary" onclick="openTemplateModal()">
+      <i class="bi bi-plus me-1"></i>New Template
+    </button>
+  </div>
+
+  <div class="card lop-card">
+    {% if not templates %}
+    <div class="card-body text-center py-5 text-secondary">
+      <i class="bi bi-bookmark fs-1 d-block mb-3 opacity-25"></i>
+      <p class="mb-0">No templates saved yet.</p>
+      <p class="small">Save a launch configuration as a template for one-click execution.</p>
+      <button class="btn btn-sm btn-outline-primary mt-1" onclick="openTemplateModal()">
+        <i class="bi bi-plus me-1"></i>Create Template
+      </button>
+    </div>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table lop-table mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Playbook</th>
+            <th>Options</th>
+            <th>Created By</th>
+            <th>Updated</th>
+            <th class="text-end pe-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in templates %}
+          {% set s = t.get_settings() %}
+          <tr>
+            <td>
+              <div class="fw-medium">{{ t.name }}</div>
+              {% if t.description %}<div class="text-secondary small">{{ t.description | truncate(60) }}</div>{% endif %}
+            </td>
+            <td class="text-secondary small lop-mono">
+              {{ s.get('playbook_name') or s.get('playbook_path','—').rsplit('/',1)[-1] }}
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                {% if s.get('become') in (True, 'true', '1') %}<span class="badge bg-warning text-dark" style="font-size:.6rem;">become</span>{% endif %}
+                {% if s.get('check_mode') in (True, 'true', '1') %}<span class="badge bg-info text-dark" style="font-size:.6rem;">check</span>{% endif %}
+                {% if s.get('limit_expression') %}<span class="badge bg-secondary" style="font-size:.6rem;">limited</span>{% endif %}
+                {% if s.get('tags') %}<span class="badge bg-secondary" style="font-size:.6rem;">tags</span>{% endif %}
+              </div>
+            </td>
+            <td class="text-secondary small">{{ t.created_by or '—' }}</td>
+            <td class="text-secondary small">{{ t.updated_at | lop_rel if t.updated_at else (t.created_at | lop_rel if t.created_at else '—') }}</td>
+            <td class="text-end pe-3">
+              <div class="d-flex gap-1 justify-content-end">
+                <button class="btn btn-xs btn-success" title="Launch now"
+                        onclick="launchTemplate({{ t.id }}, '{{ t.name | e }}')">
+                  <i class="bi bi-play-fill"></i>
+                </button>
+                <button class="btn btn-xs btn-outline-secondary" title="Edit"
+                        onclick="openTemplateModal({{ t.get_settings() | tojson }}, {{ t.id }})">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-xs btn-outline-danger" title="Delete"
+                        onclick="deleteTemplate({{ t.id }}, '{{ t.name | e }}')">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Template modal ──────────────────────────────────────────────────────── #}
+<div class="modal fade" id="templateModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background:var(--lop-surface);border:1px solid var(--lop-border);">
+      <div class="modal-header border-bottom border-secondary">
+        <h5 class="modal-title fw-semibold" id="tmpl-modal-title">New Template</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="t-id" value="">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label small fw-medium">Template Name <span class="text-danger">*</span></label>
+            <input type="text" id="t-name" class="form-control form-control-sm" placeholder="e.g. Weekly Patch Run">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-medium">Description</label>
+            <input type="text" id="t-desc" class="form-control form-control-sm" placeholder="Optional description">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Playbook</label>
+            <select id="t-playbook" class="form-select form-select-sm">
+              <option value="">Select playbook…</option>
+              {# Populated by existing playbooks #}
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Host Limit Expression</label>
+            <input type="text" id="t-limit" class="form-control form-control-sm lop-mono" placeholder="webservers">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Inventory</label>
+            <select id="t-inv-type" class="form-select form-select-sm">
+              <option value="default">Default</option>
+              <option value="file">File path</option>
+              <option value="dynamic">Dynamic script</option>
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Inventory Value</label>
+            <input type="text" id="t-inv-value" class="form-control form-control-sm lop-mono" placeholder="/etc/ansible/hosts">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Tags</label>
+            <input type="text" id="t-tags" class="form-control form-control-sm">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small fw-medium">Skip Tags</label>
+            <input type="text" id="t-skip-tags" class="form-control form-control-sm">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-medium">Forks</label>
+            <input type="number" id="t-forks" class="form-control form-control-sm" value="5" min="1" max="50">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-medium">Verbosity</label>
+            <select id="t-verbosity" class="form-select form-select-sm">
+              <option value="0">Normal</option>
+              <option value="1">-v</option>
+              <option value="2">-vv</option>
+              <option value="3">-vvv</option>
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-medium d-block">Options</label>
+            <div class="d-flex gap-3 mt-1">
+              <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="t-become"><label class="form-check-label small" for="t-become">Become</label></div>
+              <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="t-check"><label class="form-check-label small" for="t-check">Check</label></div>
+              <div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="t-diff"><label class="form-check-label small" for="t-diff">Diff</label></div>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-medium">Extra Variables</label>
+            <textarea id="t-extra-vars" class="form-control form-control-sm lop-mono" rows="4" placeholder="# YAML&#10;reboot: true"></textarea>
+          </div>
+        </div>
+        <div id="tmpl-error" class="text-danger small mt-2" style="display:none;"></div>
+      </div>
+      <div class="modal-footer border-top border-secondary">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveTemplate()">Save Template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999;">
+  <div id="tmplToast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="tmplToastMsg">Done.</div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Populate playbook dropdown
+var _playbooks = [
+  {% for pb in (cfg and cfg.enabled and []) or [] %}{% endfor %}
+  {# We load these dynamically from the catalog page #}
+];
+
+function openTemplateModal(data, id) {
+  var modal = new bootstrap.Modal(document.getElementById('templateModal'));
+  document.getElementById('tmpl-modal-title').textContent = id ? 'Edit Template' : 'New Template';
+  document.getElementById('t-id').value         = id || '';
+  document.getElementById('t-name').value       = '';
+  document.getElementById('t-desc').value       = '';
+  document.getElementById('t-limit').value      = '';
+  document.getElementById('t-inv-type').value   = 'default';
+  document.getElementById('t-inv-value').value  = '';
+  document.getElementById('t-tags').value       = '';
+  document.getElementById('t-skip-tags').value  = '';
+  document.getElementById('t-forks').value      = '5';
+  document.getElementById('t-verbosity').value  = '0';
+  document.getElementById('t-become').checked   = false;
+  document.getElementById('t-check').checked    = false;
+  document.getElementById('t-diff').checked     = false;
+  document.getElementById('t-extra-vars').value = '';
+  document.getElementById('tmpl-error').style.display = 'none';
+  modal.show();
+}
+
+function saveTemplate() {
+  var errEl = document.getElementById('tmpl-error');
+  var name  = document.getElementById('t-name').value.trim();
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+
+  var payload = {
+    id:              document.getElementById('t-id').value,
+    name:            name,
+    description:     document.getElementById('t-desc').value.trim(),
+    limit_expression: document.getElementById('t-limit').value.trim(),
+    inventory_type:  document.getElementById('t-inv-type').value,
+    inventory_value: document.getElementById('t-inv-value').value.trim(),
+    tags:            document.getElementById('t-tags').value.trim(),
+    skip_tags:       document.getElementById('t-skip-tags').value.trim(),
+    forks:           document.getElementById('t-forks').value,
+    verbosity:       document.getElementById('t-verbosity').value,
+    become:          document.getElementById('t-become').checked,
+    check_mode:      document.getElementById('t-check').checked,
+    diff_mode:       document.getElementById('t-diff').checked,
+    extra_vars:      document.getElementById('t-extra-vars').value.trim(),
+  };
+
+  fetch('{{ url_for("ops.template_save") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+    body: JSON.stringify(payload),
+  }).then(r => r.json()).then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('templateModal')).hide();
+      var t = new bootstrap.Toast(document.getElementById('tmplToast'), {delay:2500});
+      document.getElementById('tmplToast').className = 'toast align-items-center border-0 text-bg-success';
+      document.getElementById('tmplToastMsg').textContent = data.message;
+      t.show();
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      errEl.textContent   = data.message;
+      errEl.style.display = '';
+    }
+  });
+}
+
+function deleteTemplate(id, name) {
+  if (!confirm('Delete template "' + name + '"?')) return;
+  fetch('/ansible/templates/' + id + '/delete', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (data.success) location.reload();
+    else alert(data.message);
+  });
+}
+
+function launchTemplate(id, name) {
+  if (!confirm('Launch template "' + name + '" now?')) return;
+  fetch('/ansible/templates/' + id + '/launch', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (data.success) window.location.href = data.redirect;
+    else alert(data.message);
+  });
+}
+</script>
+{% endblock %}

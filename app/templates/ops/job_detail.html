@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}Job #{{ job.id }} | Ansible | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.catalog') }}">Ansible</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.jobs') }}">Jobs</a></li>
+    <li class="breadcrumb-item active">Job #{{ job.id }}</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .output-terminal {
+    background: #0d1117; border: 1px solid var(--lop-border); border-radius: 6px; padding: 1rem;
+    font-family: ui-monospace,'SFMono-Regular',Menlo,monospace; font-size: .78rem; line-height: 1.65;
+    color: #c9d1d9; height: 55vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .ansi-ok          { color: #3fb950; }
+  .ansi-changed     { color: #e3b341; }
+  .ansi-failed      { color: #f85149; }
+  .ansi-skipped     { color: #8b949e; }
+  .ansi-unreachable { color: #ff7b72; }
+  .ansi-play        { color: #79c0ff; font-weight: 700; }
+  .ansi-task        { color: #a5d6ff; }
+  .ansi-recap       { color: #d2a8ff; font-weight: 700; }
+  .stat-card        { background: var(--lop-surface-2, rgba(255,255,255,.04)); border: 1px solid var(--lop-border);
+                      border-radius: 8px; padding: .75rem 1rem; text-align: center; }
+  .stat-card .stat-num { font-size: 1.5rem; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-4">
+
+  {# ── Summary row ────────────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-3">
+    <div class="col-lg-8">
+      <div class="card lop-card h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between">
+            <div>
+              <h5 class="fw-semibold mb-1">
+                {{ job.playbook_name or job.playbook_path.rsplit('/', 1)[-1] }}
+                {% if job.check_mode %}
+                <span class="badge bg-warning text-dark ms-2" style="font-size:.65rem;">DRY RUN</span>
+                {% endif %}
+              </h5>
+              <div class="text-secondary small lop-mono">{{ job.playbook_path }}</div>
+            </div>
+            {# Status badge #}
+            {% set sc = {'running':'primary','pending':'secondary','completed':'success','failed':'danger','cancelled':'secondary'} %}
+            {% set si = {'running':'bi-arrow-repeat','pending':'bi-hourglass','completed':'bi-check-circle-fill','failed':'bi-x-circle-fill','cancelled':'bi-dash-circle'} %}
+            <span class="badge bg-{{ sc.get(job.status,'secondary') }} fs-6 ms-3 flex-shrink-0" id="status-badge">
+              <i class="bi {{ si.get(job.status,'bi-circle') }} me-1{% if job.status == 'running' %} lop-spin{% endif %}" id="status-icon"></i>
+              <span id="status-text">{{ job.status | title }}</span>
+            </span>
+          </div>
+
+          <hr class="border-secondary my-3">
+
+          <div class="row g-2 text-secondary small">
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Started By</div>
+              {{ job.triggered_by or '—' }}
+            </div>
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Started</div>
+              {% if job.started_at %}{{ job.started_at | lop_dt }}{% else %}—{% endif %}
+            </div>
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Finished</div>
+              {% if job.finished_at %}{{ job.finished_at | lop_dt }}
+              {% elif job.is_running %}<span class="text-secondary">Running…</span>
+              {% else %}—{% endif %}
+            </div>
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Duration</div>
+              <span id="duration-cell">
+              {% if job.duration_seconds is not none %}
+                {% set d = job.duration_seconds %}
+                {% if d >= 3600 %}{{ (d // 3600) }}h {{ ((d % 3600) // 60) }}m
+                {% elif d >= 60 %}{{ (d // 60) }}m {{ (d % 60) }}s
+                {% else %}{{ d }}s{% endif %}
+              {% else %}—{% endif %}
+              </span>
+            </div>
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Exit Code</div>
+              <span id="exit-code">{{ job.exit_code if job.exit_code is not none else '—' }}</span>
+            </div>
+            <div class="col-sm-4">
+              <div class="fw-medium text-body mb-1">Host Limit</div>
+              <span class="lop-mono">{{ job.limit_expression or 'All hosts' }}</span>
+            </div>
+          </div>
+
+          {% if job.error_message %}
+          <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+            <i class="bi bi-exclamation-triangle me-1"></i>{{ job.error_message }}
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-footer border-top border-secondary d-flex gap-2 py-2">
+          {% if job.is_running %}
+          <button class="btn btn-sm btn-outline-danger" onclick="cancelJob({{ job.id }}, this)">
+            <i class="bi bi-stop-circle me-1"></i>Cancel
+          </button>
+          {% endif %}
+          <a href="{{ url_for('ops.job_download', job_id=job.id) }}"
+             class="btn btn-sm btn-outline-secondary ms-auto">
+            <i class="bi bi-download me-1"></i>Download Log
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {# Statistics mini-cards #}
+    <div class="col-lg-4">
+      <div class="card lop-card h-100">
+        <div class="card-header border-bottom border-secondary py-2">
+          <span class="fw-medium small"><i class="bi bi-bar-chart-line me-2"></i>Statistics</span>
+        </div>
+        <div class="card-body d-flex flex-column gap-2">
+          <div class="row g-2" id="stats-grid">
+            {% macro stat_card(label, value, color) %}
+            <div class="col-6">
+              <div class="stat-card">
+                <div class="stat-num text-{{ color }}">{{ value if value is not none else '—' }}</div>
+                <div class="text-secondary" style="font-size:.7rem;">{{ label }}</div>
+              </div>
+            </div>
+            {% endmacro %}
+            {{ stat_card('OK',          job.hosts_ok,          'success') }}
+            {{ stat_card('Changed',     job.hosts_changed,     'warning') }}
+            {{ stat_card('Failed',      job.hosts_failed,      'danger') }}
+            {{ stat_card('Skipped',     job.hosts_skipped,     'secondary') }}
+            {{ stat_card('Unreachable', job.hosts_unreachable, 'danger') }}
+            {{ stat_card('Tasks Run',   job.task_count,        'info') }}
+          </div>
+          {% if job.is_running %}
+          <div class="progress mt-auto" style="height:6px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:100%"></div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Console output ─────────────────────────────────────────────────────── #}
+  <div class="card lop-card mb-3">
+    <div class="card-header border-bottom border-secondary d-flex align-items-center justify-content-between py-2">
+      <span class="fw-medium small"><i class="bi bi-terminal me-2"></i>Console Output</span>
+      <div class="d-flex gap-2 align-items-center">
+        <span class="text-secondary small" id="output-status">
+          {% if job.is_running %}<i class="bi bi-circle-fill text-success lop-pulse me-1" style="font-size:.5rem;"></i>Live{% endif %}
+        </span>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="auto-scroll-toggle" checked>
+          <label class="form-check-label small" for="auto-scroll-toggle">Auto-scroll</label>
+        </div>
+        <button class="btn btn-xs btn-outline-secondary" onclick="copyOutput()" title="Copy output">
+          <i class="bi bi-clipboard"></i>
+        </button>
+        <button class="btn btn-xs btn-outline-secondary" id="search-btn" onclick="toggleSearch()" title="Search">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+    </div>
+    <div id="search-bar" class="px-3 pt-2" style="display:none;">
+      <div class="input-group input-group-sm mb-2" style="max-width:320px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" id="search-input" class="form-control" placeholder="Search in output…"
+               oninput="searchOutput(this.value)">
+        <button class="btn btn-outline-secondary" onclick="document.getElementById('search-input').value='';searchOutput('')">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="output-terminal" id="output-terminal">{{ job.log_output or '' }}</div>
+  </div>
+
+  {# ── Options & Variables ────────────────────────────────────────────────── #}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card lop-card h-100">
+        <div class="card-header border-bottom border-secondary py-2">
+          <span class="fw-medium small"><i class="bi bi-sliders me-2"></i>Execution Options</span>
+        </div>
+        <div class="card-body">
+          <table class="table table-sm lop-table mb-0">
+            <tr><th class="text-secondary" style="width:130px;">Inventory</th>
+                <td>{{ job.inventory_type | title }}{% if job.inventory_value %} → <span class="lop-mono small">{{ job.inventory_value }}</span>{% endif %}</td></tr>
+            <tr><th class="text-secondary">Become</th>
+                <td>{% if job.become %}<i class="bi bi-check-circle-fill text-warning me-1"></i>Yes{% else %}No{% endif %}</td></tr>
+            <tr><th class="text-secondary">Check Mode</th>
+                <td>{% if job.check_mode %}<i class="bi bi-check-circle-fill text-info me-1"></i>Yes{% else %}No{% endif %}</td></tr>
+            <tr><th class="text-secondary">Diff Mode</th>
+                <td>{{ 'Yes' if job.diff_mode else 'No' }}</td></tr>
+            <tr><th class="text-secondary">Forks</th><td>{{ job.forks }}</td></tr>
+            <tr><th class="text-secondary">Verbosity</th>
+                <td>{{ ['-', '-v', '-vv', '-vvv', '-vvvv'][job.verbosity] if job.verbosity <= 4 else job.verbosity }}</td></tr>
+            <tr><th class="text-secondary">Tags</th><td class="lop-mono small">{{ job.tags or '—' }}</td></tr>
+            <tr><th class="text-secondary">Skip Tags</th><td class="lop-mono small">{{ job.skip_tags or '—' }}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card lop-card h-100">
+        <div class="card-header border-bottom border-secondary py-2">
+          <span class="fw-medium small"><i class="bi bi-braces me-2"></i>Extra Variables</span>
+        </div>
+        <div class="card-body">
+          {% if job.extra_vars %}
+          <pre class="lop-mono small mb-0" style="white-space:pre-wrap;color:var(--lop-text);">{{ job.extra_vars }}</pre>
+          {% else %}
+          <span class="text-secondary small">No extra variables</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var _outputOffset  = {{ (job.log_output | length) if job.log_output else 0 }};
+var _pollTimer     = null;
+var _autoScroll    = true;
+var _isRunning     = {{ 'true' if job.is_running else 'false' }};
+
+// ── Colorize output ─────────────────────────────────────────────────────── //
+function colorizeOutput(text) {
+  // Strip ANSI codes
+  text = text.replace(/\x1b\[[0-9;]*[mGKHF]/g, '');
+  // Escape HTML
+  text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Apply keyword coloring (line-level)
+  text = text.replace(/^(ok: \[.*)/gm,          '<span class="ansi-ok">$1</span>');
+  text = text.replace(/^(changed: \[.*)/gm,      '<span class="ansi-changed">$1</span>');
+  text = text.replace(/^(failed: \[.*)/gm,       '<span class="ansi-failed">$1</span>');
+  text = text.replace(/^(skipped: \[.*)/gm,      '<span class="ansi-skipped">$1</span>');
+  text = text.replace(/^(unreachable: \[.*)/gm,  '<span class="ansi-unreachable">$1</span>');
+  text = text.replace(/^(PLAY .*)/gm,            '<span class="ansi-play">$1</span>');
+  text = text.replace(/^(TASK .*)/gm,            '<span class="ansi-task">$1</span>');
+  text = text.replace(/^(PLAY RECAP.*)/gm,       '<span class="ansi-recap">$1</span>');
+  return text;
+}
+
+// ── Render initial output ────────────────────────────────────────────────── //
+(function() {
+  var t = document.getElementById('output-terminal');
+  var raw = t.textContent;
+  if (raw.trim()) {
+    t.innerHTML = colorizeOutput(raw);
+  }
+  if (_autoScroll) t.scrollTop = t.scrollHeight;
+})();
+
+document.getElementById('auto-scroll-toggle').addEventListener('change', function() {
+  _autoScroll = this.checked;
+});
+
+// ── Live polling ─────────────────────────────────────────────────────────── //
+function startPolling() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(pollOutput, 2000);
+}
+
+function pollOutput() {
+  fetch('/ansible/jobs/{{ job.id }}/output?offset=' + _outputOffset)
+    .then(r => r.json())
+    .then(data => {
+      if (data.output) {
+        var t = document.getElementById('output-terminal');
+        var chunk = document.createElement('span');
+        chunk.innerHTML = colorizeOutput(data.output);
+        t.appendChild(chunk);
+        _outputOffset = data.offset;
+        if (_autoScroll) t.scrollTop = t.scrollHeight;
+      }
+      if (data.done) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+        document.getElementById('output-status').innerHTML = '';
+        // Update status badge
+        var badge = document.getElementById('status-badge');
+        var scMap = {completed:'bg-success', failed:'bg-danger', cancelled:'bg-secondary'};
+        var siMap = {completed:'bi-check-circle-fill', failed:'bi-x-circle-fill', cancelled:'bi-dash-circle'};
+        badge.className = 'badge ' + (scMap[data.status] || 'bg-secondary') + ' fs-6 ms-3 flex-shrink-0';
+        document.getElementById('status-icon').className = 'bi ' + (siMap[data.status] || 'bi-circle') + ' me-1';
+        document.getElementById('status-text').textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+        document.getElementById('exit-code').textContent = data.exit_code != null ? data.exit_code : '—';
+        // Reload page to get final stats
+        setTimeout(() => location.reload(), 2000);
+      }
+    })
+    .catch(() => {/* keep trying */});
+}
+
+{% if job.is_running %}
+startPolling();
+{% endif %}
+
+// ── Copy output ──────────────────────────────────────────────────────────── //
+function copyOutput() {
+  var text = document.getElementById('output-terminal').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    // brief feedback
+    var btn = event.target.closest('button');
+    btn.innerHTML = '<i class="bi bi-check"></i>';
+    setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i>', 1500);
+  });
+}
+
+// ── Search in output ─────────────────────────────────────────────────────── //
+function toggleSearch() {
+  var bar = document.getElementById('search-bar');
+  bar.style.display = bar.style.display === 'none' ? '' : 'none';
+  if (bar.style.display !== 'none') document.getElementById('search-input').focus();
+}
+function searchOutput(term) {
+  var t = document.getElementById('output-terminal');
+  if (!term) { t.style.filter = ''; return; }
+  // Naive: scroll to first match
+  var text = t.innerText;
+  var idx  = text.toLowerCase().indexOf(term.toLowerCase());
+  if (idx >= 0) {
+    // Approximate scroll position
+    var lines = text.slice(0, idx).split('\n').length;
+    var lineH = parseFloat(getComputedStyle(t).lineHeight) || 18;
+    t.scrollTop = Math.max(0, (lines - 5) * lineH);
+  }
+}
+
+// ── Cancel ──────────────────────────────────────────────────────────────── //
+function cancelJob(id, btn) {
+  if (!confirm('Cancel job #' + id + '?')) return;
+  btn.disabled = true;
+  fetch('/ansible/jobs/' + id + '/cancel', {
+    method: 'POST',
+    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
+  }).then(r => r.json()).then(data => {
+    if (data.success) location.reload();
+    else { alert(data.message); btn.disabled = false; }
+  });
+}
+</script>
+{% endblock %}

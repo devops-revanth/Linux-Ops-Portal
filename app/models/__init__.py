@@ -24,3 +24,6 @@ from .ansible_config import AnsibleConfig, AnsibleInventoryHost  # noqa: F401
 from .ansible_facts import (  # noqa: F401
     AnsibleFilesystem, AnsibleServerService, AnsibleRepository, AnsibleSyncJob
 )
+from .playbook import (  # noqa: F401
+    Playbook, PlaybookJob, PlaybookJobTemplate, PlaybookSchedule
+)

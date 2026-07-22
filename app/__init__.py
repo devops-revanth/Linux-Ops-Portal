@@ -101,6 +101,7 @@ def create_app(config_name: str | None = None) -> Flask:
     from .blueprints.users import users_bp      # noqa: E402
     from .blueprints.vmware import vmware_bp    # noqa: E402
     from .blueprints.ansible import ansible_bp  # noqa: E402
+    from .blueprints.ops import ops_bp          # noqa: E402
 
     app.register_blueprint(api_bp)
     app.register_blueprint(audit_bp)
@@ -115,6 +116,7 @@ def create_app(config_name: str | None = None) -> Flask:
     app.register_blueprint(users_bp)
     app.register_blueprint(vmware_bp)
     app.register_blueprint(ansible_bp)
+    app.register_blueprint(ops_bp)
 
     # ------------------------------------------------------------------ #
     # Error handlers
@@ -232,6 +234,7 @@ def _register_template_helpers(app: Flask) -> None:
         return local.strftime(f"{time_fmt} %Z")
 
     app.jinja_env.filters["lop_ts"]   = lop_ts
+    app.jinja_env.filters["lop_dt"]   = lop_ts   # alias used in ops templates
     app.jinja_env.filters["lop_time"] = lop_time
     app.jinja_env.filters["lop_rel"]  = lop_rel
 
