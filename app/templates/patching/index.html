@@ -175,13 +175,78 @@
   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
     <div>
       <h4 class="mb-0 fw-bold">
-        <i class="bi bi-shield-check me-2 text-success"></i>Patching
+        <i class="bi bi-shield-check me-2 text-success"></i>Patch Compliance
       </h4>
       <small class="text-secondary">
         {{ pt.total }} server{{ 's' if pt.total != 1 else '' }} — patch compliance view
       </small>
     </div>
   </div>
+
+
+  {# ── Compliance summary cards ─────────────────────────────────────────── #}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-sm-3">
+      <div class="card border-0 h-100"
+           style="background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.22) !important;">
+        <div class="card-body py-3 px-3">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-check-circle-fill text-success" style="font-size:.95rem;"></i>
+            <span class="text-secondary" style="font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Compliant</span>
+          </div>
+          <div class="fw-bold" style="font-size:1.6rem;color:#3fb950;line-height:1;">
+            {{ compliance_summary.compliant }}
+          </div>
+          <div class="text-secondary" style="font-size:.7rem;">No pending updates</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card border-0 h-100"
+           style="background:rgba(210,153,34,.07);border:1px solid rgba(210,153,34,.22) !important;">
+        <div class="card-body py-3 px-3">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-exclamation-circle-fill" style="font-size:.95rem;color:#d4a017;"></i>
+            <span class="text-secondary" style="font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Due Soon</span>
+          </div>
+          <div class="fw-bold" style="font-size:1.6rem;color:#d4a017;line-height:1;">
+            {{ compliance_summary.due_soon }}
+          </div>
+          <div class="text-secondary" style="font-size:.7rem;">Updates within 90-day window</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card border-0 h-100"
+           style="background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.22) !important;">
+        <div class="card-body py-3 px-3">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-x-circle-fill text-danger" style="font-size:.95rem;"></i>
+            <span class="text-secondary" style="font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Overdue</span>
+          </div>
+          <div class="fw-bold" style="font-size:1.6rem;color:#f85149;line-height:1;">
+            {{ compliance_summary.overdue }}
+          </div>
+          <div class="text-secondary" style="font-size:.7rem;">Compliance window exceeded</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-sm-3">
+      <div class="card border-0 h-100"
+           style="background:rgba(139,148,158,.07);border:1px solid rgba(139,148,158,.22) !important;">
+        <div class="card-body py-3 px-3">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-question-circle-fill text-secondary" style="font-size:.95rem;"></i>
+            <span class="text-secondary" style="font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Unknown</span>
+          </div>
+          <div class="fw-bold text-secondary" style="font-size:1.6rem;line-height:1;">
+            {{ compliance_summary.unknown }}
+          </div>
+          <div class="text-secondary" style="font-size:.7rem;">No inventory data</div>
+        </div>
+      </div>
+    </div>
+  </div>{# /compliance cards #}
 
   {# ── Search + Filter bar ─────────────────────────────────────────────── #}
   <div class="card border-0 mb-3">
@@ -373,17 +438,11 @@
             {% endmacro %}
 
             <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
-            <th>{{ sort_link('hostname',          'Hostname') }}</th>
-            <th>{{ sort_link('environment',       'Environment') }}</th>
-            <th>{{ sort_link('location',          'Location') }}</th>
-            <th>{{ sort_link('operating_system',  'OS') }}</th>
-            <th>{{ sort_link('current_kernel',    'Current Kernel') }}</th>
-            <th>Latest Avail. Kernel</th>
-            <th>{{ sort_link('pending_updates',   'Updates Avail.') }}</th>
-            <th>Reboot Req.</th>
-            <th>Compliance</th>
-            <th>{{ sort_link('last_patch_date',   'Last Patched') }}</th>
-            <th>{{ sort_link('last_reboot_date',  'Last Reboot') }}</th>
+            <th>{{ sort_link('hostname',        'Hostname') }}</th>
+            <th>{{ sort_link('pending_updates', 'Updates') }}</th>
+            <th>{{ sort_link('last_patch_date', 'Last Patched') }}</th>
+            <th style="min-width:140px;">Compliance</th>
+            <th>Reboot</th>
           </tr>
         </thead>
         <tbody>
@@ -396,64 +455,28 @@
               {# Checkbox #}
               <td class="lop-cb"><input type="checkbox" class="lop-row-cb" value="{{ srv.id }}"></td>
 
-              {# Hostname — links to Server Detail with Patching tab active #}
+              {# Hostname + environment pill + FQDN #}
               <td>
-                <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching"
-                   class="lop-hostname-link">
-                  <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
-                </a>
-              </td>
-
-              {# Environment pill #}
-              <td>
-                {% if srv.environment %}
-                  <span class="lop-env-pill
-                    {% if srv.environment.color == 'primary'   %} bg-primary-subtle   text-primary
-                    {% elif srv.environment.color == 'danger'  %} bg-danger-subtle    text-danger
-                    {% elif srv.environment.color == 'warning' %} bg-warning-subtle   text-warning
-                    {% elif srv.environment.color == 'info'    %} bg-info-subtle      text-info
-                    {% elif srv.environment.color == 'success' %} bg-success-subtle   text-success
-                    {% else %}                                     bg-secondary-subtle text-secondary
-                    {% endif %}">
-                    {{ srv.environment.label }}
-                  </span>
-                {% else %}
-                  <span class="text-secondary">—</span>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching"
+                     class="lop-hostname-link">
+                    <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
+                  </a>
+                  {% if srv.environment %}
+                    <span class="lop-env-pill
+                      {% if srv.environment.color == 'primary'   %} bg-primary-subtle   text-primary
+                      {% elif srv.environment.color == 'danger'  %} bg-danger-subtle    text-danger
+                      {% elif srv.environment.color == 'warning' %} bg-warning-subtle   text-warning
+                      {% elif srv.environment.color == 'info'    %} bg-info-subtle      text-info
+                      {% elif srv.environment.color == 'success' %} bg-success-subtle   text-success
+                      {% else %}                                     bg-secondary-subtle text-secondary
+                      {% endif %}">{{ srv.environment.label }}</span>
+                  {% endif %}
+                </div>
+                {% if srv.fqdn and srv.fqdn != srv.hostname %}
+                  <div class="lop-mono text-secondary" style="font-size:.72rem;margin-top:.15rem;">{{ srv.fqdn }}</div>
                 {% endif %}
               </td>
-
-              {# Location #}
-              <td>
-                {% if srv.location %}
-                  <i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# OS #}
-              <td>
-                {% if srv.operating_system %}
-                  {{ srv.operating_system }}
-                  {% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# Current Kernel (from Patching record) #}
-              <td>
-                {% if p and p.current_kernel %}
-                  <span class="lop-mono">{{ p.current_kernel }}</span>
-                {% elif srv.kernel_version %}
-                  <span class="lop-mono">{{ srv.kernel_version }}</span>
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# Latest Available Kernel (populated by Ansible — shows — until synced) #}
-              <td><span class="text-secondary lop-mono" style="font-size:.78rem;">—</span></td>
 
               {# Updates Available #}
               <td>
@@ -470,27 +493,20 @@
                 {% endif %}
               </td>
 
-              {# Reboot Required #}
+              {# Last Patched #}
               <td>
-                {% if p and p.reboot_required is not none %}
-                  {% if p.reboot_required %}
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
-                          style="font-size:.7rem;">
-                      <i class="bi bi-arrow-repeat me-1"></i>Yes
-                    </span>
-                  {% else %}
-                    <span class="badge bg-success-subtle text-success border border-success-subtle"
-                          style="font-size:.7rem;">
-                      <i class="bi bi-check2 me-1"></i>No
-                    </span>
-                  {% endif %}
+                {% if p and p.last_patch_date %}
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ p.last_patch_date.isoformat() }}"
+                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
+                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
+                  </span>
                 {% else %}
-                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"
-                        style="font-size:.7rem;">Unknown</span>
+                  <span class="text-secondary">—</span>
                 {% endif %}
               </td>
 
-              {# Compliance Status #}
+              {# Compliance — most prominent column #}
               <td>
                 {% set cs = p.compliance_status if p else 'unknown' %}
                 {% if cs == 'compliant' %}
@@ -512,29 +528,23 @@
                 {% endif %}
               </td>
 
-              {# Last Patch Date #}
+              {# Reboot Required #}
               <td>
-                {% if p and p.last_patch_date %}
-                  <span class="text-secondary" style="font-size:.82rem;"
-                        data-utc="{{ p.last_patch_date.isoformat() }}"
-                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
-                  </span>
+                {% if p and p.reboot_required is not none %}
+                  {% if p.reboot_required %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
+                          style="font-size:.7rem;">
+                      <i class="bi bi-arrow-repeat me-1"></i>Yes
+                    </span>
+                  {% else %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle"
+                          style="font-size:.7rem;">
+                      <i class="bi bi-check2 me-1"></i>No
+                    </span>
+                  {% endif %}
                 {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# Last Reboot #}
-              <td>
-                {% if p and p.last_reboot_date %}
-                  <span class="text-secondary" style="font-size:.82rem;"
-                        data-utc="{{ p.last_reboot_date.isoformat() }}"
-                        title="{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-                    {{ p.last_reboot_date.strftime('%Y-%m-%d') }}
-                  </span>
-                {% else %}
-                  <span class="text-secondary">—</span>
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"
+                        style="font-size:.7rem;">—</span>
                 {% endif %}
               </td>
 
@@ -542,7 +552,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="12">
+              <td colspan="6">
                 <div class="lop-empty-state">
                   <i class="bi bi-shield-check"></i>
                   {% if f.search or f.location_id or f.env_id or f.patch_status %}

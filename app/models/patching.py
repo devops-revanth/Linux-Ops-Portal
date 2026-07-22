@@ -66,7 +66,7 @@ class Patching(db.Model):
         """
         from datetime import datetime, timezone
 
-        COMPLIANCE_WINDOW_DAYS = 30
+        COMPLIANCE_WINDOW_DAYS = 90
 
         if self.pending_updates is None:
             return "unknown"

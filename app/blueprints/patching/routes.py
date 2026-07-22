@@ -4,7 +4,7 @@ import logging
 from flask import current_app, flash, redirect, render_template, request, url_for
 
 from . import patching_bp
-from .queries import DEFAULT_ORDER, DEFAULT_SORT, PatchingFilters, get_patching_page
+from .queries import DEFAULT_ORDER, DEFAULT_SORT, PatchingFilters, get_compliance_summary, get_patching_page
 from ...audit import log_action
 from ...extensions import db
 from ...models.server import Server
@@ -57,9 +57,12 @@ def index():
 
     patching = get_patching_page(filters, page=page, per_page=per_page)
 
+    compliance_summary = get_compliance_summary()
+
     return render_template(
         "patching/index.html",
         patching=patching,
+        compliance_summary=compliance_summary,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )

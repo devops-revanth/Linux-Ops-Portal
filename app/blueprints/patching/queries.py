@@ -42,6 +42,55 @@ DEFAULT_ORDER = "asc"
 VALID_PATCH_STATUSES = ["up-to-date", "pending", "failed", "unknown"]
 
 
+def get_compliance_summary() -> dict:
+    """
+    Fleet-wide compliance counts for the dashboard header cards.
+    Uses the same 90-day window as Patching.compliance_status.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import func, case, or_, and_
+
+    WINDOW  = 90
+    cutoff  = datetime.now(timezone.utc) - timedelta(days=WINDOW)
+
+    try:
+        bucket_expr = case(
+            (Patching.pending_updates == 0,
+             "compliant"),
+            (and_(Patching.pending_updates > 0,
+                  Patching.last_patch_date >= cutoff),
+             "due_soon"),
+            (and_(Patching.pending_updates > 0,
+                  or_(Patching.last_patch_date < cutoff,
+                      Patching.last_patch_date == None)),  # noqa: E711
+             "overdue"),
+            else_="unknown",
+        ).label("bucket")
+
+        rows = (
+            db.session.query(bucket_expr, func.count().label("n"))
+            .select_from(Server)
+            .outerjoin(Patching, Patching.server_id == Server.id)
+            .group_by("bucket")
+            .all()
+        )
+        counts: dict[str, int] = {}
+        for r in rows:
+            key = r.bucket if r.bucket is not None else "unknown"
+            counts[key] = counts.get(key, 0) + r.n
+
+        return {
+            "compliant": counts.get("compliant", 0),
+            "due_soon":  counts.get("due_soon",  0),
+            "overdue":   counts.get("overdue",   0),
+            "unknown":   counts.get("unknown",   0),
+            "total":     sum(counts.values()),
+        }
+    except Exception:
+        logger.exception("Failed to compute compliance summary")
+        return {"compliant": 0, "due_soon": 0, "overdue": 0, "unknown": 0, "total": 0}
+
+
 @dataclass
 class PatchingFilters:
     search:       str = ""

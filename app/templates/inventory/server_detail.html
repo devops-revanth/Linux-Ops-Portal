@@ -311,14 +311,15 @@
               {% endif %}">{{ server.environment.label }}</span>
           {% endif %}
         </div>
-        {% if server.fqdn and server.fqdn != server.hostname %}
+        {# FQDN — always shown #}
+        {% if server.fqdn %}
           <div class="lop-fqdn">{{ server.fqdn }}</div>
         {% endif %}
 
         {# Meta row #}
         <div class="lop-meta-row">
           <div class="lop-meta-item">
-            <span class="lop-meta-label">IP Address</span>
+            <span class="lop-meta-label">Management IP</span>
             <span class="lop-meta-value lop-meta-mono">{{ server.ip_address }}</span>
           </div>
           {% if server.operating_system %}
@@ -335,14 +336,46 @@
           {% endif %}
           {% if server.cpu_count is not none %}
           <div class="lop-meta-item">
-            <span class="lop-meta-label">CPU</span>
-            <span class="lop-meta-value">{{ server.cpu_count }} vCPU{% if server.cpu_model %} <span class="text-secondary" style="font-size:.78rem;">{{ server.cpu_model }}</span>{% endif %}</span>
+            <span class="lop-meta-label">CPU Count</span>
+            <span class="lop-meta-value">{{ server.cpu_count }} vCPU</span>
           </div>
           {% endif %}
           {% if server.ram_gb is not none %}
           <div class="lop-meta-item">
-            <span class="lop-meta-label">RAM</span>
+            <span class="lop-meta-label">Memory</span>
             <span class="lop-meta-value">{{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB</span>
+          </div>
+          {% endif %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Disk</span>
+            <span class="lop-meta-value text-secondary" style="font-size:.82rem;">Not Available</span>
+          </div>
+          {% if server.last_ansible_sync %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Last Inventory</span>
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
+                  data-utc="{{ server.last_ansible_sync.isoformat() }}"
+                  title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
+              {{ server.last_ansible_sync.strftime('%Y-%m-%d') }}
+            </span>
+          </div>
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Last Check-In</span>
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
+                  data-utc="{{ server.last_ansible_sync.isoformat() }}"
+                  title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
+              {{ server.last_ansible_sync.strftime('%Y-%m-%d') }}
+            </span>
+          </div>
+          {% endif %}
+          {% if server.patching and server.patching.last_patch_date %}
+          <div class="lop-meta-item">
+            <span class="lop-meta-label">Last Patch</span>
+            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
+                  data-utc="{{ server.patching.last_patch_date.isoformat() }}"
+                  title="{{ server.patching.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
+              {{ server.patching.last_patch_date.strftime('%Y-%m-%d') }}
+            </span>
           </div>
           {% endif %}
           {% if server.location %}
@@ -670,24 +703,93 @@
     {# ══════════════════════════════════ Packages Tab ══════════════════════ #}
     <div class="tab-pane fade" id="packages" role="tabpanel" aria-labelledby="packages-tab">
 
-      {% if server.packages %}
-        <p class="lop-section-title"><i class="bi bi-box me-1"></i>Installed Packages ({{ server.packages | length }})</p>
+      {# ── Sub-tab nav ──────────────────────────────────────────────────── #}
+      {% set base_url = url_for('inventory.server_detail', server_id=server.id) %}
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 pt-1">
+        <ul class="nav nav-pills nav-pills-sm" style="gap:.25rem;">
+          <li class="nav-item">
+            <a class="nav-link py-1 px-3 {% if pkg_data.tab == 'installed' %}active{% endif %}"
+               style="font-size:.82rem;"
+               href="{{ base_url }}?tab=packages&amp;pkg_tab=installed&amp;pkg_per_page={{ pkg_data.per_page }}">
+              <i class="bi bi-box me-1"></i>Installed Packages
+              {% if pkg_data.tab == 'installed' %}
+                <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ pkg_data.total }}</span>
+              {% endif %}
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link py-1 px-3 {% if pkg_data.tab == 'recently-installed' %}active{% endif %}"
+               style="font-size:.82rem;"
+               href="{{ base_url }}?tab=packages&amp;pkg_tab=recently-installed&amp;pkg_per_page={{ pkg_data.per_page }}">
+              <i class="bi bi-clock-history me-1"></i>Recently Installed
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link py-1 px-3 disabled" style="font-size:.82rem;" tabindex="-1"
+               title="Per-package update detail requires Ansible collection integration"
+               href="#">
+              <i class="bi bi-box-arrow-in-down me-1"></i>Available Updates
+              <span class="badge bg-secondary ms-1" style="font-size:.65rem;">N/A</span>
+            </a>
+          </li>
+        </ul>
+
+        {# Search + per-page #}
+        <form method="GET" action="{{ base_url }}"
+              class="d-flex align-items-end gap-2 flex-wrap" id="pkg-filter-form">
+          <input type="hidden" name="tab"         value="packages">
+          <input type="hidden" name="pkg_tab"     value="{{ pkg_data.tab }}">
+          <input type="hidden" name="pkg_page"    value="1">
+          <div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-transparent border-secondary">
+                <i class="bi bi-search text-secondary"></i>
+              </span>
+              <input id="pkg-search" type="text" name="pkg_q"
+                     class="form-control form-control-sm bg-transparent border-secondary text-light"
+                     placeholder="Package name…" value="{{ pkg_data.q }}" autocomplete="off"
+                     style="width:180px;">
+              {% if pkg_data.q %}
+                <a href="{{ base_url }}?tab=packages&amp;pkg_tab={{ pkg_data.tab }}&amp;pkg_per_page={{ pkg_data.per_page }}"
+                   class="btn btn-sm btn-outline-secondary" title="Clear">
+                  <i class="bi bi-x"></i>
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          <div>
+            <select name="pkg_per_page"
+                    class="form-select form-select-sm bg-transparent border-secondary text-light"
+                    onchange="this.form.submit()" style="width:80px;">
+              {% for opt in [10, 25, 50, 100] %}
+                <option value="{{ opt }}" {{ 'selected' if pkg_data.per_page == opt }}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+      </div>
+
+      {# ── Package table ─────────────────────────────────────────────────── #}
+      {% if pkg_data.rows %}
         <div class="table-responsive">
           <table class="table lop-table mb-0">
             <thead>
               <tr>
                 <th>Package</th>
                 <th>Version</th>
-                <th>Collected At</th>
+                <th>Release</th>
+                <th>Architecture</th>
+                <th>Repository</th>
+                <th>{{ 'Installed Date' if pkg_data.tab == 'recently-installed' else 'Collected' }}</th>
               </tr>
             </thead>
             <tbody>
-              {% for sp in server.packages | sort(attribute='package.name') %}
+              {% for sp, pkg in pkg_data.rows %}
               <tr>
                 <td>
-                  <span class="fw-medium">{{ sp.package.display_name or sp.package.name }}</span>
-                  {% if sp.package.description %}
-                    <div class="text-secondary" style="font-size:.75rem;">{{ sp.package.description }}</div>
+                  <span class="fw-medium lop-mono" style="font-size:.85rem;">{{ pkg.display_name or pkg.name }}</span>
+                  {% if pkg.description %}
+                    <div class="text-secondary" style="font-size:.72rem;">{{ pkg.description }}</div>
                   {% endif %}
                 </td>
                 <td>
@@ -697,19 +799,79 @@
                     <span class="text-secondary">—</span>
                   {% endif %}
                 </td>
-                <td class="text-secondary" style="font-size:.82rem;">
-                  {% if sp.collected_at %}{{ sp.collected_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}—{% endif %}
+                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
+                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
+                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
+                <td>
+                  {% if sp.collected_at %}
+                    <span class="text-secondary" style="font-size:.78rem;"
+                          data-utc="{{ sp.collected_at.isoformat() }}"
+                          title="{{ sp.collected_at.strftime('%Y-%m-%d %H:%M UTC') }}">
+                      {{ sp.collected_at.strftime('%Y-%m-%d') }}
+                    </span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
+
+        {# Pagination #}
+        {% if pkg_data.total_pages > 1 or pkg_data.total > 0 %}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2"
+             style="border-top:1px solid var(--lop-border);">
+          <small class="text-secondary">
+            {% set p_start = (pkg_data.page - 1) * pkg_data.per_page + 1 %}
+            {% set p_end   = [pkg_data.page * pkg_data.per_page, pkg_data.total] | min %}
+            Showing {{ p_start }}–{{ p_end }} of {{ pkg_data.total }} package{{ 's' if pkg_data.total != 1 else '' }}
+            {% if pkg_data.q %} matching <strong>{{ pkg_data.q }}</strong>{% endif %}
+          </small>
+          {% if pkg_data.total_pages > 1 %}
+          <nav>
+            <ul class="pagination pagination-sm mb-0 lop-pagination">
+              <li class="page-item {% if pkg_data.page == 1 %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ base_url }}?tab=packages&pkg_tab={{ pkg_data.tab }}&pkg_q={{ pkg_data.q }}&pkg_page={{ pkg_data.page - 1 }}&pkg_per_page={{ pkg_data.per_page }}">
+                  <i class="bi bi-chevron-left"></i>
+                </a>
+              </li>
+              {% for pg in range(1, pkg_data.total_pages + 1) %}
+                {% if pg == 1 or pg == pkg_data.total_pages or (pg >= pkg_data.page - 2 and pg <= pkg_data.page + 2) %}
+                  <li class="page-item {% if pg == pkg_data.page %}active{% endif %}">
+                    <a class="page-link"
+                       href="{{ base_url }}?tab=packages&pkg_tab={{ pkg_data.tab }}&pkg_q={{ pkg_data.q }}&pkg_page={{ pg }}&pkg_per_page={{ pkg_data.per_page }}">
+                      {{ pg }}
+                    </a>
+                  </li>
+                {% endif %}
+              {% endfor %}
+              <li class="page-item {% if pkg_data.page == pkg_data.total_pages %}disabled{% endif %}">
+                <a class="page-link"
+                   href="{{ base_url }}?tab=packages&pkg_tab={{ pkg_data.tab }}&pkg_q={{ pkg_data.q }}&pkg_page={{ pkg_data.page + 1 }}&pkg_per_page={{ pkg_data.per_page }}">
+                  <i class="bi bi-chevron-right"></i>
+                </a>
+              </li>
+            </ul>
+          </nav>
+          {% endif %}
+        </div>
+        {% endif %}
+
+      {% elif pkg_data.q %}
+        <div class="text-center py-5 text-secondary">
+          <i class="bi bi-search fs-1 d-block mb-3 opacity-25"></i>
+          <h6 class="fw-semibold">No packages match <em>{{ pkg_data.q }}</em></h6>
+          <a href="{{ base_url }}?tab=packages&amp;pkg_tab={{ pkg_data.tab }}&amp;pkg_per_page={{ pkg_data.per_page }}"
+             class="btn btn-sm btn-outline-secondary mt-2">Clear search</a>
+        </div>
       {% else %}
         <div class="text-center py-5 text-secondary">
           <i class="bi bi-box fs-1 d-block mb-3 opacity-25"></i>
           <h6 class="fw-semibold">No package data</h6>
-          <p class="small">Package versions will appear here once Ansible syncs this server.</p>
+          <p class="small">Package inventory will appear here once Ansible syncs this server.</p>
         </div>
       {% endif %}
 

@@ -11,6 +11,7 @@ from ...models.environment import Environment
 from ...models.location import Location
 from ...models.note import Note
 from ...models.owner import Owner
+from ...models.package import Package, ServerPackage
 from ...models.server import Server
 from ...utils import sort_envs
 
@@ -150,10 +151,52 @@ def add_server():
 @inventory_bp.route("/inventory/<int:server_id>", methods=["GET"])
 def server_detail(server_id: int):
     """Full server detail page — hardware, patching, packages, and notes."""
-    server = Server.query.get_or_404(server_id)
+    server       = Server.query.get_or_404(server_id)
     locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
     environments = sort_envs(Environment.query.filter_by(is_active=True).all())
     owners       = Owner.query.filter_by(is_active=True).order_by(Owner.name).all()
+
+    # ── Packages tab: server-side pagination + search ────────────────────
+    _valid_pkg_pp = {10, 25, 50, 100}
+    pkg_tab      = request.args.get("pkg_tab", "installed")
+    pkg_q        = request.args.get("pkg_q",       "").strip()
+    pkg_page     = max(1, request.args.get("pkg_page", 1, type=int))
+    pkg_pp_raw   = request.args.get("pkg_per_page", 25, type=int)
+    pkg_per_page = pkg_pp_raw if pkg_pp_raw in _valid_pkg_pp else 25
+
+    if pkg_tab not in ("installed", "recently-installed"):
+        pkg_tab = "installed"
+
+    pkg_base = (
+        db.session.query(ServerPackage, Package)
+        .join(Package, ServerPackage.package_id == Package.id)
+        .filter(ServerPackage.server_id == server.id)
+    )
+    if pkg_q:
+        pkg_base = pkg_base.filter(Package.name.ilike(f"%{pkg_q}%"))
+
+    if pkg_tab == "recently-installed":
+        pkg_base = pkg_base.order_by(
+            ServerPackage.collected_at.desc().nulls_last(),
+            Package.name.asc(),
+        )
+    else:
+        pkg_base = pkg_base.order_by(Package.name.asc())
+
+    pkg_total       = pkg_base.count()
+    pkg_rows        = pkg_base.offset((pkg_page - 1) * pkg_per_page).limit(pkg_per_page).all()
+    pkg_total_pages = max(1, -(-pkg_total // pkg_per_page))
+
+    pkg_data = {
+        "tab":         pkg_tab,
+        "q":           pkg_q,
+        "page":        pkg_page,
+        "per_page":    pkg_per_page,
+        "total":       pkg_total,
+        "total_pages": pkg_total_pages,
+        "rows":        pkg_rows,
+    }
+
     return render_template(
         "inventory/server_detail.html",
         server=server,
@@ -161,6 +204,7 @@ def server_detail(server_id: int):
         environments=environments,
         owners=owners,
         statuses=list(VALID_STATUSES),
+        pkg_data=pkg_data,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )

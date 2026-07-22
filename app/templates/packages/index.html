@@ -1,163 +1,273 @@
 {% extends "base.html" %}
 
-{% block title %}Packages | Linux Operations Portal{% endblock %}
+{% block title %}Packages | {{ app_name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Fleet stat cards ───────────────────────────────────────────────── */
+  .lop-stat-card {
+    background: var(--lop-surface);
+    border: 1px solid var(--lop-border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    height: 100%;
+  }
+  .lop-stat-card-label {
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--lop-muted);
+  }
+  .lop-stat-card-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--lop-text);
+  }
+  .lop-stat-card-value.na {
+    font-size: 1rem;
+    color: var(--lop-muted);
+    font-weight: 400;
+  }
+  .lop-stat-card-icon {
+    font-size: 1.1rem;
+    margin-bottom: .15rem;
+  }
+
+  /* ── Table ──────────────────────────────────────────────────────────── */
+  .lop-table th {
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--lop-muted);
+    font-weight: 500;
+    border-color: var(--lop-border);
+    padding: .45rem .75rem;
+    white-space: nowrap;
+  }
+  .lop-table td {
+    border-color: var(--lop-border);
+    padding: .6rem .75rem;
+    vertical-align: middle;
+    font-size: .875rem;
+  }
+  .lop-table tbody tr:hover { background: rgba(255,255,255,.03); }
+
+  .lop-hostname-link {
+    color: #58a6ff;
+    text-decoration: none;
+    font-weight: 500;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .88rem;
+  }
+  .lop-hostname-link:hover { text-decoration: underline; color: #79b8ff; }
+  .lop-fqdn-sub {
+    font-size: .72rem;
+    color: var(--lop-muted);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  /* ── Compliance badges ──────────────────────────────────────────────── */
+  .lop-patch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .2rem .55rem;
+    border-radius: 12px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .lop-compliance-compliant {
+    background: rgba(63,185,80,.12);
+    color: #3fb950;
+    border-color: rgba(63,185,80,.35);
+  }
+  .lop-compliance-due-soon {
+    background: rgba(210,153,34,.12);
+    color: #d4a017;
+    border-color: rgba(210,153,34,.35);
+  }
+  .lop-compliance-overdue {
+    background: rgba(248,81,73,.12);
+    color: #f85149;
+    border-color: rgba(248,81,73,.35);
+  }
+  .lop-patch-unknown {
+    background: rgba(139,148,158,.1);
+    color: #8b949e;
+    border-color: rgba(139,148,158,.3);
+  }
+
+  /* ── Updates badge ──────────────────────────────────────────────────── */
+  .lop-updates-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .15rem .5rem;
+    border-radius: 12px;
+    background: rgba(210,153,34,.12);
+    color: #d4a017;
+    border: 1px solid rgba(210,153,34,.35);
+  }
+
+  /* ── Sort links ─────────────────────────────────────────────────────── */
+  .lop-sort-link { color: inherit; text-decoration: none; }
+  .lop-sort-link:hover { color: var(--lop-text); }
+  .lop-sort-active { color: #3fb950 !important; }
+
+  /* ── Filter bar ─────────────────────────────────────────────────────── */
+  .lop-filter-bar { flex-wrap: wrap; gap: .75rem; }
+  .lop-filter-bar .form-control,
+  .lop-filter-bar .form-select { color: var(--lop-text) !important; }
+  .lop-filter-bar .form-control::placeholder { color: var(--lop-muted); }
+
+  /* ── Pagination ─────────────────────────────────────────────────────── */
+  .lop-pagination .page-link {
+    background: var(--lop-surface);
+    border-color: var(--lop-border);
+    color: var(--lop-muted);
+    font-size: .82rem;
+    padding: .3rem .65rem;
+  }
+  .lop-pagination .page-link:hover { background: rgba(255,255,255,.06); color: var(--lop-text); }
+  .lop-pagination .page-item.active .page-link {
+    background: rgba(35,134,54,.2);
+    border-color: #238636;
+    color: #3fb950;
+  }
+  .lop-pagination .page-item.disabled .page-link { opacity: .4; }
+
+  /* ── Empty state ────────────────────────────────────────────────────── */
+  .lop-empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+    color: var(--lop-muted);
+  }
+  .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .35; }
+  .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .4rem; }
+
+  /* ── NA text ────────────────────────────────────────────────────────── */
+  .lop-na { color: var(--lop-muted); font-size: .78rem; }
+</style>
+{% endblock %}
 
 {% block breadcrumbs %}
 <div class="lop-breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item active" aria-current="page">
-      <i class="bi bi-box-seam me-1"></i>Packages
+      <i class="bi bi-box me-1"></i>Packages
     </li>
   </ol>
 </div>
 {% endblock %}
 
-{% block extra_head %}
-<style>
-  /* ── Sort links ──────────────────────────────────────────────── */
-  .lop-sort-link { color: inherit; text-decoration: none; white-space: nowrap; }
-  .lop-sort-link:hover { color: var(--lop-text); }
-  .lop-sort-icon { color: var(--lop-muted); font-size: .65rem; margin-left: .15rem; }
-  .lop-sort-link.active .lop-sort-icon { color: #3fb950; }
-
-  /* ── Tab nav ─────────────────────────────────────────────────── */
-  .lop-tab-nav { border-bottom: none; gap: 0; }
-  .lop-tab-nav .nav-link {
-    color: var(--lop-muted);
-    border-radius: 0;
-    border-bottom: 2px solid transparent;
-    padding: .6rem 1.1rem;
-    font-size: .875rem;
-    transition: color .15s, border-color .15s;
-  }
-  .lop-tab-nav .nav-link:hover { color: var(--lop-text); }
-  .lop-tab-nav .nav-link.active {
-    color: #3fb950;
-    border-bottom-color: #238636;
-    background: transparent;
-    font-weight: 600;
-  }
-
-  /* ── Filter bar ──────────────────────────────────────────────── */
-  .lop-filter-bar { gap: .5rem; flex-wrap: wrap; }
-  #search-spinner { display: none; }
-
-  /* ── Links ───────────────────────────────────────────────────── */
-  .lop-hostname-link {
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: .82rem; color: #58a6ff; text-decoration: none; font-weight: 500;
-  }
-  .lop-hostname-link:hover { text-decoration: underline; color: #79bfff; }
-
-  /* ── Mono text ───────────────────────────────────────────────── */
-  .lop-mono {
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: .8rem; color: var(--lop-muted);
-  }
-
-  /* ── Not-available placeholder ───────────────────────────────── */
-  .lop-na { color: var(--lop-muted); font-size: .78rem; font-style: italic; }
-
-  /* ── Updates badge ───────────────────────────────────────────── */
-  .lop-updates-badge {
-    display: inline-flex; align-items: center; gap: .3rem;
-    font-size: .72rem; font-weight: 600; padding: .15rem .5rem;
-    border-radius: 12px;
-    background: rgba(210,153,34,.15); color: #d4a017;
-    border: 1px solid rgba(210,153,34,.35);
-  }
-
-  /* ── Empty state ─────────────────────────────────────────────── */
-  .lop-empty-state { padding: 4rem 2rem; text-align: center; color: var(--lop-muted); }
-  .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .35; }
-  .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .4rem; }
-
-  /* ── Pagination ──────────────────────────────────────────────── */
-  .lop-pagination .page-link {
-    background: var(--lop-surface); border-color: var(--lop-border);
-    color: var(--lop-muted); font-size: .82rem; padding: .3rem .65rem;
-  }
-  .lop-pagination .page-link:hover { background: rgba(255,255,255,.06); color: var(--lop-text); }
-  .lop-pagination .page-item.active .page-link {
-    background: rgba(35,134,54,.2); border-color: #238636; color: #3fb950;
-  }
-  .lop-pagination .page-item.disabled .page-link { opacity: .4; }
-</style>
-{% endblock %}
-
 {% block content %}
 
-{# ── Convenience alias: the active tab's data object ── #}
-{% if tab == 'installed' %}
-  {% set data = installed %}
-{% elif tab == 'updates' %}
-  {% set data = updates %}
-{% else %}
-  {% set data = recently %}
-{% endif %}
+{# ── Shorthand aliases ──────────────────────────────────────────────────── #}
+{% set f  = servers.filters %}
+{% set sv = servers %}
+
+{# ── Sort-link macro ────────────────────────────────────────────────────── #}
+{% macro sort_link(col, label) %}
+  {% set next_order = 'desc' if f.sort == col and f.order == 'asc' else 'asc' %}
+  <a href="{{ url_for('packages.index', q=f.search, sort=col, order=next_order, page=1, per_page=per_page) }}"
+     class="lop-sort-link {% if f.sort == col %}lop-sort-active{% endif %}">
+    {{ label }}
+    {% if f.sort == col %}
+      <i class="bi bi-caret-{{ 'up' if f.order == 'asc' else 'down' }}-fill ms-1" style="font-size:.65rem;"></i>
+    {% endif %}
+  </a>
+{% endmacro %}
 
 <div class="container-fluid p-4">
 
-  {# ── Page header ─────────────────────────────────────────────── #}
-  <div class="mb-3">
-    <h4 class="mb-0 fw-bold">
-      <i class="bi bi-box-seam me-2 text-info"></i>Packages
-    </h4>
-    <small class="text-secondary">Software package inventory and update tracking</small>
+  {# ── Page header ────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h4 class="mb-0 fw-bold">
+        <i class="bi bi-box me-2 text-info"></i>Packages
+      </h4>
+      <small class="text-secondary">Fleet package management — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
+    </div>
   </div>
 
-  <div class="card border-0">
+  {# ── Fleet summary stat cards ────────────────────────────────────────── #}
+  <div class="row g-3 mb-4">
 
-    {# ── Tab navigation ──────────────────────────────────────────── #}
-    <div class="card-header py-0 border-bottom border-secondary-subtle">
-      <ul class="nav lop-tab-nav">
-
-        <li class="nav-item">
-          <a class="nav-link {{ 'active' if tab == 'installed' }}"
-             href="{{ url_for('packages.index', tab='installed', q=filters.search, per_page=per_page) }}">
-            <i class="bi bi-grid-1x2 me-1"></i>Installed Packages
-            {% if tab == 'installed' and data %}
-              <span class="badge bg-secondary-subtle text-secondary ms-1" style="font-size:.68rem;">
-                {{ data.total }}
-              </span>
-            {% endif %}
-          </a>
-        </li>
-
-        <li class="nav-item">
-          <a class="nav-link {{ 'active' if tab == 'updates' }}"
-             href="{{ url_for('packages.index', tab='updates', q=filters.search, per_page=per_page) }}">
-            <i class="bi bi-arrow-up-circle me-1"></i>Available Updates
-            {% if tab == 'updates' and data and data.total > 0 %}
-              <span class="badge bg-warning-subtle text-warning border border-warning-subtle ms-1" style="font-size:.68rem;">
-                {{ data.total }}
-              </span>
-            {% endif %}
-          </a>
-        </li>
-
-        <li class="nav-item">
-          <a class="nav-link {{ 'active' if tab == 'recently-installed' }}"
-             href="{{ url_for('packages.index', tab='recently-installed', q=filters.search, per_page=per_page) }}">
-            <i class="bi bi-clock-history me-1"></i>Recently Installed
-          </a>
-        </li>
-
-      </ul>
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-primary"><i class="bi bi-server"></i></div>
+        <div class="lop-stat-card-label">Servers Managed</div>
+        <div class="lop-stat-card-value">{{ fleet.servers_managed | int }}</div>
+      </div>
     </div>
 
-    {# ── Filter bar ──────────────────────────────────────────────── #}
-    <div class="card-body py-3 border-bottom border-secondary-subtle">
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-info"><i class="bi bi-box-seam"></i></div>
+        <div class="lop-stat-card-label">Installed Packages</div>
+        <div class="lop-stat-card-value">{{ "{:,}".format(fleet.installed_packages) }}</div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-warning"><i class="bi bi-box-arrow-in-down"></i></div>
+        <div class="lop-stat-card-label">Available Updates</div>
+        <div class="lop-stat-card-value {% if fleet.available_updates > 0 %}text-warning{% endif %}">
+          {{ "{:,}".format(fleet.available_updates) }}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-danger"><i class="bi bi-shield-exclamation"></i></div>
+        <div class="lop-stat-card-label">Security Updates</div>
+        {% if fleet.security_updates is none %}
+          <div class="lop-stat-card-value na">Not Available</div>
+        {% else %}
+          <div class="lop-stat-card-value {% if fleet.security_updates > 0 %}text-danger{% endif %}">
+            {{ fleet.security_updates }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-secondary"><i class="bi bi-cpu"></i></div>
+        <div class="lop-stat-card-label">Kernel Updates</div>
+        {% if fleet.kernel_updates is none %}
+          <div class="lop-stat-card-value na">Not Available</div>
+        {% else %}
+          <div class="lop-stat-card-value">{{ fleet.kernel_updates }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /row stat cards #}
+
+  {# ── Filter bar ──────────────────────────────────────────────────────── #}
+  <div class="card border-0 mb-3">
+    <div class="card-body py-3">
       <form id="filter-form" method="GET" action="{{ url_for('packages.index') }}"
             class="d-flex lop-filter-bar align-items-end">
 
-        <input type="hidden" name="tab"   value="{{ tab }}">
-        <input type="hidden" name="sort"  value="{{ filters.sort }}">
-        <input type="hidden" name="order" value="{{ filters.order }}">
+        <input type="hidden" name="sort"  value="{{ f.sort }}">
+        <input type="hidden" name="order" value="{{ f.order }}">
         <input type="hidden" name="page"  value="1">
 
-        {# Search #}
-        <div class="flex-grow-1" style="min-width: 200px; max-width: 340px;">
+        {# Hostname search #}
+        <div class="flex-grow-1" style="min-width:200px;max-width:340px;">
           <label class="form-label text-secondary small mb-1">Search</label>
           <div class="input-group input-group-sm">
             <span class="input-group-text bg-transparent border-secondary">
@@ -167,10 +277,9 @@
             </span>
             <input id="search-input" type="text" name="q"
                    class="form-control form-control-sm bg-transparent border-secondary text-light"
-                   placeholder="{% if tab == 'updates' %}Server name…{% else %}Package name or server…{% endif %}"
-                   value="{{ filters.search }}" autocomplete="off">
-            {% if filters.search %}
-              <a href="{{ url_for('packages.index', tab=tab, per_page=per_page) }}"
+                   placeholder="Hostname…" value="{{ f.search }}" autocomplete="off">
+            {% if f.search %}
+              <a href="{{ url_for('packages.index', sort=f.sort, order=f.order) }}"
                  class="btn btn-sm btn-outline-secondary" title="Clear search">
                 <i class="bi bi-x"></i>
               </a>
@@ -179,7 +288,7 @@
         </div>
 
         {# Rows per page #}
-        <div style="min-width: 110px;">
+        <div style="min-width:120px;">
           <label class="form-label text-secondary small mb-1">Rows per page</label>
           <select name="per_page"
                   class="form-select form-select-sm bg-transparent border-secondary text-light"
@@ -190,307 +299,177 @@
           </select>
         </div>
 
-        <div class="d-flex gap-2 align-self-end">
-          <button type="submit" class="btn btn-sm btn-primary">Search</button>
-          {% if filters.search %}
-            <a href="{{ url_for('packages.index', tab=tab, per_page=per_page) }}"
-               class="btn btn-sm btn-outline-secondary">Reset</a>
-          {% endif %}
-        </div>
-
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-funnel me-1"></i>Apply
+        </button>
       </form>
     </div>
+  </div>
 
-    {# ── Table area ───────────────────────────────────────────────── #}
+  {# ── Server table ─────────────────────────────────────────────────────── #}
+  <div class="card border-0">
     <div class="table-responsive">
-
-      {# ══════════════ INSTALLED PACKAGES ══════════════ #}
-      {% if tab == 'installed' %}
-
-        {# Sort-link macro #}
-        {% macro sort_link(col, label) %}
-          {% set next_order = 'desc' if (filters.sort == col and filters.order == 'asc') else 'asc' %}
-          <a href="{{ url_for('packages.index', tab='installed', q=filters.search,
-                     sort=col, order=next_order, per_page=per_page, page=1) }}"
-             class="lop-sort-link {{ 'active' if filters.sort == col }}">
-            {{ label }}
-            {% if filters.sort == col %}
-              <i class="bi bi-arrow-{{ 'up' if filters.order == 'asc' else 'down' }} lop-sort-icon"></i>
-            {% else %}
-              <i class="bi bi-arrow-down-up lop-sort-icon"></i>
-            {% endif %}
-          </a>
-        {% endmacro %}
-
-        <table class="table lop-table mb-0">
-          <thead>
+      <table class="table lop-table mb-0">
+        <thead>
+          <tr>
+            <th>{{ sort_link('hostname',       'Hostname') }}</th>
+            <th class="text-end">{{ sort_link('packages',      'Installed') }}</th>
+            <th class="text-end">{{ sort_link('updates',       'Updates') }}</th>
+            <th class="text-end">Security</th>
+            <th>Compliance</th>
+            <th>{{ sort_link('last_inventory', 'Last Inventory') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if sv.rows %}
+            {% for srv, p, pkg_count in sv.rows %}
             <tr>
-              <th>{{ sort_link('name', 'Package Name') }}</th>
-              <th>{{ sort_link('version', 'Version') }}</th>
-              <th>Release</th>
-              <th>Repository</th>
-              <th>Architecture</th>
-              <th>{{ sort_link('install_date', 'Install Date') }}</th>
-              <th>{{ sort_link('server', 'Server') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if installed and installed.rows %}
-              {% for sp, pkg, srv in installed.rows %}
-              <tr>
-                <td>
-                  <span class="fw-medium">{{ pkg.display_name or pkg.name }}</span>
-                  {% if pkg.display_name and pkg.display_name != pkg.name %}
-                    <div class="lop-mono" style="font-size:.72rem; margin-top:.1rem;">{{ pkg.name }}</div>
-                  {% endif %}
-                </td>
-                <td><span class="lop-mono">{{ sp.version or '—' }}</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td>
-                  {% if sp.collected_at %}
-                    <span class="text-secondary" style="font-size:.82rem;"
-                          data-utc="{{ sp.collected_at.isoformat() }}"
-                          title="{{ sp.collected_at.strftime('%Y-%m-%d %H:%M UTC') }}">
-                      {{ sp.collected_at.strftime('%Y-%m-%d') }}
+
+              {# Hostname → Inventory > Packages tab #}
+              <td>
+                <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=packages"
+                   class="lop-hostname-link">
+                  <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
+                </a>
+                {% if srv.fqdn and srv.fqdn != srv.hostname %}
+                  <div class="lop-fqdn-sub">{{ srv.fqdn }}</div>
+                {% endif %}
+              </td>
+
+              {# Installed Packages count #}
+              <td class="text-end">
+                {% if pkg_count %}
+                  <span class="fw-medium">{{ "{:,}".format(pkg_count) }}</span>
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
+
+              {# Updates Available #}
+              <td class="text-end">
+                {% if p and p.pending_updates is not none %}
+                  {% if p.pending_updates > 0 %}
+                    <span class="lop-updates-badge">
+                      <i class="bi bi-box-arrow-in-down"></i>{{ p.pending_updates }}
                     </span>
                   {% else %}
-                    <span class="lop-na">Not Available</span>
+                    <span class="text-success" style="font-size:.78rem;">
+                      <i class="bi bi-check2"></i> 0
+                    </span>
                   {% endif %}
-                </td>
-                <td>
-                  <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}"
-                     class="lop-hostname-link">
-                    <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
-                  </a>
-                </td>
-              </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="7">
-                  <div class="lop-empty-state">
-                    <i class="bi bi-box-seam"></i>
-                    {% if filters.search %}
-                      <h6>No packages match your search</h6>
-                      <p class="small mb-3">Try adjusting your search terms.</p>
-                      <a href="{{ url_for('packages.index', tab='installed', per_page=per_page) }}"
-                         class="btn btn-sm btn-outline-secondary">Clear search</a>
-                    {% else %}
-                      <h6>No package data available</h6>
-                      <p class="small mb-0">
-                        Package inventory is populated by Ansible playbooks.<br>
-                        Run an inventory sync to collect installed package data.
-                      </p>
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
 
-      {# ══════════════ AVAILABLE UPDATES ══════════════ #}
-      {% elif tab == 'updates' %}
+              {# Security Updates — not yet in model #}
+              <td class="text-end">
+                <span class="lop-na">—</span>
+              </td>
 
-        {# Sort-link macro #}
-        {% macro sort_link(col, label) %}
-          {% set next_order = 'desc' if (filters.sort == col and filters.order == 'asc') else 'asc' %}
-          <a href="{{ url_for('packages.index', tab='updates', q=filters.search,
-                     sort=col, order=next_order, per_page=per_page, page=1) }}"
-             class="lop-sort-link {{ 'active' if filters.sort == col }}">
-            {{ label }}
-            {% if filters.sort == col %}
-              <i class="bi bi-arrow-{{ 'up' if filters.order == 'asc' else 'down' }} lop-sort-icon"></i>
-            {% else %}
-              <i class="bi bi-arrow-down-up lop-sort-icon"></i>
-            {% endif %}
-          </a>
-        {% endmacro %}
-
-        <table class="table lop-table mb-0">
-          <thead>
-            <tr>
-              <th>{{ sort_link('server', 'Server') }}</th>
-              <th>{{ sort_link('updates', 'Updates Available') }}</th>
-              <th>Current Version</th>
-              <th>Available Version</th>
-              <th>Repository</th>
-              <th>Update Type</th>
-              <th>{{ sort_link('last_patched', 'Last Patched') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if updates and updates.rows %}
-              {% for srv, p in updates.rows %}
-              <tr>
-                <td>
-                  <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching"
-                     class="lop-hostname-link">
-                    <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
-                  </a>
-                  {% if srv.fqdn and srv.fqdn != srv.hostname %}
-                    <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem;">{{ srv.fqdn }}</div>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="lop-updates-badge">
-                    <i class="bi bi-box-arrow-in-down"></i>{{ p.pending_updates }}
+              {# Compliance #}
+              <td>
+                {% set cs = p.compliance_status if p else 'unknown' %}
+                {% if cs == 'compliant' %}
+                  <span class="lop-patch-badge lop-compliance-compliant">
+                    <i class="bi bi-check-circle-fill"></i>Compliant
                   </span>
-                </td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td><span class="lop-na">Not Available</span></td>
-                <td>
-                  {% if p.last_patch_date %}
-                    <span class="text-secondary" style="font-size:.82rem;"
-                          data-utc="{{ p.last_patch_date.isoformat() }}"
-                          title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-                      {{ p.last_patch_date.strftime('%Y-%m-%d') }}
-                    </span>
-                  {% else %}
-                    <span class="lop-na">Not Available</span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="7">
-                  <div class="lop-empty-state">
-                    <i class="bi bi-patch-check"></i>
-                    {% if filters.search %}
-                      <h6>No servers match your search</h6>
-                      <p class="small mb-3">Try adjusting your search terms.</p>
-                      <a href="{{ url_for('packages.index', tab='updates', per_page=per_page) }}"
-                         class="btn btn-sm btn-outline-secondary">Clear search</a>
-                    {% else %}
-                      <h6>No updates available</h6>
-                      <p class="small mb-0">
-                        All servers are up-to-date, or update data has not been collected yet.<br>
-                        Per-package update detail requires Ansible inventory collection.
-                      </p>
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
+                {% elif cs == 'due_soon' %}
+                  <span class="lop-patch-badge lop-compliance-due-soon">
+                    <i class="bi bi-exclamation-circle-fill"></i>Due Soon
+                  </span>
+                {% elif cs == 'overdue' %}
+                  <span class="lop-patch-badge lop-compliance-overdue">
+                    <i class="bi bi-x-circle-fill"></i>Overdue
+                  </span>
+                {% else %}
+                  <span class="lop-patch-badge lop-patch-unknown">
+                    <i class="bi bi-question-circle-fill"></i>Unknown
+                  </span>
+                {% endif %}
+              </td>
 
-      {# ══════════════ RECENTLY INSTALLED ══════════════ #}
-      {% else %}
+              {# Last Inventory #}
+              <td>
+                {% if srv.last_ansible_sync %}
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ srv.last_ansible_sync.isoformat() }}"
+                        title="{{ srv.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
+                    {{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}
+                  </span>
+                {% else %}
+                  <span class="lop-na">Never</span>
+                {% endif %}
+              </td>
 
-        <table class="table lop-table mb-0">
-          <thead>
-            <tr>
-              <th>Package</th>
-              <th>Version</th>
-              <th>Install Date</th>
-              <th>Server</th>
             </tr>
-          </thead>
-          <tbody>
-            {% if recently and recently.rows %}
-              {% for sp, pkg, srv in recently.rows %}
-              <tr>
-                <td>
-                  <span class="fw-medium">{{ pkg.display_name or pkg.name }}</span>
-                  {% if pkg.display_name and pkg.display_name != pkg.name %}
-                    <div class="lop-mono" style="font-size:.72rem; margin-top:.1rem;">{{ pkg.name }}</div>
-                  {% endif %}
-                </td>
-                <td><span class="lop-mono">{{ sp.version or '—' }}</span></td>
-                <td>
-                  {% if sp.collected_at %}
-                    <span class="text-secondary" style="font-size:.82rem;"
-                          data-utc="{{ sp.collected_at.isoformat() }}"
-                          title="{{ sp.collected_at.strftime('%Y-%m-%d %H:%M UTC') }}">
-                      {{ sp.collected_at.strftime('%Y-%m-%d') }}
-                    </span>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6">
+                <div class="lop-empty-state">
+                  <i class="bi bi-box-seam"></i>
+                  {% if f.search %}
+                    <h6>No servers match your search</h6>
+                    <p class="mb-3 small">Try a different hostname.</p>
+                    <a href="{{ url_for('packages.index') }}"
+                       class="btn btn-sm btn-outline-secondary">Clear search</a>
                   {% else %}
-                    <span class="lop-na">Not Available</span>
+                    <h6>No servers found</h6>
+                    <p class="mb-3 small">Add servers in Inventory and they will appear here.</p>
+                    <a href="{{ url_for('inventory.index') }}"
+                       class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-server me-1"></i>Go to Inventory
+                    </a>
                   {% endif %}
-                </td>
-                <td>
-                  <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}"
-                     class="lop-hostname-link">
-                    <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
-                  </a>
-                </td>
-              </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="4">
-                  <div class="lop-empty-state">
-                    <i class="bi bi-clock-history"></i>
-                    {% if filters.search %}
-                      <h6>No packages match your search</h6>
-                      <p class="small mb-3">Try adjusting your search terms.</p>
-                      <a href="{{ url_for('packages.index', tab='recently-installed', per_page=per_page) }}"
-                         class="btn btn-sm btn-outline-secondary">Clear search</a>
-                    {% else %}
-                      <h6>No installation history available</h6>
-                      <p class="small mb-0">
-                        Package installation history is collected by Ansible playbooks.
-                      </p>
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
+                </div>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
 
-      {% endif %}
-    </div>{# /table-responsive #}
-
-    {# ── Pagination footer ─────────────────────────────────────────── #}
-    {% if data and (data.total_pages > 1 or data.total > 0) %}
-    <div class="card-footer d-flex align-items-center justify-content-between py-2
-                border-top border-secondary-subtle">
+    {# ── Pagination footer ──────────────────────────────────────────────── #}
+    {% if sv.total_pages > 1 or sv.total > 0 %}
+    <div class="card-footer border-0 d-flex align-items-center justify-content-between flex-wrap gap-2 py-2"
+         style="background:transparent;border-top:1px solid var(--lop-border) !important;">
 
       <small class="text-secondary">
-        {% if data.total == 0 %}
-          No results
+        {% if sv.total == 0 %}
+          No servers
         {% else %}
-          {% set start = (data.page - 1) * data.per_page + 1 %}
-          {% set end   = [data.page * data.per_page, data.total] | min %}
-          Showing {{ start }}–{{ end }} of {{ data.total }}
+          {% set start = (sv.page - 1) * sv.per_page + 1 %}
+          {% set end   = [sv.page * sv.per_page, sv.total] | min %}
+          Showing {{ start }}–{{ end }} of {{ sv.total }} server{{ 's' if sv.total != 1 else '' }}
         {% endif %}
       </small>
 
-      {% if data.total_pages > 1 %}
+      {% if sv.total_pages > 1 %}
       <nav aria-label="Packages pagination">
-        <ul class="pagination mb-0 lop-pagination">
-          <li class="page-item {{ 'disabled' if data.page <= 1 }}">
+        <ul class="pagination pagination-sm mb-0 lop-pagination">
+          <li class="page-item {% if sv.page == 1 %}disabled{% endif %}">
             <a class="page-link"
-               href="{{ url_for('packages.index', tab=tab, q=filters.search, sort=filters.sort,
-                        order=filters.order, per_page=per_page, page=data.page - 1)
-                        if data.page > 1 else '#' }}">
+               href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=sv.page-1, per_page=sv.per_page) }}">
               <i class="bi bi-chevron-left"></i>
             </a>
           </li>
-          {% for p in range(1, data.total_pages + 1) %}
-            {% if p == 1 or p == data.total_pages or (p >= data.page - 2 and p <= data.page + 2) %}
-              {% if loop.index > 1 and p > (range(1, data.total_pages + 1) | list)[loop.index - 2] + 1 %}
+          {% for pg in range(1, sv.total_pages + 1) %}
+            {% if pg == 1 or pg == sv.total_pages or (pg >= sv.page - 2 and pg <= sv.page + 2) %}
+              {% if loop.changed(pg > 1 and pg != sv.page - 2 and pg != 1) %}
                 <li class="page-item disabled"><span class="page-link">…</span></li>
               {% endif %}
-              <li class="page-item {{ 'active' if p == data.page }}">
+              <li class="page-item {% if pg == sv.page %}active{% endif %}">
                 <a class="page-link"
-                   href="{{ url_for('packages.index', tab=tab, q=filters.search, sort=filters.sort,
-                            order=filters.order, per_page=per_page, page=p) }}">{{ p }}</a>
+                   href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=pg, per_page=sv.per_page) }}">
+                  {{ pg }}
+                </a>
               </li>
             {% endif %}
           {% endfor %}
-          <li class="page-item {{ 'disabled' if data.page >= data.total_pages }}">
+          <li class="page-item {% if sv.page == sv.total_pages %}disabled{% endif %}">
             <a class="page-link"
-               href="{{ url_for('packages.index', tab=tab, q=filters.search, sort=filters.sort,
-                        order=filters.order, per_page=per_page, page=data.page + 1)
-                        if data.page < data.total_pages else '#' }}">
+               href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=sv.page+1, per_page=sv.per_page) }}">
               <i class="bi bi-chevron-right"></i>
             </a>
           </li>
@@ -502,30 +481,38 @@
     {% endif %}
 
   </div>{# /card #}
-</div>
 
+  {# ── Note on missing data ───────────────────────────────────────────── #}
+  <p class="text-secondary mt-3" style="font-size:.75rem;">
+    <i class="bi bi-info-circle me-1"></i>
+    Security and kernel update counts require Ansible collection integration.
+    Click a hostname to view installed packages for that server.
+  </p>
+
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
 (function () {
   "use strict";
-  const form    = document.getElementById("filter-form");
-  const input   = document.getElementById("search-input");
-  const icon    = document.getElementById("search-icon");
-  const spinner = document.getElementById("search-spinner");
-  let timer;
-  if (input && form) {
-    input.addEventListener("input", function () {
+  var si  = document.getElementById("search-input");
+  var ico = document.getElementById("search-icon");
+  var spn = document.getElementById("search-spinner");
+  var frm = document.getElementById("filter-form");
+  var timer;
+  if (si) {
+    si.addEventListener("input", function () {
+      ico.style.display = "none";
+      spn.style.display = "";
       clearTimeout(timer);
-      if (icon)    icon.style.display    = "none";
-      if (spinner) spinner.style.display = "inline-block";
       timer = setTimeout(function () {
-        form.querySelector('[name="page"]').value = "1";
-        form.submit();
+        spn.style.display = "none";
+        ico.style.display = "";
+        frm.submit();
       }, 400);
     });
   }
-}());
+})();
 </script>
 {% endblock %}
