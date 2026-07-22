@@ -553,6 +553,97 @@
     </div>
   </div>
 
+  {# ══════════════════════════ PATCH COMPLIANCE ════════════════════════════ #}
+  <div class="card border-0 mb-4" id="patch-compliance">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-shield-check me-2 text-success"></i>Patch Compliance
+      </h6>
+      <span class="badge bg-success-subtle text-success border border-success-subtle">
+        Compliance Thresholds
+      </span>
+    </div>
+    <div class="card-body">
+
+      <p class="text-secondary small mb-3">
+        Configure how the portal determines server patch compliance status.
+        Servers with pending updates are classified based on how long ago they were last patched.
+      </p>
+
+      {% if compliance_cfg %}
+      {# Live threshold summary #}
+      <div class="d-flex flex-wrap gap-2 mb-4">
+        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2" style="font-size:.78rem;">
+          <i class="bi bi-check-circle-fill me-1"></i>Compliant — patched within {{ compliance_cfg.compliance_window_days }} days
+        </span>
+        <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2" style="font-size:.78rem;">
+          <i class="bi bi-exclamation-circle-fill me-1"></i>Due Soon — {{ compliance_cfg.compliance_window_days + 1 }}–{{ compliance_cfg.compliance_window_days + compliance_cfg.due_soon_days }} days
+        </span>
+        <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2" style="font-size:.78rem;">
+          <i class="bi bi-x-circle-fill me-1"></i>Overdue — {{ compliance_cfg.compliance_window_days + compliance_cfg.due_soon_days + 1 }}+ days
+        </span>
+      </div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('settings.save_compliance_route') }}"
+            class="needs-validation" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="row g-3">
+
+          <div class="col-md-6">
+            <label for="compliance_window_days" class="form-label fw-medium">
+              Compliance Window
+              <span class="text-secondary fw-normal" style="font-size:.82rem;">(days)</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="number" id="compliance_window_days" name="compliance_window_days"
+                     class="form-control bg-transparent border-secondary text-light"
+                     value="{{ compliance_cfg.compliance_window_days if compliance_cfg else 90 }}"
+                     min="1" max="3650" required>
+              <span class="input-group-text bg-transparent border-secondary text-secondary">days</span>
+            </div>
+            <div class="form-text text-secondary" style="font-size:.75rem;">
+              Servers patched within this window are marked <strong class="text-success">Compliant</strong>.
+              Default: 90 days.
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="due_soon_days" class="form-label fw-medium">
+              Due Soon Buffer
+              <span class="text-secondary fw-normal" style="font-size:.82rem;">(days)</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="number" id="due_soon_days" name="due_soon_days"
+                     class="form-control bg-transparent border-secondary text-light"
+                     value="{{ compliance_cfg.due_soon_days if compliance_cfg else 15 }}"
+                     min="1" max="365" required>
+              <span class="input-group-text bg-transparent border-secondary text-secondary">days</span>
+            </div>
+            <div class="form-text text-secondary" style="font-size:.75rem;">
+              Additional grace period after the compliance window before status becomes
+              <strong class="text-danger">Overdue</strong>. Default: 15 days.
+            </div>
+          </div>
+
+        </div>
+
+        <div class="mt-3 d-flex align-items-center gap-2">
+          <button type="submit" class="btn btn-sm btn-success">
+            <i class="bi bi-floppy me-1"></i>Save Thresholds
+          </button>
+          {% if compliance_cfg and compliance_cfg.updated_at %}
+          <span class="text-secondary" style="font-size:.75rem;">
+            Last updated {{ compliance_cfg.updated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          </span>
+          {% endif %}
+        </div>
+
+      </form>
+    </div>
+  </div>
+
   {# ══════════════════════════════ API SETTINGS ═════════════════════════════ #}
   <div class="card border-0 mb-4" id="api-settings">
     <div class="card-header d-flex align-items-center justify-content-between py-3">

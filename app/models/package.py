@@ -1,8 +1,8 @@
 """
 Package models.
 
-Package  — master catalogue of trackable software (Docker, Python, Java …)
-ServerPackage — installed version per server (junction table with extras).
+Package      — master catalogue of trackable software.
+ServerPackage — installed (and available-update) version per server.
 """
 from datetime import datetime, timezone
 
@@ -41,7 +41,7 @@ class Package(db.Model):
 
 
 class ServerPackage(db.Model):
-    """Installed version of a Package on a specific Server."""
+    """Installed version of a Package on a specific Server, with update metadata."""
 
     __tablename__ = "server_packages"
 
@@ -65,6 +65,24 @@ class ServerPackage(db.Model):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    # ── Update availability metadata (populated by Ansible) ────────────── #
+    update_available: bool = db.Column(
+        db.Boolean, nullable=False, default=False, index=True,
+        comment="True when a newer version is available in the repo",
+    )
+    available_version: str = db.Column(
+        db.String(100), nullable=True,
+        comment="Version string of the available update",
+    )
+    update_type: str = db.Column(
+        db.String(50), nullable=True,
+        comment="security | bugfix | enhancement",
+    )
+    repository: str = db.Column(
+        db.String(150), nullable=True,
+        comment="Source repository (e.g. rhel-9-baseos)",
+    )
+
     __table_args__ = (
         db.UniqueConstraint("server_id", "package_id", name="uq_server_package"),
     )
@@ -83,4 +101,8 @@ class ServerPackage(db.Model):
             "display_name": self.package.display_name if self.package else None,
             "version": self.version,
             "collected_at": self.collected_at.isoformat() if self.collected_at else None,
+            "update_available": self.update_available,
+            "available_version": self.available_version,
+            "update_type": self.update_type,
+            "repository": self.repository,
         }

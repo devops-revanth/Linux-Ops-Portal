@@ -195,14 +195,14 @@
       <h4 class="mb-0 fw-bold">
         <i class="bi bi-box me-2 text-info"></i>Packages
       </h4>
-      <small class="text-secondary">Fleet package management — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
+      <small class="text-secondary">Fleet package summary — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
     </div>
   </div>
 
   {# ── Fleet summary stat cards ────────────────────────────────────────── #}
   <div class="row g-3 mb-4">
 
-    <div class="col-6 col-sm-4 col-lg">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-primary"><i class="bi bi-server"></i></div>
         <div class="lop-stat-card-label">Servers Managed</div>
@@ -210,15 +210,7 @@
       </div>
     </div>
 
-    <div class="col-6 col-sm-4 col-lg">
-      <div class="lop-stat-card">
-        <div class="lop-stat-card-icon text-info"><i class="bi bi-box-seam"></i></div>
-        <div class="lop-stat-card-label">Installed Packages</div>
-        <div class="lop-stat-card-value">{{ "{:,}".format(fleet.installed_packages) }}</div>
-      </div>
-    </div>
-
-    <div class="col-6 col-sm-4 col-lg">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-warning"><i class="bi bi-box-arrow-in-down"></i></div>
         <div class="lop-stat-card-label">Available Updates</div>
@@ -228,7 +220,7 @@
       </div>
     </div>
 
-    <div class="col-6 col-sm-4 col-lg">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-danger"><i class="bi bi-shield-exclamation"></i></div>
         <div class="lop-stat-card-label">Security Updates</div>
@@ -242,7 +234,7 @@
       </div>
     </div>
 
-    <div class="col-6 col-sm-4 col-lg">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-secondary"><i class="bi bi-cpu"></i></div>
         <div class="lop-stat-card-label">Kernel Updates</div>
@@ -312,10 +304,9 @@
       <table class="table lop-table mb-0">
         <thead>
           <tr>
-            <th>{{ sort_link('hostname',       'Hostname') }}</th>
-            <th class="text-end">{{ sort_link('packages',      'Installed') }}</th>
-            <th class="text-end">{{ sort_link('updates',       'Updates') }}</th>
-            <th class="text-end">Security</th>
+            <th>{{ sort_link('hostname', 'Hostname') }}</th>
+            <th class="text-end">{{ sort_link('updates', 'Updates Available') }}</th>
+            <th class="text-end">Security Updates</th>
             <th>Compliance</th>
             <th>{{ sort_link('last_inventory', 'Last Inventory') }}</th>
           </tr>
@@ -325,27 +316,18 @@
             {% for srv, p, pkg_count in sv.rows %}
             <tr>
 
-              {# Hostname → Inventory > Packages tab #}
+              {# Hostname + FQDN → Inventory > Packages tab #}
               <td>
                 <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=packages"
                    class="lop-hostname-link">
                   <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
                 </a>
-                {% if srv.fqdn and srv.fqdn != srv.hostname %}
+                {% if srv.fqdn %}
                   <div class="lop-fqdn-sub">{{ srv.fqdn }}</div>
                 {% endif %}
               </td>
 
-              {# Installed Packages count #}
-              <td class="text-end">
-                {% if pkg_count %}
-                  <span class="fw-medium">{{ "{:,}".format(pkg_count) }}</span>
-                {% else %}
-                  <span class="lop-na">—</span>
-                {% endif %}
-              </td>
-
-              {# Updates Available #}
+              {# Updates Available count #}
               <td class="text-end">
                 {% if p and p.pending_updates is not none %}
                   {% if p.pending_updates > 0 %}
@@ -406,7 +388,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="6">
+              <td colspan="5">
                 <div class="lop-empty-state">
                   <i class="bi bi-box-seam"></i>
                   {% if f.search %}
@@ -456,9 +438,6 @@
           </li>
           {% for pg in range(1, sv.total_pages + 1) %}
             {% if pg == 1 or pg == sv.total_pages or (pg >= sv.page - 2 and pg <= sv.page + 2) %}
-              {% if loop.changed(pg > 1 and pg != sv.page - 2 and pg != 1) %}
-                <li class="page-item disabled"><span class="page-link">…</span></li>
-              {% endif %}
               <li class="page-item {% if pg == sv.page %}active{% endif %}">
                 <a class="page-link"
                    href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=pg, per_page=sv.per_page) }}">
@@ -482,11 +461,9 @@
 
   </div>{# /card #}
 
-  {# ── Note on missing data ───────────────────────────────────────────── #}
   <p class="text-secondary mt-3" style="font-size:.75rem;">
     <i class="bi bi-info-circle me-1"></i>
-    Security and kernel update counts require Ansible collection integration.
-    Click a hostname to view installed packages for that server.
+    Security and kernel update counts require Ansible integration. Click a hostname to view package details.
   </p>
 
 </div>

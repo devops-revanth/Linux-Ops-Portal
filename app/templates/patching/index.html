@@ -47,7 +47,7 @@
     color: var(--lop-muted);
   }
 
-  /* ── Patch status badges ────────────────────────────────────────────── */
+  /* ── Compliance status badges ──────────────────────────────────────── */
   .lop-patch-badge {
     display: inline-flex;
     align-items: center;
@@ -58,28 +58,6 @@
     border-radius: 20px;
     white-space: nowrap;
   }
-  .lop-patch-up-to-date {
-    background: rgba(35,134,54,.15);
-    color: #3fb950;
-    border: 1px solid rgba(35,134,54,.35);
-  }
-  .lop-patch-pending {
-    background: rgba(210,153,34,.15);
-    color: #d4a017;
-    border: 1px solid rgba(210,153,34,.35);
-  }
-  .lop-patch-failed {
-    background: rgba(248,81,73,.15);
-    color: #f85149;
-    border: 1px solid rgba(248,81,73,.35);
-  }
-  .lop-patch-unknown {
-    background: rgba(139,148,158,.1);
-    color: #8b949e;
-    border: 1px solid rgba(139,148,158,.3);
-  }
-
-  /* ── Compliance status badges ──────────────────────────────────────────── */
   .lop-compliance-compliant {
     background: rgba(35,134,54,.15);
     color: #3fb950;
@@ -95,6 +73,11 @@
     color: #f85149;
     border: 1px solid rgba(248,81,73,.35);
   }
+  .lop-patch-unknown {
+    background: rgba(139,148,158,.1);
+    color: #8b949e;
+    border: 1px solid rgba(139,148,158,.3);
+  }
 
   /* ── Environment pills ─────────────────────────────────────────────── */
   .lop-env-pill {
@@ -105,6 +88,22 @@
     letter-spacing: .05em;
     padding: .15rem .45rem;
     border-radius: 4px;
+  }
+
+  /* ── Updates available YES/NO badges ───────────────────────────────── */
+  .lop-yes-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
+    border-radius: 12px;
+    background: rgba(210,153,34,.15); color: #d4a017;
+    border: 1px solid rgba(210,153,34,.35);
+  }
+  .lop-no-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
+    border-radius: 12px;
+    background: rgba(35,134,54,.1); color: #3fb950;
+    border: 1px solid rgba(35,134,54,.3);
   }
 
   /* ── Empty state ───────────────────────────────────────────────────── */
@@ -132,33 +131,12 @@
   }
   .lop-pagination .page-item.disabled .page-link { opacity: .4; }
 
-  /* ── Summary stat badges ───────────────────────────────────────────── */
-  .lop-patch-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    font-size: .78rem;
-    font-weight: 500;
-    padding: .3rem .7rem;
-    border-radius: 6px;
-    border: 1px solid;
-  }
-
   /* ── Row-select checkboxes ──────────────────────────────────────────── */
   .lop-cb { width: 36px; padding-left: .5rem !important; padding-right: .5rem !important; vertical-align: middle; text-align: center; }
   input[type="checkbox"].lop-row-cb,
   input[type="checkbox"]#select-all {
     width: 15px; height: 15px; cursor: pointer;
     accent-color: #3fb950;
-  }
-
-  /* ── Updates-available badge ────────────────────────────────────────── */
-  .lop-updates-badge {
-    display: inline-flex; align-items: center; gap: .3rem;
-    font-size: .72rem; font-weight: 600; padding: .15rem .5rem;
-    border-radius: 12px;
-    background: rgba(210,153,34,.15); color: #d4a017;
-    border: 1px solid rgba(210,153,34,.35);
   }
 </style>
 {% endblock %}
@@ -168,6 +146,8 @@
 {# ── Shorthand aliases ──────────────────────────────────────────────────── #}
 {% set f   = patching.filters %}
 {% set pt  = patching %}
+{% set w   = compliance_summary.window_days %}
+{% set ds  = compliance_summary.due_soon_days %}
 
 <div class="container-fluid p-4">
 
@@ -178,9 +158,13 @@
         <i class="bi bi-shield-check me-2 text-success"></i>Patch Compliance
       </h4>
       <small class="text-secondary">
-        {{ pt.total }} server{{ 's' if pt.total != 1 else '' }} — patch compliance view
+        {{ pt.total }} server{{ 's' if pt.total != 1 else '' }} — compliance window: {{ w }} days
       </small>
     </div>
+    <a href="{{ url_for('settings.index') }}#patch-compliance"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-sliders me-1"></i>Configure Thresholds
+    </a>
   </div>
 
 
@@ -197,7 +181,7 @@
           <div class="fw-bold" style="font-size:1.6rem;color:#3fb950;line-height:1;">
             {{ compliance_summary.compliant }}
           </div>
-          <div class="text-secondary" style="font-size:.7rem;">No pending updates</div>
+          <div class="text-secondary" style="font-size:.7rem;">Patched within {{ w }} days</div>
         </div>
       </div>
     </div>
@@ -212,7 +196,7 @@
           <div class="fw-bold" style="font-size:1.6rem;color:#d4a017;line-height:1;">
             {{ compliance_summary.due_soon }}
           </div>
-          <div class="text-secondary" style="font-size:.7rem;">Updates within 90-day window</div>
+          <div class="text-secondary" style="font-size:.7rem;">{{ w + 1 }}–{{ w + ds }} days since last patch</div>
         </div>
       </div>
     </div>
@@ -227,7 +211,7 @@
           <div class="fw-bold" style="font-size:1.6rem;color:#f85149;line-height:1;">
             {{ compliance_summary.overdue }}
           </div>
-          <div class="text-secondary" style="font-size:.7rem;">Compliance window exceeded</div>
+          <div class="text-secondary" style="font-size:.7rem;">{{ w + ds + 1 }}+ days — action required</div>
         </div>
       </div>
     </div>
@@ -258,7 +242,7 @@
         <input type="hidden" name="order" value="{{ f.order }}">
         <input type="hidden" name="page"  value="1">
 
-        {# Hostname / IP / Owner search #}
+        {# Search #}
         <div class="flex-grow-1" style="min-width: 200px; max-width: 340px;">
           <label class="form-label text-secondary small mb-1">Search</label>
           <div class="input-group input-group-sm">
@@ -272,13 +256,13 @@
               type="text"
               name="q"
               class="form-control form-control-sm bg-transparent border-secondary text-light"
-              placeholder="Hostname, IP address or owner…"
+              placeholder="Hostname or IP…"
               value="{{ f.search }}"
               autocomplete="off"
             >
             {% if f.search %}
               <a href="{{ url_for('patching.index', sort=f.sort, order=f.order,
-                          location_id=f.location_id, env_id=f.env_id, patch_status=f.patch_status) }}"
+                          location_id=f.location_id, env_id=f.env_id) }}"
                  class="btn btn-sm btn-outline-secondary" title="Clear search">
                 <i class="bi bi-x"></i>
               </a>
@@ -316,21 +300,6 @@
           </select>
         </div>
 
-        {# Patch Status filter #}
-        <div style="min-width: 155px;">
-          <label class="form-label text-secondary small mb-1">Patch Status</label>
-          <select name="patch_status"
-                  class="form-select form-select-sm bg-transparent border-secondary text-light"
-                  onchange="this.form.submit()">
-            <option value="">All statuses</option>
-            {% for ps in pt.patch_statuses %}
-              <option value="{{ ps }}" {{ 'selected' if f.patch_status == ps }}>
-                {{ ps | replace('-', ' ') | title }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
         {# Rows per page #}
         <div style="min-width: 110px;">
           <label class="form-label text-secondary small mb-1">Rows per page</label>
@@ -345,7 +314,7 @@
 
         <div class="d-flex gap-2 align-self-end">
           <button type="submit" class="btn btn-sm btn-primary">Apply</button>
-          {% if f.search or f.location_id or f.env_id or f.patch_status %}
+          {% if f.search or f.location_id or f.env_id %}
             <a href="{{ url_for('patching.index') }}"
                class="btn btn-sm btn-outline-secondary">Reset</a>
           {% endif %}
@@ -359,7 +328,7 @@
   <div class="card border-0">
 
     {# Active filter pills #}
-    {% if f.search or f.location_id or f.env_id or f.patch_status %}
+    {% if f.search or f.location_id or f.env_id %}
     <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
       <small class="text-secondary me-1">Active filters:</small>
       {% if f.search %}
@@ -380,15 +349,6 @@
             env: {{ env.name }}
           </span>
         {% endif %}{% endfor %}
-      {% endif %}
-      {% if f.patch_status %}
-        <span class="badge
-          {% if f.patch_status == 'up-to-date' %}bg-success-subtle text-success border border-success-subtle
-          {% elif f.patch_status == 'pending'   %}bg-warning-subtle text-warning border border-warning-subtle
-          {% elif f.patch_status == 'failed'    %}bg-danger-subtle  text-danger  border border-danger-subtle
-          {% else                               %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
-          status: {{ f.patch_status | replace('-', ' ') | title }}
-        </span>
       {% endif %}
     </div>
     {% endif %}
@@ -425,7 +385,7 @@
             {% macro sort_link(col, label) %}
               {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
               <a href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
-                          env_id=f.env_id, patch_status=f.patch_status,
+                          env_id=f.env_id,
                           sort=col, order=next_order, per_page=pt.per_page, page=1) }}"
                  class="lop-sort-link {{ 'active' if f.sort == col }}">
                 {{ label }}
@@ -438,11 +398,14 @@
             {% endmacro %}
 
             <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
-            <th>{{ sort_link('hostname',        'Hostname') }}</th>
-            <th>{{ sort_link('pending_updates', 'Updates') }}</th>
+            <th>{{ sort_link('hostname',       'Hostname') }}</th>
+            <th>{{ sort_link('environment',    'Environment') }}</th>
+            <th>{{ sort_link('location',       'Location') }}</th>
+            <th>{{ sort_link('operating_system', 'OS') }}</th>
+            <th>{{ sort_link('kernel_version', 'Running Kernel') }}</th>
+            <th>Updates Available</th>
+            <th style="min-width:130px;">Compliance</th>
             <th>{{ sort_link('last_patch_date', 'Last Patched') }}</th>
-            <th style="min-width:140px;">Compliance</th>
-            <th>Reboot</th>
           </tr>
         </thead>
         <tbody>
@@ -455,58 +418,82 @@
               {# Checkbox #}
               <td class="lop-cb"><input type="checkbox" class="lop-row-cb" value="{{ srv.id }}"></td>
 
-              {# Hostname + environment pill + FQDN #}
+              {# Hostname + FQDN #}
               <td>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching"
-                     class="lop-hostname-link">
-                    <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
-                  </a>
-                  {% if srv.environment %}
-                    <span class="lop-env-pill
-                      {% if srv.environment.color == 'primary'   %} bg-primary-subtle   text-primary
-                      {% elif srv.environment.color == 'danger'  %} bg-danger-subtle    text-danger
-                      {% elif srv.environment.color == 'warning' %} bg-warning-subtle   text-warning
-                      {% elif srv.environment.color == 'info'    %} bg-info-subtle      text-info
-                      {% elif srv.environment.color == 'success' %} bg-success-subtle   text-success
-                      {% else %}                                     bg-secondary-subtle text-secondary
-                      {% endif %}">{{ srv.environment.label }}</span>
+                <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching"
+                   class="lop-hostname-link">
+                  <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
+                </a>
+                {% if srv.fqdn %}
+                  <div class="lop-mono text-secondary" style="font-size:.72rem;margin-top:.1rem;">{{ srv.fqdn }}</div>
+                {% endif %}
+              </td>
+
+              {# Environment #}
+              <td>
+                {% if srv.environment %}
+                  <span class="lop-env-pill
+                    {% if srv.environment.color == 'primary'   %} bg-primary-subtle   text-primary
+                    {% elif srv.environment.color == 'danger'  %} bg-danger-subtle    text-danger
+                    {% elif srv.environment.color == 'warning' %} bg-warning-subtle   text-warning
+                    {% elif srv.environment.color == 'info'    %} bg-info-subtle      text-info
+                    {% elif srv.environment.color == 'success' %} bg-success-subtle   text-success
+                    {% else %}                                     bg-secondary-subtle text-secondary
+                    {% endif %}">{{ srv.environment.label }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Location #}
+              <td>
+                {% if srv.location %}
+                  <span class="text-secondary" style="font-size:.82rem;">
+                    <i class="bi bi-building me-1"></i>{{ srv.location.name }}
+                  </span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# OS #}
+              <td>
+                {% if srv.operating_system %}
+                  <span style="font-size:.82rem;">{{ srv.operating_system }}
+                    {% if srv.os_version %}<span class="text-secondary"> {{ srv.os_version }}</span>{% endif %}
+                  </span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Running Kernel #}
+              <td>
+                {% if srv.kernel_version %}
+                  <span class="lop-mono" style="font-size:.75rem;">{{ srv.kernel_version }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
+              {# Updates Available — YES / NO #}
+              <td>
+                {% if p and p.pending_updates is not none %}
+                  {% if p.pending_updates > 0 %}
+                    <span class="lop-yes-badge">
+                      <i class="bi bi-exclamation-circle-fill"></i>YES
+                    </span>
+                  {% else %}
+                    <span class="lop-no-badge">
+                      <i class="bi bi-check2-circle"></i>NO
+                    </span>
                   {% endif %}
-                </div>
-                {% if srv.fqdn and srv.fqdn != srv.hostname %}
-                  <div class="lop-mono text-secondary" style="font-size:.72rem;margin-top:.15rem;">{{ srv.fqdn }}</div>
-                {% endif %}
-              </td>
-
-              {# Updates Available #}
-              <td>
-                {% if p and p.pending_updates is not none and p.pending_updates > 0 %}
-                  <span class="lop-updates-badge">
-                    <i class="bi bi-box-arrow-in-down"></i>{{ p.pending_updates }}
-                  </span>
-                {% elif p and p.pending_updates == 0 %}
-                  <span class="text-success" style="font-size:.78rem;">
-                    <i class="bi bi-check2"></i> 0
-                  </span>
                 {% else %}
                   <span class="text-secondary">—</span>
                 {% endif %}
               </td>
 
-              {# Last Patched #}
-              <td>
-                {% if p and p.last_patch_date %}
-                  <span class="text-secondary" style="font-size:.82rem;"
-                        data-utc="{{ p.last_patch_date.isoformat() }}"
-                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
-                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
-                  </span>
-                {% else %}
-                  <span class="text-secondary">—</span>
-                {% endif %}
-              </td>
-
-              {# Compliance — most prominent column #}
+              {# Compliance Status #}
               <td>
                 {% set cs = p.compliance_status if p else 'unknown' %}
                 {% if cs == 'compliant' %}
@@ -528,23 +515,16 @@
                 {% endif %}
               </td>
 
-              {# Reboot Required #}
+              {# Last Patched #}
               <td>
-                {% if p and p.reboot_required is not none %}
-                  {% if p.reboot_required %}
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle"
-                          style="font-size:.7rem;">
-                      <i class="bi bi-arrow-repeat me-1"></i>Yes
-                    </span>
-                  {% else %}
-                    <span class="badge bg-success-subtle text-success border border-success-subtle"
-                          style="font-size:.7rem;">
-                      <i class="bi bi-check2 me-1"></i>No
-                    </span>
-                  {% endif %}
+                {% if p and p.last_patch_date %}
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ p.last_patch_date.isoformat() }}"
+                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
+                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
+                  </span>
                 {% else %}
-                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"
-                        style="font-size:.7rem;">—</span>
+                  <span class="text-secondary">—</span>
                 {% endif %}
               </td>
 
@@ -552,10 +532,10 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="6">
+              <td colspan="9">
                 <div class="lop-empty-state">
                   <i class="bi bi-shield-check"></i>
-                  {% if f.search or f.location_id or f.env_id or f.patch_status %}
+                  {% if f.search or f.location_id or f.env_id %}
                     <h6>No servers match your filters</h6>
                     <p class="mb-3 small">Try adjusting the search or filter criteria.</p>
                     <a href="{{ url_for('patching.index') }}"
@@ -599,7 +579,7 @@
           <li class="page-item {{ 'disabled' if pt.page <= 1 }}">
             <a class="page-link"
                href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
-                        env_id=f.env_id, patch_status=f.patch_status,
+                        env_id=f.env_id,
                         sort=f.sort, order=f.order, per_page=pt.per_page, page=pt.page - 1) if pt.page > 1 else '#' }}">
               <i class="bi bi-chevron-left"></i>
             </a>
@@ -612,7 +592,7 @@
               <li class="page-item {{ 'active' if p == pt.page }}">
                 <a class="page-link"
                    href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
-                            env_id=f.env_id, patch_status=f.patch_status,
+                            env_id=f.env_id,
                             sort=f.sort, order=f.order, per_page=pt.per_page, page=p) }}">{{ p }}</a>
               </li>
             {% endif %}
@@ -620,7 +600,7 @@
           <li class="page-item {{ 'disabled' if pt.page >= pt.total_pages }}">
             <a class="page-link"
                href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
-                        env_id=f.env_id, patch_status=f.patch_status,
+                        env_id=f.env_id,
                         sort=f.sort, order=f.order, per_page=pt.per_page, page=pt.page + 1) if pt.page < pt.total_pages else '#' }}">
               <i class="bi bi-chevron-right"></i>
             </a>
@@ -635,7 +615,7 @@
   </div>{# /card #}
 </div>
 
-{# ── Hidden bulk-action forms (no modals needed — non-destructive) ─────── #}
+{# ── Hidden bulk-action forms ─────── #}
 <form method="POST" action="{{ url_for('patching.bulk_active') }}"
       id="bulk-active-form" style="display:none;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -652,89 +632,65 @@
 (function () {
   "use strict";
 
-  /* ── Instant search ────────────────────────────────────────────── */
-  const form    = document.getElementById("filter-form");
-  const input   = document.getElementById("search-input");
-  const icon    = document.getElementById("search-icon");
-  const spinner = document.getElementById("search-spinner");
-  let timer;
-
-  if (input && form) {
-    input.addEventListener("input", function () {
+  /* ── Instant search ──────────────────────────────────────────────── */
+  (function () {
+    var si  = document.getElementById("search-input");
+    var ico = document.getElementById("search-icon");
+    var spn = document.getElementById("search-spinner");
+    var frm = document.getElementById("filter-form");
+    var timer;
+    if (!si) return;
+    si.addEventListener("input", function () {
+      ico.style.display = "none"; spn.style.display = "";
       clearTimeout(timer);
-      if (icon)    icon.style.display    = "none";
-      if (spinner) spinner.style.display = "inline-block";
       timer = setTimeout(function () {
-        form.querySelector('[name="page"]').value = "1";
-        form.submit();
+        spn.style.display = "none"; ico.style.display = "";
+        frm.submit();
       }, 400);
     });
-  }
+  })();
 
-  /* ── Select All + bulk toolbar ──────────────────────────────────── */
-  const selectAll = document.getElementById("select-all");
-  const bulkBtn   = document.getElementById("bulk-btn");
-  const bulkCount = document.getElementById("bulk-count");
+  /* ── Select-all / row checkboxes ─────────────────────────────────── */
+  (function () {
+    var all  = document.getElementById("select-all");
+    var cbs  = document.querySelectorAll(".lop-row-cb");
+    var cnt  = document.getElementById("bulk-count");
+    var btn  = document.getElementById("bulk-btn");
+    var selected = [];
 
-  function getChecked() {
-    return Array.from(document.querySelectorAll(".lop-row-cb:checked"));
-  }
+    function update() {
+      selected = Array.from(cbs).filter(function(c){ return c.checked; }).map(function(c){ return c.value; });
+      var n = selected.length;
+      cnt.textContent = n + " selected";
+      btn.disabled = n === 0;
+      all.indeterminate = n > 0 && n < cbs.length;
+      all.checked = n > 0 && n === cbs.length;
+    }
 
-  function updateBulk() {
-    const n = getChecked().length;
-    if (bulkBtn)   bulkBtn.disabled = n === 0;
-    if (bulkCount) bulkCount.textContent = n + " selected";
-  }
-
-  function populateIds(targetForm, ids) {
-    targetForm.querySelectorAll('input[name="server_ids"]').forEach(function (el) { el.remove(); });
-    ids.forEach(function (id) {
-      const inp = document.createElement("input");
-      inp.type  = "hidden";
-      inp.name  = "server_ids";
-      inp.value = id;
-      targetForm.appendChild(inp);
-    });
-  }
-
-  if (selectAll) {
-    selectAll.addEventListener("change", function () {
-      document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
-        cb.checked = selectAll.checked;
+    if (all) {
+      all.addEventListener("change", function () {
+        cbs.forEach(function(c){ c.checked = all.checked; });
+        update();
       });
-      updateBulk();
-    });
-    document.querySelectorAll(".lop-row-cb").forEach(function (cb) {
-      cb.addEventListener("change", function () {
-        const all  = document.querySelectorAll(".lop-row-cb");
-        const done = document.querySelectorAll(".lop-row-cb:checked");
-        selectAll.indeterminate = done.length > 0 && done.length < all.length;
-        selectAll.checked       = done.length === all.length;
-        updateBulk();
+    }
+    cbs.forEach(function(c){ c.addEventListener("change", update); });
+
+    function bulkSubmit(formId) {
+      var form = document.getElementById(formId);
+      if (!form) return;
+      selected.forEach(function(id) {
+        var inp = document.createElement("input");
+        inp.type = "hidden"; inp.name = "server_ids"; inp.value = id;
+        form.appendChild(inp);
       });
-    });
-  }
+      form.submit();
+    }
 
-  /* ── Mark as Active ──────────────────────────────────────────────── */
-  var activeForm = document.getElementById("bulk-active-form");
-  document.getElementById("bulk-active-trigger") &&
-    document.getElementById("bulk-active-trigger").addEventListener("click", function () {
-      var checked = getChecked();
-      if (!checked.length) return;
-      populateIds(activeForm, checked.map(function (cb) { return cb.value; }));
-      activeForm.submit();
-    });
-
-  /* ── Mark as Maintenance ─────────────────────────────────────────── */
-  var maintForm = document.getElementById("bulk-maint-form");
-  document.getElementById("bulk-maint-trigger") &&
-    document.getElementById("bulk-maint-trigger").addEventListener("click", function () {
-      var checked = getChecked();
-      if (!checked.length) return;
-      populateIds(maintForm, checked.map(function (cb) { return cb.value; }));
-      maintForm.submit();
-    });
-
+    var actTrig = document.getElementById("bulk-active-trigger");
+    var maintTrig = document.getElementById("bulk-maint-trigger");
+    if (actTrig)  actTrig.addEventListener("click",  function(){ bulkSubmit("bulk-active-form"); });
+    if (maintTrig) maintTrig.addEventListener("click", function(){ bulkSubmit("bulk-maint-form"); });
+  })();
 })();
 </script>
 {% endblock %}

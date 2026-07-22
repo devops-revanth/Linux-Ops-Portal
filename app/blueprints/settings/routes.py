@@ -1,7 +1,8 @@
 """Settings blueprint routes — thin controllers only.
 
 All database logic lives in queries.py.
-Settings contains: Locations, Environments, Owners, Directory Services, API/Ansible Integration.
+Settings contains: Locations, Environments, Owners, Directory Services,
+API/Ansible Integration, and Patch Compliance configuration.
 User Management is in the dedicated Users blueprint (/users).
 """
 import logging
@@ -39,8 +40,18 @@ logger = logging.getLogger(__name__)
 
 # ── Helpers ───────────────────────────────────────────────────────────────── #
 
+def _get_compliance_config():
+    """Load ComplianceConfig safely (returns defaults if table not yet migrated)."""
+    try:
+        from ...models.compliance_config import ComplianceConfig
+        return ComplianceConfig.get()
+    except Exception:
+        return None
+
+
 def _render_settings(new_token: str | None = None):
     data = get_settings_data()
+    compliance_cfg = _get_compliance_config()
     return render_template(
         "settings/index.html",
         locations           = data.locations,
@@ -55,6 +66,7 @@ def _render_settings(new_token: str | None = None):
         mapping_valid_roles = MAPPING_VALID_ROLES,
         default_user_filters  = DEFAULT_USER_FILTERS,
         default_group_filters = DEFAULT_GROUP_FILTERS,
+        compliance_cfg      = compliance_cfg,
         app_name    = current_app.config["APP_NAME"],
         app_version = current_app.config["APP_VERSION"],
         app_base_url = current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),
@@ -227,6 +239,46 @@ def revoke_api_token_route():
     else:
         flash(result.error, "danger")
     return redirect(url_for("settings.index") + "#api-settings")
+
+
+# ── Patch Compliance ──────────────────────────────────────────────────────── #
+
+@settings_bp.route("/settings/compliance/save", methods=["POST"])
+@login_required
+def save_compliance_route():
+    """Save patch compliance window thresholds."""
+    try:
+        from ...models.compliance_config import ComplianceConfig
+        from ...extensions import db as _db
+
+        window_raw   = request.form.get("compliance_window_days", "90").strip()
+        due_soon_raw = request.form.get("due_soon_days", "15").strip()
+
+        window   = int(window_raw)   if window_raw.isdigit()   else 90
+        due_soon = int(due_soon_raw) if due_soon_raw.isdigit() else 15
+
+        window   = max(1, min(window,   3650))   # clamp 1–3650 days
+        due_soon = max(1, min(due_soon, 365))
+
+        cfg = ComplianceConfig.get()
+        cfg.compliance_window_days = window
+        cfg.due_soon_days          = due_soon
+        _db.session.commit()
+
+        commit_audit(
+            "settings.compliance.save",
+            details=f"window={window}d due_soon={due_soon}d",
+        )
+        flash(
+            f"Patch compliance thresholds updated: "
+            f"Compliant ≤ {window} days, Due Soon {window + 1}–{window + due_soon} days.",
+            "success",
+        )
+    except Exception:
+        logger.exception("Failed to save compliance config")
+        flash("An error occurred while saving compliance settings.", "danger")
+
+    return redirect(url_for("settings.index") + "#patch-compliance")
 
 
 # ── Directory Services ─────────────────────────────────────────────────────── #

@@ -369,7 +369,6 @@
             <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
             <th>{{ sort_link('cpu_count',        'CPU') }}</th>
             <th>{{ sort_link('ram_gb',           'Memory') }}</th>
-            <th>Disk</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
           </tr>
@@ -450,9 +449,6 @@
                 {% endif %}
               </td>
 
-              {# Disk #}
-              <td><span class="text-secondary" style="font-size:.78rem; font-style:italic;">Not Available</span></td>
-
               {# Location #}
               <td>
                 {% if srv.location %}
@@ -474,7 +470,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="11">
+              <td colspan="10">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}

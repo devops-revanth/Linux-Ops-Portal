@@ -158,14 +158,14 @@ def server_detail(server_id: int):
 
     # ── Packages tab: server-side pagination + search ────────────────────
     _valid_pkg_pp = {10, 25, 50, 100}
-    pkg_tab      = request.args.get("pkg_tab", "installed")
+    pkg_tab      = request.args.get("pkg_tab", "available-updates")
     pkg_q        = request.args.get("pkg_q",       "").strip()
     pkg_page     = max(1, request.args.get("pkg_page", 1, type=int))
     pkg_pp_raw   = request.args.get("pkg_per_page", 25, type=int)
     pkg_per_page = pkg_pp_raw if pkg_pp_raw in _valid_pkg_pp else 25
 
-    if pkg_tab not in ("installed", "recently-installed"):
-        pkg_tab = "installed"
+    if pkg_tab not in ("available-updates", "recently-installed"):
+        pkg_tab = "available-updates"
 
     pkg_base = (
         db.session.query(ServerPackage, Package)
@@ -175,13 +175,14 @@ def server_detail(server_id: int):
     if pkg_q:
         pkg_base = pkg_base.filter(Package.name.ilike(f"%{pkg_q}%"))
 
-    if pkg_tab == "recently-installed":
+    if pkg_tab == "available-updates":
+        pkg_base = pkg_base.filter(ServerPackage.update_available == True)  # noqa: E712
+        pkg_base = pkg_base.order_by(Package.name.asc())
+    else:  # recently-installed
         pkg_base = pkg_base.order_by(
             ServerPackage.collected_at.desc().nulls_last(),
             Package.name.asc(),
         )
-    else:
-        pkg_base = pkg_base.order_by(Package.name.asc())
 
     pkg_total       = pkg_base.count()
     pkg_rows        = pkg_base.offset((pkg_page - 1) * pkg_per_page).limit(pkg_per_page).all()

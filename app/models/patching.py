@@ -56,17 +56,17 @@ class Patching(db.Model):
         """
         Derive compliance from pending_updates and last_patch_date.
 
-        Compliance window: 30 days (industry default for enterprise Linux).
+        Thresholds are read from ComplianceConfig (DB singleton, cached per request
+        via flask.g).  Falls back to 90-day / 15-day defaults if outside a request
+        context or if the table does not yet exist.
 
         Returns:
             'compliant'  — no pending updates
-            'due_soon'   — updates pending but last patch within 30 days
-            'overdue'    — updates pending and last patch > 30 days ago (or never)
-            'unknown'    — pending_updates is None (data not yet collected)
+            'due_soon'   — updates pending, patched within compliance window
+            'overdue'    — updates pending, patch overdue or never done
+            'unknown'    — pending_updates is None (data not collected)
         """
-        from datetime import datetime, timezone
-
-        COMPLIANCE_WINDOW_DAYS = 90
+        window_days, due_soon_days = _get_compliance_thresholds()
 
         if self.pending_updates is None:
             return "unknown"
@@ -74,11 +74,11 @@ class Patching(db.Model):
         if self.pending_updates == 0:
             return "compliant"
 
-        # Has pending updates — check whether we are still within the window
+        # Has pending updates — check how long since last patch
         if self.last_patch_date:
             now = datetime.now(timezone.utc)
             days_since = (now - self.last_patch_date).days
-            if days_since <= COMPLIANCE_WINDOW_DAYS:
+            if days_since <= window_days:
                 return "due_soon"
 
         return "overdue"
@@ -102,3 +102,20 @@ class Patching(db.Model):
             "pending_updates": self.pending_updates,
             "reboot_required": self.reboot_required,
         }
+
+
+def _get_compliance_thresholds() -> tuple[int, int]:
+    """
+    Return (compliance_window_days, due_soon_days) from ComplianceConfig,
+    caching the result in flask.g for the lifetime of the current request.
+    Falls back to (90, 15) when called outside a request context.
+    """
+    try:
+        from flask import g
+        if not hasattr(g, "_compliance_thresholds"):
+            from .compliance_config import ComplianceConfig
+            cfg = ComplianceConfig.get()
+            g._compliance_thresholds = (cfg.compliance_window_days, cfg.due_soon_days)
+        return g._compliance_thresholds
+    except Exception:
+        return (90, 15)

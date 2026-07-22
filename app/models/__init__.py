@@ -16,3 +16,4 @@ from .server import Server  # noqa: F401
 from .user import User  # noqa: F401
 from .directory_config import DirectoryConfig  # noqa: F401
 from .ldap_group_mapping import LdapGroupMapping  # noqa: F401
+from .compliance_config import ComplianceConfig  # noqa: F401

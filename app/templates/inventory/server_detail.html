@@ -346,21 +346,9 @@
             <span class="lop-meta-value">{{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB</span>
           </div>
           {% endif %}
-          <div class="lop-meta-item">
-            <span class="lop-meta-label">Disk</span>
-            <span class="lop-meta-value text-secondary" style="font-size:.82rem;">Not Available</span>
-          </div>
           {% if server.last_ansible_sync %}
           <div class="lop-meta-item">
             <span class="lop-meta-label">Last Inventory</span>
-            <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
-                  data-utc="{{ server.last_ansible_sync.isoformat() }}"
-                  title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
-              {{ server.last_ansible_sync.strftime('%Y-%m-%d') }}
-            </span>
-          </div>
-          <div class="lop-meta-item">
-            <span class="lop-meta-label">Last Check-In</span>
             <span class="lop-meta-value lop-meta-mono" style="font-size:.78rem;"
                   data-utc="{{ server.last_ansible_sync.isoformat() }}"
                   title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
@@ -708,11 +696,11 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 pt-1">
         <ul class="nav nav-pills nav-pills-sm" style="gap:.25rem;">
           <li class="nav-item">
-            <a class="nav-link py-1 px-3 {% if pkg_data.tab == 'installed' %}active{% endif %}"
+            <a class="nav-link py-1 px-3 {% if pkg_data.tab == 'available-updates' %}active{% endif %}"
                style="font-size:.82rem;"
-               href="{{ base_url }}?tab=packages&amp;pkg_tab=installed&amp;pkg_per_page={{ pkg_data.per_page }}">
-              <i class="bi bi-box me-1"></i>Installed Packages
-              {% if pkg_data.tab == 'installed' %}
+               href="{{ base_url }}?tab=packages&amp;pkg_tab=available-updates&amp;pkg_per_page={{ pkg_data.per_page }}">
+              <i class="bi bi-box-arrow-in-down me-1"></i>Available Updates
+              {% if pkg_data.tab == 'available-updates' %}
                 <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ pkg_data.total }}</span>
               {% endif %}
             </a>
@@ -722,14 +710,9 @@
                style="font-size:.82rem;"
                href="{{ base_url }}?tab=packages&amp;pkg_tab=recently-installed&amp;pkg_per_page={{ pkg_data.per_page }}">
               <i class="bi bi-clock-history me-1"></i>Recently Installed
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link py-1 px-3 disabled" style="font-size:.82rem;" tabindex="-1"
-               title="Per-package update detail requires Ansible collection integration"
-               href="#">
-              <i class="bi bi-box-arrow-in-down me-1"></i>Available Updates
-              <span class="badge bg-secondary ms-1" style="font-size:.65rem;">N/A</span>
+              {% if pkg_data.tab == 'recently-installed' %}
+                <span class="badge bg-secondary ms-1" style="font-size:.65rem;">{{ pkg_data.total }}</span>
+              {% endif %}
             </a>
           </li>
         </ul>
@@ -776,11 +759,13 @@
             <thead>
               <tr>
                 <th>Package</th>
-                <th>Version</th>
-                <th>Release</th>
-                <th>Architecture</th>
+                <th>{{ 'Current Version' if pkg_data.tab == 'available-updates' else 'Version' }}</th>
+                {% if pkg_data.tab == 'available-updates' %}
+                <th>Available Version</th>
+                <th>Update Type</th>
+                {% endif %}
                 <th>Repository</th>
-                <th>{{ 'Installed Date' if pkg_data.tab == 'recently-installed' else 'Collected' }}</th>
+                <th>{{ 'Install Date' if pkg_data.tab == 'recently-installed' else 'Collected' }}</th>
               </tr>
             </thead>
             <tbody>
@@ -799,9 +784,41 @@
                     <span class="text-secondary">—</span>
                   {% endif %}
                 </td>
-                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
-                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
-                <td class="text-secondary" style="font-size:.8rem;">Not Available</td>
+                {% if pkg_data.tab == 'available-updates' %}
+                <td>
+                  {% if sp.available_version %}
+                    <span class="lop-pkg-badge" style="background:rgba(63,185,80,.1);color:#3fb950;border-color:rgba(63,185,80,.3);">
+                      {{ sp.available_version }}
+                    </span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if sp.update_type == 'security' %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle" style="font-size:.7rem;">
+                      <i class="bi bi-shield-exclamation me-1"></i>Security
+                    </span>
+                  {% elif sp.update_type == 'bugfix' %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size:.7rem;">
+                      <i class="bi bi-bug me-1"></i>Bugfix
+                    </span>
+                  {% elif sp.update_type == 'enhancement' %}
+                    <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.7rem;">
+                      <i class="bi bi-stars me-1"></i>Enhancement
+                    </span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
+                {% endif %}
+                <td>
+                  {% if sp.repository %}
+                    <span class="text-secondary" style="font-family:monospace;font-size:.78rem;">{{ sp.repository }}</span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
                 <td>
                   {% if sp.collected_at %}
                     <span class="text-secondary" style="font-size:.78rem;"
@@ -869,9 +886,15 @@
         </div>
       {% else %}
         <div class="text-center py-5 text-secondary">
-          <i class="bi bi-box fs-1 d-block mb-3 opacity-25"></i>
-          <h6 class="fw-semibold">No package data</h6>
-          <p class="small">Package inventory will appear here once Ansible syncs this server.</p>
+          {% if pkg_data.tab == 'available-updates' %}
+            <i class="bi bi-check-circle fs-1 d-block mb-3 opacity-25"></i>
+            <h6 class="fw-semibold">No updates available</h6>
+            <p class="small">This server is up to date, or update data has not yet been collected by Ansible.</p>
+          {% else %}
+            <i class="bi bi-clock-history fs-1 d-block mb-3 opacity-25"></i>
+            <h6 class="fw-semibold">No recently installed packages</h6>
+            <p class="small">Package history will appear here once Ansible syncs this server.</p>
+          {% endif %}
         </div>
       {% endif %}
 

@@ -6,4 +6,4 @@
 - [Directory Services](directory-services.md) — DB-stored LDAP config (DirectoryConfig singleton), Fernet-encrypted bind password, configurable group→role mappings (LdapGroupMapping); use FreeIPAService.from_db() for new code.
 - [User Management module](user-management.md) — dedicated /users blueprint; NOT in Settings; LDAP users cannot reset passwords; all other CRUD available.
 - [Sprint 1 UI Polish](sprint1-ui.md) — Packages blueprint, compliance model, per-page selectors, timezone JS, inventory column renames; all tests green.
-- [Sprint 2 enterprise redesign](sprint2-redesign.md) — Packages=fleet dashboard; Patch Compliance=compliance cards+simplified table; server detail packages tab=server-side paginated with pkg_data dict.
+- [Sprint 2 enterprise redesign](sprint2-redesign.md) — Packages=fleet(4 stat cards); Patching=new columns+YES/NO updates; server detail=2 pkg tabs; ComplianceConfig DB singleton; demo seeder 3 RHEL servers.

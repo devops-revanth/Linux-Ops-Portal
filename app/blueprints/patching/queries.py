@@ -23,12 +23,12 @@ from ...utils import sort_envs
 logger = logging.getLogger(__name__)
 
 # Columns that can be sorted, mapped to their SQLAlchemy expression.
-# Related-model columns require the join already present in the query.
 SORTABLE_COLUMNS: dict[str, object] = {
     "hostname":           Server.hostname,
     "environment":        Environment.name,
     "location":           Location.name,
     "operating_system":   Server.operating_system,
+    "kernel_version":     Server.kernel_version,
     "current_kernel":     Patching.current_kernel,
     "pending_updates":    Patching.pending_updates,
     "patch_status":       Patching.patch_status,
@@ -45,23 +45,31 @@ VALID_PATCH_STATUSES = ["up-to-date", "pending", "failed", "unknown"]
 def get_compliance_summary() -> dict:
     """
     Fleet-wide compliance counts for the dashboard header cards.
-    Uses the same 90-day window as Patching.compliance_status.
+    Uses thresholds from ComplianceConfig (same as Patching.compliance_status).
     """
     from datetime import datetime, timezone, timedelta
-    from sqlalchemy import func, case, or_, and_
+    from sqlalchemy import func, case, and_
 
-    WINDOW  = 90
-    cutoff  = datetime.now(timezone.utc) - timedelta(days=WINDOW)
+    try:
+        from ...models.compliance_config import ComplianceConfig
+        cfg = ComplianceConfig.get()
+        window_days  = cfg.compliance_window_days
+        due_soon_days = cfg.due_soon_days
+    except Exception:
+        window_days, due_soon_days = 90, 15
+
+    cutoff_compliant = datetime.now(timezone.utc) - timedelta(days=window_days)
+    cutoff_overdue   = datetime.now(timezone.utc) - timedelta(days=window_days + due_soon_days)
 
     try:
         bucket_expr = case(
             (Patching.pending_updates == 0,
              "compliant"),
             (and_(Patching.pending_updates > 0,
-                  Patching.last_patch_date >= cutoff),
+                  Patching.last_patch_date >= cutoff_compliant),
              "due_soon"),
             (and_(Patching.pending_updates > 0,
-                  or_(Patching.last_patch_date < cutoff,
+                  or_(Patching.last_patch_date < cutoff_compliant,
                       Patching.last_patch_date == None)),  # noqa: E711
              "overdue"),
             else_="unknown",
@@ -85,10 +93,15 @@ def get_compliance_summary() -> dict:
             "overdue":   counts.get("overdue",   0),
             "unknown":   counts.get("unknown",   0),
             "total":     sum(counts.values()),
+            "window_days":   window_days,
+            "due_soon_days": due_soon_days,
         }
     except Exception:
         logger.exception("Failed to compute compliance summary")
-        return {"compliant": 0, "due_soon": 0, "overdue": 0, "unknown": 0, "total": 0}
+        return {
+            "compliant": 0, "due_soon": 0, "overdue": 0, "unknown": 0, "total": 0,
+            "window_days": 90, "due_soon_days": 15,
+        }
 
 
 @dataclass
@@ -156,7 +169,6 @@ def get_patching_page(
 
         if filters.patch_status:
             if filters.patch_status == "unknown":
-                # Servers with no patching record OR explicit 'unknown' status
                 q = q.filter(
                     (Patching.id == None) |  # noqa: E711
                     (Patching.patch_status == "unknown")
@@ -175,7 +187,7 @@ def get_patching_page(
         # ── Pagination ────────────────────────────────────────────────
         offset = (page - 1) * per_page
         result.servers      = q.offset(offset).limit(per_page).all()
-        result.total_pages  = max(1, -(-result.total // per_page))  # ceiling division
+        result.total_pages  = max(1, -(-result.total // per_page))
 
         # ── Dropdown options (for filter bar) ─────────────────────────
         result.locations    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
