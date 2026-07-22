@@ -54,6 +54,31 @@ class Server(db.Model):
     )  # active | inactive | decommissioned | maintenance
 
     # ------------------------------------------------------------------ #
+    # Extended system info (populated by Ansible)
+    # ------------------------------------------------------------------ #
+    architecture: str = db.Column(db.String(50), nullable=True)
+    disk_total_gb: float = db.Column(db.Float, nullable=True)
+    disk_used_gb: float = db.Column(db.Float, nullable=True)
+    disk_used_pct: float = db.Column(db.Float, nullable=True)
+    swap_total_gb: float = db.Column(db.Float, nullable=True)
+    swap_used_gb: float = db.Column(db.Float, nullable=True)
+    uptime_seconds: int = db.Column(db.Integer, nullable=True)
+    last_boot: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
+    package_manager: str = db.Column(db.String(50), nullable=True)
+    python_version: str = db.Column(db.String(50), nullable=True)
+    ansible_version: str = db.Column(db.String(50), nullable=True)
+    selinux_status: str = db.Column(db.String(50), nullable=True)
+    timezone_name: str = db.Column(db.String(100), nullable=True)
+
+    # ------------------------------------------------------------------ #
+    # Parsed hostname fields (populated by Ansible hostname parser)
+    # ------------------------------------------------------------------ #
+    parsed_site: str = db.Column(db.String(20), nullable=True)
+    parsed_app_code: str = db.Column(db.String(20), nullable=True)
+    parsed_os_name: str = db.Column(db.String(100), nullable=True)
+    parsed_env_name: str = db.Column(db.String(50), nullable=True)
+
+    # ------------------------------------------------------------------ #
     # Sync metadata
     # ------------------------------------------------------------------ #
     last_ansible_sync: datetime = db.Column(db.DateTime(timezone=True), nullable=True)

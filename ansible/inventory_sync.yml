@@ -1,25 +1,37 @@
 ---
-# ============================================================
-# Linux Operations Portal — Ansible Inventory Sync Playbook
-# ============================================================
+# =============================================================================
+# Linux Operations Portal — Enterprise Inventory Sync Playbook
+# =============================================================================
 #
-# Gathers facts from target Linux servers and pushes them to
+# Gathers comprehensive facts from target Linux servers and pushes them to
 # the LOP REST API via POST /api/v1/inventory.
+#
+# Collected data:
+#   Hostname, FQDN, IP, OS, Distribution, Version, Kernel (running/installed),
+#   Architecture, CPU, RAM, Disk, Swap, Uptime, Last Boot, Package Manager,
+#   Python Version, Ansible Version, SELinux Status, Timezone, Reboot Required,
+#   Available Updates, Security Updates, Kernel Update Available
+#
+# Hostname parsing (format: <site4><app3><os1><env1><seq3+>):
+#   Site         : First 4 chars uppercase  (e.g. USEG, DEFR, UKDL)
+#   Application  : Next 3 chars uppercase   (e.g. NBX, SAP, ECC)
+#   OS code      : Next char  L=Rocky Linux, R=RHEL
+#   Env code     : Next char  P=Production, S=Stage, T=Test, D=Development, E=Demo
 #
 # Usage:
 #   ansible-playbook -i inventory.ini inventory_sync.yml
 #
-# Required variables (set in group_vars/all.yml or pass -e):
+# Required variables (group_vars/all.yml or -e):
 #   lop_api_url   : Base URL of the portal, e.g. https://lop.example.com
-#   lop_api_token : Bearer token generated in LOP Settings → API Settings
+#   lop_api_token : Bearer token from LOP Settings → API Settings
 #
-# Optional per-host variables (set in inventory/hosts or host_vars/):
-#   lop_location    : Location name matching a record in LOP (e.g. "USEG")
-#   lop_environment : Environment name (e.g. "Production")
-#   lop_owner       : Owner name (e.g. "Platform Engineering")
-# ============================================================
+# Optional per-host/group variables:
+#   lop_location    : Location name fallback if hostname < 4 chars
+#   lop_environment : Environment name fallback if hostname doesn't encode env
+#   lop_owner       : Owner name (must match a record in LOP)
+# =============================================================================
 
-- name: Linux Operations Portal — Inventory Sync
+- name: Linux Operations Portal — Enterprise Inventory Sync
   hosts: all
   gather_facts: true
   become: false
@@ -33,27 +45,394 @@
 
   tasks:
 
-    # ── 1. Build the JSON payload ───────────────────────────────────── #
+    # ── 1. Parse hostname fields ────────────────────────────────────────── #
+    # All parsing is done here in Ansible — the portal stores results as-is.
+    # Format: <site:4><app:3><os:1><env:1><sequence>
+    # Example: usegnbxlt001 → site=USEG app=NBX os=L(Rocky) env=T(Test)
+
+    - name: Extract raw hostname parse characters
+      ansible.builtin.set_fact:
+        _parsed_site: >-
+          {{ (ansible_hostname[:4] | upper)
+             if ansible_hostname | length >= 4
+             else (ansible_hostname | upper) }}
+        _parsed_app_code: >-
+          {{ (ansible_hostname[4:7] | upper)
+             if ansible_hostname | length >= 7
+             else '' }}
+        _parsed_os_char: >-
+          {{ (ansible_hostname[7] | upper)
+             if ansible_hostname | length >= 8
+             else '' }}
+        _parsed_env_char: >-
+          {{ (ansible_hostname[8] | upper)
+             if ansible_hostname | length >= 9
+             else '' }}
+
+    - name: Resolve OS name from hostname OS character
+      ansible.builtin.set_fact:
+        _parsed_os_name: >-
+          {%- if _parsed_os_char == 'L' -%}Rocky Linux
+          {%- elif _parsed_os_char == 'R' -%}Red Hat Enterprise Linux
+          {%- else -%}Unknown
+          {%- endif -%}
+
+    - name: Resolve environment name from hostname environment character
+      ansible.builtin.set_fact:
+        _parsed_env_name: >-
+          {%- if _parsed_env_char == 'P' -%}Production
+          {%- elif _parsed_env_char == 'S' -%}Stage
+          {%- elif _parsed_env_char == 'T' -%}Test
+          {%- elif _parsed_env_char == 'D' -%}Development
+          {%- elif _parsed_env_char == 'E' -%}Demo
+          {%- else -%}Unknown
+          {%- endif -%}
+
+    # Prefer hostname-parsed classification; fall back to inventory variables.
+    # Hostname must be at least 9 chars and env char must be a known value.
+    - name: Determine effective environment and location for LOP
+      ansible.builtin.set_fact:
+        _effective_environment: >-
+          {{ _parsed_env_name
+             if (ansible_hostname | length >= 9 and _parsed_env_char in ['P','S','T','D','E'])
+             else lop_environment }}
+        _effective_location: >-
+          {{ _parsed_site
+             if ansible_hostname | length >= 4
+             else lop_location }}
+
+    # ── 2. Disk usage (root filesystem from gathered facts) ─────────────── #
+
+    - name: Locate root filesystem mount
+      ansible.builtin.set_fact:
+        _root_fs: >-
+          {{ ansible_mounts
+             | selectattr('mount', 'equalto', '/')
+             | list
+             | first
+             | default({}) }}
+
+    - name: Calculate root disk usage
+      ansible.builtin.set_fact:
+        _disk_total_gb: >-
+          {{ ((_root_fs.size_total | default(0)) / 1073741824) | round(2) | float }}
+        _disk_used_gb: >-
+          {{ (((_root_fs.size_total | default(0)) - (_root_fs.size_available | default(0)))
+              / 1073741824) | round(2) | float }}
+        _disk_used_pct: >-
+          {{ (((_root_fs.size_total | default(1)) - (_root_fs.size_available | default(0)))
+              / (_root_fs.size_total | default(1)) * 100) | round(1) | float
+             if (_root_fs.size_total | default(0)) | int > 0
+             else 0 | float }}
+
+    # ── 3. Swap usage ───────────────────────────────────────────────────── #
+
+    - name: Calculate swap usage
+      ansible.builtin.set_fact:
+        _swap_total_gb: >-
+          {{ (ansible_swaptotal_mb | default(0) | float / 1024) | round(2) | float }}
+        _swap_used_gb: >-
+          {{ ((ansible_swaptotal_mb | default(0) | float
+               - ansible_swapfree_mb | default(0) | float)
+              / 1024) | round(2) | float }}
+
+    # ── 4. Uptime seconds (from /proc/uptime — no external tools needed) ── #
+
+    - name: Read uptime seconds from /proc/uptime
+      ansible.builtin.command:
+        cmd: awk '{print int($1)}' /proc/uptime
+      register: _uptime_raw
+      changed_when: false
+
+    # ── 5. Last boot time ───────────────────────────────────────────────── #
+
+    - name: Get last boot time (uptime -s returns YYYY-MM-DD HH:MM:SS)
+      ansible.builtin.command:
+        cmd: uptime -s
+      register: _last_boot_raw
+      changed_when: false
+
+    # ── 6. SELinux status ───────────────────────────────────────────────── #
+
+    - name: Determine SELinux enforcement status
+      ansible.builtin.set_fact:
+        _selinux_status: >-
+          {%- if ansible_selinux.status == 'enabled' -%}
+            {{ ansible_selinux.mode | default('unknown') }}
+          {%- elif ansible_selinux.status == 'disabled' -%}
+            disabled
+          {%- else -%}
+            unknown
+          {%- endif -%}
+
+    # ── 7. Available package updates (dnf/yum) ──────────────────────────── #
+    # exit 0 = no updates; exit 100 = updates available; exit 1 = error
+    # --refresh ensures the metadata is current.
+
+    - name: Check for available package updates (dnf/yum)
+      ansible.builtin.command:
+        cmd: dnf check-update -q --refresh
+      register: _dnf_updates
+      changed_when: false
+      failed_when: _dnf_updates.rc not in [0, 100]
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Count available updates when updates exist (rc=100)
+      ansible.builtin.set_fact:
+        _pending_updates: >-
+          {{ _dnf_updates.stdout_lines
+             | reject('match', '^\\s*$')
+             | reject('match', '^Last metadata')
+             | reject('match', '^Obsoleting')
+             | list
+             | length
+             | int }}
+      when:
+        - ansible_pkg_mgr in ['dnf', 'yum']
+        - _dnf_updates.rc == 100
+
+    - name: Set pending_updates to 0 when system is fully patched (rc=0)
+      ansible.builtin.set_fact:
+        _pending_updates: 0
+      when:
+        - ansible_pkg_mgr in ['dnf', 'yum']
+        - _dnf_updates.rc == 0
+
+    # APT (Debian/Ubuntu) — check-update equivalent
+    - name: Refresh APT cache and count available updates
+      ansible.builtin.command:
+        cmd: apt-get -q --simulate upgrade
+      register: _apt_updates
+      changed_when: false
+      failed_when: false
+      when: ansible_pkg_mgr == 'apt'
+
+    - name: Count available APT updates
+      ansible.builtin.set_fact:
+        _pending_updates: >-
+          {{ _apt_updates.stdout_lines
+             | select('match', '^Inst ')
+             | list
+             | length
+             | int }}
+      when:
+        - ansible_pkg_mgr == 'apt'
+        - _apt_updates.rc == 0
+
+    # Default: 0 if no supported package manager matched
+    - name: Default pending_updates when package manager not matched
+      ansible.builtin.set_fact:
+        _pending_updates: 0
+      when: _pending_updates is not defined
+
+    # ── 8. Security updates ─────────────────────────────────────────────── #
+
+    - name: List security advisories (dnf)
+      ansible.builtin.command:
+        cmd: dnf updateinfo list security -q
+      register: _dnf_security
+      changed_when: false
+      failed_when: false
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Count security advisories (dnf)
+      ansible.builtin.set_fact:
+        _security_updates: >-
+          {{ _dnf_security.stdout_lines
+             | reject('match', '^\\s*$')
+             | reject('match', '^Last metadata')
+             | list
+             | length
+             | int }}
+      when:
+        - ansible_pkg_mgr in ['dnf', 'yum']
+        - _dnf_security.rc == 0
+
+    # APT security updates
+    - name: Count APT security updates
+      ansible.builtin.set_fact:
+        _security_updates: >-
+          {{ _apt_updates.stdout_lines
+             | select('match', '^Inst .* \\[.*\\] .*(security)')
+             | list
+             | length
+             | int }}
+      when:
+        - ansible_pkg_mgr == 'apt'
+        - _apt_updates is defined
+        - _apt_updates.rc == 0
+
+    - name: Default security_updates when not determined
+      ansible.builtin.set_fact:
+        _security_updates: 0
+      when: _security_updates is not defined
+
+    # ── 9. Kernel update available ──────────────────────────────────────── #
+
+    - name: Check if a kernel update is available (dnf/yum)
+      ansible.builtin.command:
+        cmd: dnf check-update kernel -q
+      register: _dnf_kernel_check
+      changed_when: false
+      failed_when: _dnf_kernel_check.rc not in [0, 100]
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Set kernel_update_available (dnf/yum)
+      ansible.builtin.set_fact:
+        _kernel_update_available: "{{ _dnf_kernel_check.rc == 100 }}"
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Check kernel update available (APT)
+      ansible.builtin.set_fact:
+        _kernel_update_available: >-
+          {{ (_apt_updates.stdout_lines
+              | select('match', '^Inst linux-image')
+              | list
+              | length) > 0 }}
+      when:
+        - ansible_pkg_mgr == 'apt'
+        - _apt_updates is defined
+
+    - name: Default kernel_update_available when not determined
+      ansible.builtin.set_fact:
+        _kernel_update_available: false
+      when: _kernel_update_available is not defined
+
+    # ── 10. Installed kernel (newest installed package) ─────────────────── #
+
+    - name: Query installed kernel packages (rpm-based)
+      ansible.builtin.command:
+        cmd: rpm -q kernel --queryformat "%{VERSION}-%{RELEASE}.%{ARCH}\n"
+      register: _rpm_kernels
+      changed_when: false
+      failed_when: false
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Set installed_kernel to newest rpm kernel
+      ansible.builtin.set_fact:
+        _installed_kernel: >-
+          {{ (_rpm_kernels.stdout_lines
+              | reject('match', '^\\s*$')
+              | sort)[-1]
+             | default(ansible_kernel) }}
+      when:
+        - ansible_pkg_mgr in ['dnf', 'yum']
+        - _rpm_kernels.rc == 0
+        - _rpm_kernels.stdout_lines | length > 0
+
+    - name: Default installed_kernel to running kernel when not determined
+      ansible.builtin.set_fact:
+        _installed_kernel: "{{ ansible_kernel }}"
+      when: _installed_kernel is not defined
+
+    # ── 11. Reboot required ─────────────────────────────────────────────── #
+    # needs-restarting -r: exit 0 = no reboot needed, exit 1 = reboot needed
+
+    - name: Check if reboot is required (RHEL/Rocky — needs-restarting)
+      ansible.builtin.command:
+        cmd: needs-restarting -r
+      register: _needs_restarting
+      changed_when: false
+      failed_when: false
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Set reboot_required (rpm-based)
+      ansible.builtin.set_fact:
+        _reboot_required: "{{ _needs_restarting.rc == 1 }}"
+      when: ansible_pkg_mgr in ['dnf', 'yum']
+
+    - name: Check reboot-required flag file (Debian/Ubuntu)
+      ansible.builtin.stat:
+        path: /run/reboot-required
+      register: _reboot_flag_file
+      when: ansible_pkg_mgr == 'apt'
+
+    - name: Set reboot_required (apt-based)
+      ansible.builtin.set_fact:
+        _reboot_required: "{{ _reboot_flag_file.stat.exists }}"
+      when: ansible_pkg_mgr == 'apt'
+
+    - name: Default reboot_required when not determined
+      ansible.builtin.set_fact:
+        _reboot_required: false
+      when: _reboot_required is not defined
+
+    # ── 12. Derive patch_status from gathered facts ──────────────────────── #
+    # Automatically derived — do NOT hardcode or pass lop_patch_status.
+
+    - name: Derive patch_status from gathered update counts
+      ansible.builtin.set_fact:
+        _derived_patch_status: >-
+          {%- if _pending_updates | int == 0 -%}up-to-date
+          {%- else -%}pending
+          {%- endif -%}
+
+    # ── 13. Build the JSON payload ───────────────────────────────────────── #
+
     - name: Build server inventory payload
       ansible.builtin.set_fact:
         lop_payload:
+          # ── Identity ───────────────────────────────────────────────── #
           hostname: "{{ ansible_hostname }}"
           fqdn: "{{ ansible_fqdn | default(ansible_hostname) }}"
           ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+
+          # ── OS & hardware ───────────────────────────────────────────── #
           operating_system: "{{ ansible_distribution }}"
           os_version: "{{ ansible_distribution_version }}"
           kernel_version: "{{ ansible_kernel }}"
-          cpu_count: "{{ ansible_processor_vcpus | default(ansible_processor_count) }}"
-          cpu_model: "{{ ansible_processor[2] | default('') if ansible_processor | length > 2 else '' }}"
-          ram_gb: "{{ (ansible_memtotal_mb / 1024) | round(2) }}"
-          location: "{{ lop_location }}"
-          environment: "{{ lop_environment }}"
+          architecture: "{{ ansible_architecture }}"
+          cpu_count: "{{ ansible_processor_vcpus | default(ansible_processor_count) | int }}"
+          cpu_model: >-
+            {{ ansible_processor[2] | default('')
+               if ansible_processor | length > 2
+               else '' }}
+          ram_gb: "{{ (ansible_memtotal_mb / 1024) | round(2) | float }}"
+
+          # ── Disk (root filesystem) ───────────────────────────────────── #
+          disk_total_gb: "{{ _disk_total_gb }}"
+          disk_used_gb: "{{ _disk_used_gb }}"
+          disk_used_pct: "{{ _disk_used_pct }}"
+
+          # ── Swap ────────────────────────────────────────────────────── #
+          swap_total_gb: "{{ _swap_total_gb }}"
+          swap_used_gb: "{{ _swap_used_gb }}"
+
+          # ── Uptime & last boot ──────────────────────────────────────── #
+          uptime_seconds: "{{ _uptime_raw.stdout | trim | int }}"
+          last_boot: "{{ _last_boot_raw.stdout | trim | replace(' ', 'T') }}"
+
+          # ── System metadata ─────────────────────────────────────────── #
+          package_manager: "{{ ansible_pkg_mgr | default('unknown') }}"
+          python_version: "{{ ansible_python_version | default('') }}"
+          ansible_version: "{{ ansible_version.full | default('') }}"
+          selinux_status: "{{ _selinux_status | trim }}"
+          timezone_name: "{{ ansible_date_time.tz | default('UTC') }}"
+
+          # ── Classification (hostname-parsed, with inventory fallback) ─ #
+          location: "{{ _effective_location }}"
+          environment: "{{ _effective_environment }}"
           owner: "{{ lop_owner }}"
-          patch_status: "{{ lop_patch_status | default('unknown') }}"
-          last_reboot: "{{ ansible_date_time.iso8601 }}"
+
+          # ── Hostname parsing metadata ────────────────────────────────── #
+          parsed_site: "{{ _parsed_site }}"
+          parsed_app_code: "{{ _parsed_app_code }}"
+          parsed_os_name: "{{ _parsed_os_name }}"
+          parsed_env_name: "{{ _parsed_env_name }}"
+
+          # ── Patching ─────────────────────────────────────────────────── #
+          patch_status: "{{ _derived_patch_status }}"
+          pending_updates: "{{ _pending_updates | int }}"
+          security_updates: "{{ _security_updates | int }}"
+          kernel_update_available: "{{ _kernel_update_available | bool }}"
+          installed_kernel: "{{ _installed_kernel }}"
+          reboot_required: "{{ _reboot_required | bool }}"
+
+          # ── Timestamps ───────────────────────────────────────────────── #
           last_inventory_sync: "{{ ansible_date_time.iso8601 }}"
 
-    # ── 2. Push to LOP API ─────────────────────────────────────────── #
+    # ── 14. Push inventory to LOP ────────────────────────────────────────── #
+
     - name: Push inventory to Linux Operations Portal
       ansible.builtin.uri:
         url: "{{ lop_api_url }}/api/v1/inventory"
@@ -66,11 +445,20 @@
         status_code: [200]
         timeout: 30
       register: lop_response
-      failed_when: lop_response.status != 200 or lop_response.json.status != 'success'
+      failed_when: >
+        lop_response.status != 200 or
+        lop_response.json.status != 'success'
 
-    # ── 3. Report result ───────────────────────────────────────────── #
+    # ── 15. Report result ────────────────────────────────────────────────── #
+
     - name: Show sync result
       ansible.builtin.debug:
         msg: >-
-          LOP sync {{ lop_response.json.action }}:
-          {{ lop_response.json.hostname }}
+          [LOP] {{ lop_response.json.action | upper }}: {{ lop_response.json.hostname }}
+          | env={{ _effective_environment }}
+          | site={{ _parsed_site }}
+          | app={{ _parsed_app_code }}
+          | pending={{ _pending_updates }}
+          | security={{ _security_updates }}
+          | kernel_update={{ _kernel_update_available }}
+          | reboot={{ _reboot_required }}

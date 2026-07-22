@@ -32,7 +32,10 @@ class Patching(db.Model):
     last_patch_date: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     last_reboot_date: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     pending_updates: int = db.Column(db.Integer, nullable=True, default=0)
+    security_updates: int = db.Column(db.Integer, nullable=True, default=0)
     reboot_required: bool | None = db.Column(db.Boolean, nullable=True, default=None)
+    kernel_update_available: bool | None = db.Column(db.Boolean, nullable=True, default=None)
+    installed_kernel: str = db.Column(db.String(150), nullable=True)
 
     created_at: datetime = db.Column(
         db.DateTime(timezone=True),

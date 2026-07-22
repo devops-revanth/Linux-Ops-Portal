@@ -48,6 +48,20 @@ OPTIONAL_STRING_FIELDS: dict[str, int] = {
     "owner":             150,
     "status":             50,
     "current_kernel":    150,
+    # Extended system info
+    "architecture":       50,
+    "package_manager":    50,
+    "python_version":     50,
+    "ansible_version":    50,
+    "selinux_status":     50,
+    "timezone_name":     100,
+    # Hostname parsing results
+    "parsed_site":        20,
+    "parsed_app_code":    20,
+    "parsed_os_name":    100,
+    "parsed_env_name":    50,
+    # Extended patching
+    "installed_kernel":  150,
 }
 
 
@@ -218,19 +232,26 @@ def validate_inventory_payload(data: dict) -> str | None:
             )
 
     # ── Numeric fields ─────────────────────────────────────────────────
-    for num_field in ("cpu_count", "pending_updates"):
+    for num_field in (
+        "cpu_count", "pending_updates", "security_updates",
+        "uptime_seconds",
+        "disk_total_gb", "disk_used_gb", "disk_used_pct",
+        "swap_total_gb", "swap_used_gb",
+    ):
         val = data.get(num_field)
         if val is not None and not isinstance(val, (int, float)):
             return f"{num_field} must be a number"
 
-    ram = data.get("ram_gb")
-    if ram is not None and not isinstance(ram, (int, float)):
-        return "ram_gb must be a number"
+    for float_field in ("ram_gb",):
+        val = data.get(float_field)
+        if val is not None and not isinstance(val, (int, float)):
+            return f"{float_field} must be a number"
 
-    # ── reboot_required: must be bool (or absent/null) ─────────────────────
-    rr = data.get("reboot_required")
-    if rr is not None and not isinstance(rr, bool):
-        return "reboot_required must be a boolean"
+    # ── Boolean fields ─────────────────────────────────────────────────
+    for bool_field in ("reboot_required", "kernel_update_available"):
+        val = data.get(bool_field)
+        if val is not None and not isinstance(val, bool):
+            return f"{bool_field} must be a boolean"
 
     return None
 
@@ -279,9 +300,34 @@ def upsert_server(data: dict) -> UpsertResult:
         server.operating_system = _safe_str(data.get("operating_system"), max_len=100)
         server.os_version = _safe_str(data.get("os_version"), max_len=100)
         server.kernel_version = _safe_str(data.get("kernel_version"), max_len=150)
+        server.architecture = _safe_str(data.get("architecture"), max_len=50)
         server.cpu_count = _parse_int(data.get("cpu_count"))
         server.cpu_model = _safe_str(data.get("cpu_model"), max_len=255)
         server.ram_gb = _parse_float(data.get("ram_gb"))
+
+        # Disk & swap
+        server.disk_total_gb = _parse_float(data.get("disk_total_gb"))
+        server.disk_used_gb = _parse_float(data.get("disk_used_gb"))
+        server.disk_used_pct = _parse_float(data.get("disk_used_pct"))
+        server.swap_total_gb = _parse_float(data.get("swap_total_gb"))
+        server.swap_used_gb = _parse_float(data.get("swap_used_gb"))
+
+        # Uptime & boot
+        server.uptime_seconds = _parse_int(data.get("uptime_seconds"))
+        server.last_boot = _parse_datetime(data.get("last_boot"))
+
+        # System metadata
+        server.package_manager = _safe_str(data.get("package_manager"), max_len=50)
+        server.python_version = _safe_str(data.get("python_version"), max_len=50)
+        server.ansible_version = _safe_str(data.get("ansible_version"), max_len=50)
+        server.selinux_status = _safe_str(data.get("selinux_status"), max_len=50)
+        server.timezone_name = _safe_str(data.get("timezone_name"), max_len=100)
+
+        # Hostname parsing metadata (stored as-is from Ansible)
+        server.parsed_site = _safe_str(data.get("parsed_site"), max_len=20)
+        server.parsed_app_code = _safe_str(data.get("parsed_app_code"), max_len=20)
+        server.parsed_os_name = _safe_str(data.get("parsed_os_name"), max_len=100)
+        server.parsed_env_name = _safe_str(data.get("parsed_env_name"), max_len=50)
 
         # Relationships
         if environment is not None:
@@ -329,11 +375,17 @@ def upsert_server(data: dict) -> UpsertResult:
         patching.last_patch_date = _parse_datetime(data.get("last_patch_date"))
         patching.last_reboot_date = _parse_datetime(data.get("last_reboot"))
         patching.pending_updates = _parse_int(data.get("pending_updates")) or 0
+        patching.security_updates = _parse_int(data.get("security_updates")) or 0
+        patching.installed_kernel = _safe_str(data.get("installed_kernel"), max_len=150)
 
-        # reboot_required: only update when explicitly provided in payload
+        # Boolean fields: only update when explicitly provided in payload
         if "reboot_required" in data:
             rr = data["reboot_required"]
             patching.reboot_required = bool(rr) if rr is not None else None
+
+        if "kernel_update_available" in data:
+            ku = data["kernel_update_available"]
+            patching.kernel_update_available = bool(ku) if ku is not None else None
 
         patching.updated_at = now
 
