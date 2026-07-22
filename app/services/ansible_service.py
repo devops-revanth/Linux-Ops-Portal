@@ -5,7 +5,8 @@ inventory inspection, and playbook discovery.
 This module only reads from the control node; it never executes
 playbooks, modifies servers, or runs ad-hoc commands.
 
-All SSH operations use paramiko. Credentials are never logged.
+All SSH operations use paramiko.  Credentials are NEVER logged,
+included in exceptions, or returned in API responses.
 """
 from __future__ import annotations
 
@@ -17,19 +18,20 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Status strings that match CONNECTION_STATUS_OPTIONS in ansible_config.py
-_STATUS_CONNECTED              = "Connected"
-_STATUS_DISCONNECTED           = "Disconnected"
-_STATUS_AUTH_FAILED            = "Authentication Failed"
-_STATUS_HOST_KEY_MISMATCH      = "Host Key Mismatch"
-_STATUS_INVENTORY_MISSING      = "Inventory Missing"
-_STATUS_PLAYBOOK_DIR_MISSING   = "Playbook Directory Missing"
-_STATUS_ANSIBLE_NOT_INSTALLED  = "Ansible Not Installed"
-_STATUS_TIMEOUT                = "Connection Timeout"
+# Status strings — must match CONNECTION_STATUS_OPTIONS in ansible_config.py
+_STATUS_CONNECTED             = "Connected"
+_STATUS_DISCONNECTED          = "Disconnected"
+_STATUS_AUTH_FAILED           = "Authentication Failed"
+_STATUS_HOST_KEY_MISMATCH     = "Host Key Mismatch"
+_STATUS_INVENTORY_MISSING     = "Inventory Missing"
+_STATUS_PLAYBOOK_DIR_MISSING  = "Playbook Directory Missing"
+_STATUS_ANSIBLE_NOT_INSTALLED = "Ansible Not Installed"
+_STATUS_TIMEOUT               = "Connection Timeout"
 
 
 class AnsibleConnectionError(Exception):
     """Raised when SSH connection or authentication fails."""
+
     def __init__(self, message: str, status: str = _STATUS_DISCONNECTED):
         super().__init__(message)
         self.status = status
@@ -38,25 +40,31 @@ class AnsibleConnectionError(Exception):
 class AnsibleService:
     """SSH-based interface to an Ansible control node."""
 
+    # ── Construction ──────────────────────────────────────────────────────── #
+
     def __init__(
         self,
         host: str,
         port: int,
         username: str,
-        auth_method: str,          # "key" | "password"
+        auth_method: str,           # "key" | "password"
         ssh_password: str = "",
         ssh_private_key: str = "",  # PEM text
         host_key_checking: bool = True,
         timeout: int = 30,
+        inventory_path: str = "/etc/ansible/hosts",
+        playbook_dir: str = "/etc/ansible/playbooks",
     ):
-        self.host             = host
-        self.port             = port
-        self.username         = username
-        self.auth_method      = auth_method
-        self.ssh_password     = ssh_password
-        self.ssh_private_key  = ssh_private_key
+        self.host              = host
+        self.port              = port
+        self.username          = username
+        self.auth_method       = auth_method
+        self.ssh_password      = ssh_password
+        self.ssh_private_key   = ssh_private_key
         self.host_key_checking = host_key_checking
-        self.timeout          = timeout
+        self.timeout           = timeout
+        self.inventory_path    = inventory_path   # plain attribute, no mangling
+        self.playbook_dir      = playbook_dir     # plain attribute, no mangling
 
     @classmethod
     def from_config(cls, cfg) -> "AnsibleService":
@@ -70,16 +78,19 @@ class AnsibleService:
             ssh_private_key   = cfg.get_ssh_private_key() or "",
             host_key_checking = cfg.host_key_checking,
             timeout           = cfg.connection_timeout or 30,
+            inventory_path    = cfg.inventory_path or "/etc/ansible/hosts",
+            playbook_dir      = cfg.playbook_dir or "/etc/ansible/playbooks",
         )
 
-    # ── Connection ────────────────────────────────────────────────────────── #
+    # ── Low-level SSH ─────────────────────────────────────────────────────── #
 
     def _connect(self):
         """
-        Open a paramiko SSH client to the control node.
+        Open a paramiko SSHClient to the control node.
 
         Returns a connected SSHClient.  Raises AnsibleConnectionError with a
-        sanitised message on any failure — credentials are never included.
+        sanitised, administrator-friendly message on any failure.
+        Credentials are NEVER included in exception messages or logs.
         """
         try:
             import paramiko  # type: ignore
@@ -97,61 +108,82 @@ class AnsibleService:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         connect_kwargs: dict[str, Any] = {
-            "hostname": self.host,
-            "port":     self.port,
-            "username": self.username,
-            "timeout":  self.timeout,
+            "hostname":       self.host,
+            "port":           self.port,
+            "username":       self.username,
+            "timeout":        self.timeout,
             "banner_timeout": self.timeout,
             "auth_timeout":   self.timeout,
         }
 
         if self.auth_method == "key" and self.ssh_private_key:
             pkey = self._load_private_key(self.ssh_private_key)
-            connect_kwargs["pkey"] = pkey
-            connect_kwargs["look_for_keys"] = False
-            connect_kwargs["allow_agent"]   = False
+            connect_kwargs["pkey"]           = pkey
+            connect_kwargs["look_for_keys"]  = False
+            connect_kwargs["allow_agent"]    = False
         elif self.auth_method == "password" and self.ssh_password:
-            connect_kwargs["password"]      = self.ssh_password
-            connect_kwargs["look_for_keys"] = False
-            connect_kwargs["allow_agent"]   = False
+            connect_kwargs["password"]       = self.ssh_password
+            connect_kwargs["look_for_keys"]  = False
+            connect_kwargs["allow_agent"]    = False
         else:
-            # Try SSH agent / default key locations as last resort
-            connect_kwargs["look_for_keys"] = True
-            connect_kwargs["allow_agent"]   = True
+            # Fall back to SSH agent / default key locations
+            connect_kwargs["look_for_keys"]  = True
+            connect_kwargs["allow_agent"]    = True
 
         try:
             client.connect(**connect_kwargs)
             return client
         except Exception as exc:
             client.close()
+            # Classify the error into a user-friendly category.
+            # str(exc) is only used for keyword matching; it is never surfaced.
             msg = str(exc).lower()
-            if any(k in msg for k in ("authentication", "auth", "denied", "invalid key", "no auth")):
+            if any(k in msg for k in (
+                "authentication", "auth failed", "denied", "invalid key",
+                "no auth", "publickey", "password authentication",
+            )):
                 raise AnsibleConnectionError(
-                    f"Authentication Failed: Could not authenticate to {self.host}:{self.port}",
+                    f"Authentication Failed: Could not authenticate to "
+                    f"{self.host}:{self.port} as '{self.username}'. "
+                    f"Check the username and credentials.",
                     status=_STATUS_AUTH_FAILED,
                 )
             if "not in known" in msg or "host key" in msg or "changed" in msg:
                 raise AnsibleConnectionError(
-                    f"Host Key Mismatch: The host key for {self.host} has changed or is not trusted.",
+                    f"Host Key Mismatch: The host key for {self.host} has "
+                    f"changed or is not in known_hosts. Either update "
+                    f"known_hosts or disable host key checking.",
                     status=_STATUS_HOST_KEY_MISMATCH,
                 )
-            if any(k in msg for k in ("timeout", "timed out", "connection refused", "no route")):
+            if any(k in msg for k in (
+                "timeout", "timed out", "connection refused", "no route",
+                "network unreachable", "name or service",
+            )):
                 raise AnsibleConnectionError(
-                    f"Connection Timeout: Could not reach {self.host}:{self.port}",
+                    f"Connection Timeout: Could not reach {self.host}:{self.port}. "
+                    f"Check that the host is reachable and port {self.port} is open.",
                     status=_STATUS_TIMEOUT,
                 )
             raise AnsibleConnectionError(
-                f"Disconnected: Could not connect to {self.host}:{self.port}",
+                f"Connection Failed: Could not connect to {self.host}:{self.port}. "
+                f"Verify the hostname and that SSH is running on port {self.port}.",
                 status=_STATUS_DISCONNECTED,
             )
 
     @staticmethod
     def _load_private_key(key_text: str):
-        """Try to load a PEM private key (RSA, Ed25519, ECDSA, DSS)."""
+        """
+        Try to load a PEM private key (RSA, Ed25519, ECDSA, DSS).
+        Also handles encrypted private keys (passphrase) if the key_text
+        is a newline-separated "key\\npassphrase" pair — but in LOP the
+        passphrase is passed separately via the vault or a dedicated field.
+        Raises AnsibleConnectionError with a sanitised message on failure.
+        """
         import paramiko  # type: ignore
 
         key_io = io.StringIO(key_text)
-        for cls in (
+        errors = []
+        for key_cls in (
             paramiko.RSAKey,
             paramiko.Ed25519Key,
             paramiko.ECDSAKey,
@@ -159,18 +191,27 @@ class AnsibleService:
         ):
             key_io.seek(0)
             try:
-                return cls.from_private_key(key_io)
-            except Exception:
+                return key_cls.from_private_key(key_io)
+            except paramiko.PasswordRequiredException:
+                raise AnsibleConnectionError(
+                    "The SSH private key is encrypted (passphrase-protected). "
+                    "LOP does not yet support passphrase-protected keys. "
+                    "Use an unencrypted key or configure password authentication.",
+                    status=_STATUS_AUTH_FAILED,
+                )
+            except Exception as exc:
+                errors.append(type(exc).__name__)
                 continue
         raise AnsibleConnectionError(
             "Could not load the SSH private key. "
-            "Supported formats: RSA, Ed25519, ECDSA, DSS.",
+            "Supported formats: RSA, Ed25519, ECDSA, DSS. "
+            "Ensure the key is a valid PEM private key file.",
             status=_STATUS_AUTH_FAILED,
         )
 
     @staticmethod
     def _exec(client, command: str, timeout: int = 60) -> tuple[str, str, int]:
-        """Run a command and return (stdout, stderr, exit_code)."""
+        """Run a remote command and return (stdout, stderr, exit_code)."""
         stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
         stdin.close()
         out  = stdout.read().decode("utf-8", errors="replace")
@@ -184,15 +225,15 @@ class AnsibleService:
         """
         SSH to the control node and verify Ansible installation and paths.
 
-        Returns a dict with keys:
-          success      bool
-          status       str  (matches CONNECTION_STATUS_OPTIONS)
-          message      str  (human-readable summary)
+        Returns a dict:
+          success         bool
+          status          str   (matches CONNECTION_STATUS_OPTIONS)
+          message         str   (human-readable summary)
           ansible_version str | None
           python_version  str | None
           inventory_ok    bool
           playbook_dir_ok bool
-          checks          list[dict]  — per-check detail rows for the UI
+          checks          list[dict]  — per-check rows for the UI
         """
         result: dict[str, Any] = {
             "success":         False,
@@ -208,40 +249,51 @@ class AnsibleService:
         client = None
         try:
             client = self._connect()
-            result["checks"].append({"label": "SSH Connection", "ok": True,
-                                     "detail": f"{self.host}:{self.port}"})
+            result["checks"].append({
+                "label": "SSH Connection",
+                "ok":    True,
+                "detail": f"{self.host}:{self.port}",
+            })
         except AnsibleConnectionError as exc:
             result["status"]  = exc.status
             result["message"] = str(exc)
-            result["checks"].append({"label": "SSH Connection", "ok": False,
-                                     "detail": str(exc)})
+            result["checks"].append({
+                "label": "SSH Connection",
+                "ok":    False,
+                "detail": str(exc),
+            })
             return result
 
         try:
             # ── Ansible version ────────────────────────────────────────────── #
             out, _, code = self._exec(client, "ansible --version 2>&1 | head -4")
             if code != 0 or "ansible" not in out.lower():
-                # Try with common path
                 out2, _, code2 = self._exec(
                     client, "/usr/bin/ansible --version 2>&1 | head -4"
                 )
                 if code2 != 0 or "ansible" not in out2.lower():
                     result["status"]  = _STATUS_ANSIBLE_NOT_INSTALLED
-                    result["message"] = "Ansible is not installed on the control node."
+                    result["message"] = (
+                        "Ansible is not installed on the control node, "
+                        "or it is not in PATH. Install Ansible on the control "
+                        "node before connecting LOP."
+                    )
                     result["checks"].append({
-                        "label": "Ansible Installed", "ok": False,
-                        "detail": "ansible not found in PATH"
+                        "label": "Ansible Installed",
+                        "ok":    False,
+                        "detail": "ansible not found in PATH or /usr/bin",
                     })
                     return result
                 out = out2
 
-            # Parse version line: "ansible [core 2.15.0]" or "ansible 2.9.x"
             version_line = out.splitlines()[0] if out.splitlines() else ""
             m = re.search(r"(\d+\.\d+[\.\d]*)", version_line)
             ansible_ver = m.group(1) if m else version_line.strip()
             result["ansible_version"] = ansible_ver
             result["checks"].append({
-                "label": "Ansible Version", "ok": True, "detail": version_line.strip()
+                "label": "Ansible Version",
+                "ok":    True,
+                "detail": version_line.strip(),
             })
 
             # ── ansible-playbook ──────────────────────────────────────────── #
@@ -252,57 +304,62 @@ class AnsibleService:
             result["checks"].append({
                 "label": "ansible-playbook",
                 "ok":    pb_ok,
-                "detail": out2.strip()[:80] if pb_ok else "Not found",
+                "detail": out2.strip()[:80] if pb_ok else "Not found in PATH",
             })
 
             # ── Python version ─────────────────────────────────────────────── #
             out3, _, _ = self._exec(
-                client,
-                "python3 --version 2>&1 || python --version 2>&1"
+                client, "python3 --version 2>&1 || python --version 2>&1"
             )
             py_line = out3.strip().splitlines()[0] if out3.strip() else ""
             py_ok = bool(py_line)
-            result["python_version"] = py_line
+            result["python_version"] = py_line or None
             result["checks"].append({
-                "label": "Python", "ok": py_ok,
+                "label": "Python",
+                "ok":    py_ok,
                 "detail": py_line or "Not found",
             })
 
             # ── Inventory path ─────────────────────────────────────────────── #
-            inv_path = self._inventory_path_arg()
-            out4, _, code4 = self._exec(
+            out4, _, _ = self._exec(
                 client,
-                f'test -e {_q(inv_path)} && echo OK || echo MISSING'
+                f"test -e {_q(self.inventory_path)} && echo OK || echo MISSING",
             )
             inv_ok = "OK" in out4
             result["inventory_ok"] = inv_ok
             if not inv_ok:
                 result["status"]  = _STATUS_INVENTORY_MISSING
-                result["message"] = f"Inventory path not found: {inv_path}"
+                result["message"] = (
+                    f"Inventory path not found on control node: "
+                    f"{self.inventory_path}"
+                )
             result["checks"].append({
-                "label": f"Inventory ({inv_path})",
+                "label": f"Inventory ({self.inventory_path})",
                 "ok":    inv_ok,
-                "detail": "Exists" if inv_ok else f"Not found: {inv_path}",
+                "detail": "Exists" if inv_ok else f"Not found: {self.inventory_path}",
             })
 
             # ── Playbook directory ─────────────────────────────────────────── #
-            out5, _, code5 = self._exec(
+            out5, _, _ = self._exec(
                 client,
-                f'test -d {_q(self._playbook_dir)} && echo OK || echo MISSING'
+                f"test -d {_q(self.playbook_dir)} && echo OK || echo MISSING",
             )
             pb_dir_ok = "OK" in out5
             result["playbook_dir_ok"] = pb_dir_ok
             if not pb_dir_ok and inv_ok:
                 result["status"]  = _STATUS_PLAYBOOK_DIR_MISSING
-                result["message"] = f"Playbook directory not found: {self._playbook_dir}"
+                result["message"] = (
+                    f"Playbook directory not found on control node: "
+                    f"{self.playbook_dir}"
+                )
             result["checks"].append({
-                "label": f"Playbook Directory ({self._playbook_dir})",
+                "label": f"Playbook Directory ({self.playbook_dir})",
                 "ok":    pb_dir_ok,
-                "detail": "Exists" if pb_dir_ok else f"Not found: {self._playbook_dir}",
+                "detail": "Exists" if pb_dir_ok else f"Not found: {self.playbook_dir}",
             })
 
-            # ── Final status ───────────────────────────────────────────────── #
-            if inv_ok:   # inventory is the hard requirement
+            # ── Final status ──────────────────────────────────────────────── #
+            if inv_ok:  # inventory is the hard requirement; playbook dir is soft
                 result["success"] = True
                 result["status"]  = _STATUS_CONNECTED
                 result["message"] = (
@@ -311,8 +368,12 @@ class AnsibleService:
                 )
 
         except Exception as exc:
-            logger.warning("Ansible test_connection error: %s", exc)
-            result["message"] = f"Unexpected error during connection test: {type(exc).__name__}"
+            # Catch-all: log the type only, never the message (may contain paths/data)
+            logger.warning("Ansible test_connection unexpected error: %s", type(exc).__name__)
+            result["message"] = (
+                f"An unexpected error occurred during the connection test "
+                f"({type(exc).__name__}). Check the application logs."
+            )
         finally:
             if client:
                 try:
@@ -328,13 +389,18 @@ class AnsibleService:
         """
         Run `ansible-inventory --list` on the control node and parse the output.
 
+        Supports all inventory types (static INI, static YAML, dynamic, directory).
+        Nested/children groups are fully enumerated in group_names.
+        Duplicate hostnames cannot occur — _meta.hostvars uses hostnames as keys.
+
         Returns:
-          success       bool
-          host_count    int
-          group_names   list[str]
-          hosts         list[str]  — unique hostnames/IPs
-          errors        list[str]
-          raw_groups    dict       — group → hosts mapping
+          success     bool
+          host_count  int
+          group_names list[str]   — ALL groups including container groups
+          hosts       list[str]   — unique hostnames/FQDNs from _meta.hostvars
+          errors      list[str]   — warnings and errors from ansible-inventory
+          raw_groups  dict        — group → direct host list (for group labelling)
+          connected   bool        — False if SSH connection itself failed
         """
         result: dict[str, Any] = {
             "success":    False,
@@ -343,29 +409,36 @@ class AnsibleService:
             "hosts":      [],
             "errors":     [],
             "raw_groups": {},
+            "connected":  False,
         }
 
         client = None
         try:
             client = self._connect()
+            result["connected"] = True
         except AnsibleConnectionError as exc:
             result["errors"].append(str(exc))
             return result
 
         try:
-            inv_path = self._inventory_path_arg()
-            cmd = f"ansible-inventory -i {_q(inv_path)} --list 2>&1"
-            out, _, _ = self._exec(client, cmd, timeout=60)
+            cmd = (
+                f"ansible-inventory -i {_q(self.inventory_path)} --list"
+                f" 2>&1"
+            )
+            out, _, _ = self._exec(client, cmd, timeout=90)
 
-            # ansible-inventory --list outputs JSON, possibly with warning lines first
+            # ansible-inventory --list outputs JSON, possibly preceded by
+            # [WARNING] lines or deprecation notices.  Find the JSON object.
             json_start = out.find("{")
             if json_start == -1:
                 result["errors"].append(
-                    "Could not parse inventory output — no JSON found. "
-                    "Check that ansible-inventory is installed and the inventory path is correct."
+                    "ansible-inventory produced no JSON output. "
+                    "Verify that ansible-inventory is installed and "
+                    f"the inventory path is correct: {self.inventory_path}"
                 )
                 return result
 
+            # Surface any pre-JSON text as informational warnings
             prefix = out[:json_start].strip()
             if prefix:
                 for line in prefix.splitlines():
@@ -375,34 +448,47 @@ class AnsibleService:
             try:
                 data = json.loads(out[json_start:])
             except json.JSONDecodeError as exc:
-                result["errors"].append(f"Inventory JSON parse error: {exc}")
+                result["errors"].append(
+                    f"Could not parse inventory JSON: {exc}. "
+                    f"This may indicate a syntax error in the inventory file."
+                )
                 return result
 
-            # All unique hostnames live in _meta.hostvars
+            # ── All unique hosts ─────────────────────────────────────────── #
+            # _meta.hostvars contains every managed host as a key.
+            # Keys are unique by definition (dict), so no duplicates are possible.
             hostvars = data.get("_meta", {}).get("hostvars", {})
             hosts = sorted(hostvars.keys())
             result["hosts"]      = hosts
             result["host_count"] = len(hosts)
 
-            # Group names are top-level keys except _meta and all
-            groups: dict[str, list[str]] = {}
+            # ── All groups (including container groups with only children) ── #
+            # A group entry looks like:
+            #   { "hosts": [...], "children": [...], "vars": {...} }
+            # Groups that only have "children" are legitimate parent groups
+            # and MUST be included — do not skip them.
+            raw_groups: dict[str, list[str]] = {}
             for key, val in data.items():
                 if key in ("_meta", "all"):
                     continue
-                if isinstance(val, dict):
-                    group_hosts = val.get("hosts", [])
-                    if not group_hosts:
-                        # Children array — skip, or flatten
-                        continue
-                    groups[key] = group_hosts
+                if not isinstance(val, dict):
+                    continue
+                # Include ALL groups regardless of whether they have direct hosts
+                direct_hosts = val.get("hosts", [])
+                raw_groups[key] = direct_hosts  # may be [] for container groups
 
-            result["group_names"] = sorted(groups.keys())
-            result["raw_groups"]  = groups
+            result["group_names"] = sorted(raw_groups.keys())
+            result["raw_groups"]  = raw_groups
             result["success"]     = True
 
         except Exception as exc:
-            logger.warning("Ansible validate_inventory error: %s", exc)
-            result["errors"].append(f"Error during inventory validation: {type(exc).__name__}: {exc}")
+            logger.warning(
+                "Ansible validate_inventory unexpected error: %s", type(exc).__name__
+            )
+            result["errors"].append(
+                f"An unexpected error occurred during inventory validation "
+                f"({type(exc).__name__}). Check the application logs."
+            )
         finally:
             if client:
                 try:
@@ -414,51 +500,70 @@ class AnsibleService:
 
     # ── Playbook discovery ────────────────────────────────────────────────── #
 
-    def discover_playbooks(self) -> list[dict[str, str]]:
+    def discover_playbooks(self) -> dict[str, Any]:
         """
         Find YAML playbooks in the configured playbook directory.
 
-        Returns a list of dicts:
-          name        str  (from the first 'name:' key in the file, or filename)
-          path        str  (full path on control node)
-          description str  (same as name — Ansible has no description field)
-          tags        str  (comma-joined tag list if found, else "")
+        Discovery only — playbooks are NEVER executed.
+
+        Returns a dict:
+          playbooks   list[dict]  — name, path, description, tags
+          errors      list[str]   — connection or discovery errors
+          connected   bool        — False if SSH connection itself failed
+          count       int
         """
-        playbooks: list[dict[str, str]] = []
+        result: dict[str, Any] = {
+            "playbooks": [],
+            "errors":    [],
+            "connected": False,
+            "count":     0,
+        }
+
         client = None
         try:
             client = self._connect()
+            result["connected"] = True
         except AnsibleConnectionError as exc:
-            logger.warning("Ansible discover_playbooks connect failed: %s", exc)
-            return playbooks
+            result["errors"].append(str(exc))
+            return result
 
         try:
             # ── Discover YAML files ───────────────────────────────────────── #
+            # maxdepth 5 covers typical role/collection layouts.
+            # Exclude vault-encrypted files and known non-playbook names.
+            # head -200 prevents runaway output for very large repos.
             find_cmd = (
-                f"find {_q(self._playbook_dir)} -maxdepth 3 "
+                f"find {_q(self.playbook_dir)} -maxdepth 5 "
                 r"\( -name '*.yml' -o -name '*.yaml' \) "
                 r"! -name '*.vault.yml' ! -name '*.vault.yaml' "
-                r"-type f 2>/dev/null | sort | head -100"
+                r"! -name 'requirements.yml' ! -name 'requirements.yaml' "
+                r"-type f 2>/dev/null | sort | head -200"
             )
             out, _, _ = self._exec(client, find_cmd, timeout=30)
             paths = [p.strip() for p in out.splitlines() if p.strip()]
 
             if not paths:
-                return playbooks
+                result["errors"].append(
+                    f"No YAML files found in {self.playbook_dir}. "
+                    f"Verify the playbook directory path is correct."
+                )
+                return result
 
-            # ── Read name/tags from each file (one batched command) ───────── #
-            # Emit a sentinel line between files for easy parsing
+            # ── Read name/tags from each file (one batched SSH command) ───── #
+            # Emit a sentinel line between files so we can split the output.
+            # grep -m2 limits lines per file to avoid huge outputs.
             parts = []
             for p in paths:
                 parts.append(
                     f'echo "===FILE:{p}"; '
-                    f'grep -m2 -E "^(- name:|  name:|  tags:)" {_q(p)} 2>/dev/null || true'
+                    f'grep -m3 -E "^(- name:|  name:|  tags:|  description:)" '
+                    f'{_q(p)} 2>/dev/null || true'
                 )
             batch_cmd = "; ".join(parts)
-            out2, _, _ = self._exec(client, batch_cmd, timeout=60)
+            out2, _, _ = self._exec(client, batch_cmd, timeout=90)
 
-            current_path = None
-            meta: dict[str, dict] = {}  # path → {name, tags}
+            current_path: str | None = None
+            meta: dict[str, dict] = {}
 
             for line in out2.splitlines():
                 if line.startswith("===FILE:"):
@@ -466,6 +571,7 @@ class AnsibleService:
                     meta[current_path] = {"name": "", "tags": ""}
                 elif current_path:
                     stripped = line.strip()
+                    # Top-level playbook name: "- name: ..." or "name: ..."
                     if stripped.startswith("- name:") or stripped.startswith("name:"):
                         raw_name = stripped.split(":", 1)[-1].strip().strip("'\"")
                         if raw_name and not meta[current_path]["name"]:
@@ -474,6 +580,7 @@ class AnsibleService:
                         raw_tags = stripped.split(":", 1)[-1].strip()
                         meta[current_path]["tags"] = raw_tags
 
+            playbooks = []
             for path in paths:
                 filename = path.rsplit("/", 1)[-1]
                 m = meta.get(path, {})
@@ -485,8 +592,17 @@ class AnsibleService:
                     "tags":        m.get("tags", ""),
                 })
 
+            result["playbooks"] = playbooks
+            result["count"]     = len(playbooks)
+
         except Exception as exc:
-            logger.warning("Ansible discover_playbooks error: %s", exc)
+            logger.warning(
+                "Ansible discover_playbooks unexpected error: %s", type(exc).__name__
+            )
+            result["errors"].append(
+                f"An unexpected error occurred during playbook discovery "
+                f"({type(exc).__name__}). Check the application logs."
+            )
         finally:
             if client:
                 try:
@@ -494,48 +610,10 @@ class AnsibleService:
                 except Exception:
                     pass
 
-        return playbooks
+        return result
 
-    # ── Internal helpers ──────────────────────────────────────────────────── #
 
-    def _inventory_path_arg(self) -> str:
-        """Return the raw inventory path string."""
-        return self._inventory_path if hasattr(self, "_inventory_path") else "/etc/ansible/hosts"
-
-    @property
-    def _playbook_dir(self) -> str:
-        return getattr(self, "__playbook_dir", "/etc/ansible/playbooks")
-
-    def __init__(self, host, port, username, auth_method, ssh_password="",
-                 ssh_private_key="", host_key_checking=True, timeout=30,
-                 inventory_path="/etc/ansible/hosts",
-                 playbook_dir="/etc/ansible/playbooks"):
-        self.host             = host
-        self.port             = port
-        self.username         = username
-        self.auth_method      = auth_method
-        self.ssh_password     = ssh_password
-        self.ssh_private_key  = ssh_private_key
-        self.host_key_checking = host_key_checking
-        self.timeout          = timeout
-        self._inventory_path  = inventory_path
-        self.__playbook_dir   = playbook_dir
-
-    @classmethod
-    def from_config(cls, cfg) -> "AnsibleService":
-        return cls(
-            host              = cfg.control_node or "",
-            port              = cfg.port or 22,
-            username          = cfg.username or "",
-            auth_method       = cfg.auth_method or "key",
-            ssh_password      = cfg.get_ssh_password() or "",
-            ssh_private_key   = cfg.get_ssh_private_key() or "",
-            host_key_checking = cfg.host_key_checking,
-            timeout           = cfg.connection_timeout or 30,
-            inventory_path    = cfg.inventory_path or "/etc/ansible/hosts",
-            playbook_dir      = cfg.playbook_dir or "/etc/ansible/playbooks",
-        )
-
+# ── Shell quoting helper ──────────────────────────────────────────────────── #
 
 def _q(path: str) -> str:
     """Shell-quote a path for use in remote commands (single-quotes)."""

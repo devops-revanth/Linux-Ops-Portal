@@ -72,17 +72,34 @@ def index():
 
     inventory = get_inventory_page(filters, page=page, per_page=per_page)
 
-    # Load Ansible-managed hostnames for badge display (graceful if not migrated)
+    # Build the set of LOP server IDs that are Ansible-managed.
+    # Matching priority: FQDN → hostname → inventory alias (per spec).
+    # All three are stored as raw strings in AnsibleInventoryHost.hostname,
+    # so a single set-intersection covers all three without extra queries.
     try:
         from ...models.ansible_config import AnsibleInventoryHost
-        ansible_managed: set[str] = {h.hostname for h in AnsibleInventoryHost.query.all()}
+        from ...models import Server
+        ansible_strings: set[str] = {
+            h.hostname for h in AnsibleInventoryHost.query.all()
+        }
+        if ansible_strings:
+            # One query: servers whose fqdn OR hostname appears in the inventory
+            managed_servers = Server.query.filter(
+                db.or_(
+                    Server.fqdn.in_(ansible_strings),
+                    Server.hostname.in_(ansible_strings),
+                )
+            ).with_entities(Server.id).all()
+            ansible_managed_ids: set[int] = {row.id for row in managed_servers}
+        else:
+            ansible_managed_ids = set()
     except Exception:
-        ansible_managed = set()
+        ansible_managed_ids = set()
 
     return render_template(
         "inventory/index.html",
         inventory=inventory,
-        ansible_managed=ansible_managed,
+        ansible_managed_ids=ansible_managed_ids,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
@@ -210,12 +227,15 @@ def server_detail(server_id: int):
         "rows":        pkg_rows,
     }
 
-    # Ansible managed check
+    # Ansible managed check — match by FQDN first, then hostname
     try:
         from ...models.ansible_config import AnsibleInventoryHost
-        is_ansible_managed = AnsibleInventoryHost.query.filter_by(
-            hostname=server.hostname
-        ).first() is not None
+        candidates = [c for c in (server.fqdn, server.hostname) if c]
+        is_ansible_managed = (
+            AnsibleInventoryHost.query.filter(
+                AnsibleInventoryHost.hostname.in_(candidates)
+            ).first() is not None
+        ) if candidates else False
     except Exception:
         is_ansible_managed = False
 

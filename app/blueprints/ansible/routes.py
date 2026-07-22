@@ -172,7 +172,8 @@ def test_ansible():
     commit_audit(
         "ansible.connection.test",
         target=host,
-        details=f"result={result['status']}",
+        details=f"status={result['status']}",
+        result="success" if result["success"] else "failure",
     )
 
     return jsonify({
@@ -198,30 +199,37 @@ def validate_inventory():
     svc    = _build_service(cfg, form=request.form)
     result = svc.validate_inventory()
 
-    # If successful, persist hosts into AnsibleInventoryHost table
+    now = datetime.now(timezone.utc)
+
+    # Persist results to DB; always update last_validation_at so the UI
+    # reflects when validation was last attempted (successful or not).
     if result["success"] and result.get("hosts"):
         try:
-            now = datetime.now(timezone.utc)
-            # Replace all existing host records
+            # Replace all existing host records atomically
             AnsibleInventoryHost.query.delete()
             for hostname in result["hosts"]:
-                # Determine which groups this host belongs to
                 groups = [
                     g for g, hosts in result.get("raw_groups", {}).items()
                     if hostname in hosts
                 ]
                 db.session.add(AnsibleInventoryHost(
-                    hostname     = hostname,
-                    groups       = ", ".join(sorted(groups)) if groups else None,
+                    hostname      = hostname,
+                    groups        = ", ".join(sorted(groups)) if groups else None,
                     discovered_at = now,
                 ))
-            # Update config stats
             cfg.last_inventory_hosts = result["host_count"]
             cfg.last_validation_at   = now
             db.session.commit()
         except Exception as exc:
             db.session.rollback()
             logger.warning("Failed to persist Ansible inventory hosts: %s", exc)
+    else:
+        # Update timestamp even on failure so the UI shows when last attempted
+        try:
+            cfg.last_validation_at = now
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
     commit_audit(
         "ansible.inventory.validate",
@@ -230,6 +238,7 @@ def validate_inventory():
             f"hosts={result['host_count']} "
             f"groups={len(result['group_names'])}"
         ),
+        result="success" if result["success"] else "failure",
     )
 
     return jsonify({
@@ -251,23 +260,31 @@ def discover_playbooks():
     if cfg is None:
         return jsonify({"success": False, "playbooks": []})
 
-    svc       = _build_service(cfg, form=request.form)
-    playbooks = svc.discover_playbooks()
+    svc    = _build_service(cfg, form=request.form)
+    disc   = svc.discover_playbooks()
 
-    # Persist playbook count to config
-    try:
-        cfg.last_playbooks_found = len(playbooks)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+    playbooks = disc.get("playbooks", [])
+    errors    = disc.get("errors", [])
+    connected = disc.get("connected", False)
+    success   = connected and len(playbooks) > 0
+
+    # Persist playbook count to config (only when we actually connected)
+    if connected:
+        try:
+            cfg.last_playbooks_found = len(playbooks)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
     commit_audit(
         "ansible.playbooks.discover",
-        details=f"found={len(playbooks)}",
+        details=f"found={len(playbooks)} connected={connected}",
+        result="success" if connected else "failure",
     )
 
     return jsonify({
-        "success":   True,
+        "success":   connected,
         "count":     len(playbooks),
         "playbooks": playbooks,
+        "errors":    errors,
     })
