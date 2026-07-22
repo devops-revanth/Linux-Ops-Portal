@@ -711,8 +711,14 @@
         {% set vm = server.vmware_meta %}
         <p class="lop-section-title mt-3"><i class="bi bi-hdd-network me-1 text-info"></i>VMware</p>
         <div class="lop-field-group">
+          {% if vm.vcenter_name %}
           <div class="lop-field">
-            <span class="lop-field-label">vCenter</span>
+            <span class="lop-field-label">Connection</span>
+            <span class="lop-field-value fw-semibold">{{ vm.vcenter_name }}</span>
+          </div>
+          {% endif %}
+          <div class="lop-field">
+            <span class="lop-field-label">vCenter Host</span>
             <span class="lop-field-value lop-meta-mono {% if not vm.vcenter_host %}lop-field-empty{% endif %}"
                   style="font-size:.82rem;">{{ vm.vcenter_host or '—' }}</span>
           </div>

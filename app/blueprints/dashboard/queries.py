@@ -54,9 +54,11 @@ class DashboardStats:
     last_ansible_sync:    datetime | None = None
     environments:         list[EnvironmentCount] = field(default_factory=list)
     locations:            list[LocationCount]     = field(default_factory=list)
-    # VMware stats
+    # VMware stats (Phase 4: multi-vCenter)
     vmware_imported:      int = 0
-    vmware_connected:     int = 0   # vCenters with status "Connected"
+    vmware_total:         int = 0   # total configured connections
+    vmware_connected:     int = 0   # connections with status "Connected"
+    vmware_failed:        int = 0   # connections with failed status
     vmware_last_sync:     datetime | None = None
     vmware_sync_status:   str = "Not Configured"
     # Ansible stats
@@ -187,26 +189,39 @@ def get_dashboard_stats() -> DashboardStats:
             for r in loc_rows
         ]
 
-        # ── VMware stats ──────────────────────────────────────────────
+        # ── VMware stats (Phase 4: aggregated across all connections) ──
         try:
-            from ...models.vmware_config import VmwareConfig
-            cfg = VmwareConfig.query.first()
-            if cfg and cfg.enabled:
+            from ...models.vmware_connection import VmwareConnection
+            conns = VmwareConnection.query.all()
+            if conns:
+                stats.vmware_total     = len(conns)
+                stats.vmware_connected = sum(
+                    1 for c in conns if c.connection_status == "Connected"
+                )
+                stats.vmware_failed = sum(
+                    1 for c in conns
+                    if c.connection_status in (
+                        "Authentication Failed", "SSL Error",
+                        "Connection Timeout", "Disconnected",
+                    )
+                )
                 stats.vmware_imported = (
                     db.session.query(func.count(Server.id))
                     .filter(Server.source == "vmware")
                     .scalar() or 0
                 )
-                stats.vmware_connected = 1 if cfg.connection_status == "Connected" else 0
-                stats.vmware_last_sync = cfg.last_sync_ok_at
-                if cfg.last_sync_ok_at:
-                    stats.vmware_sync_status = "Completed"
-                elif cfg.last_sync_fail_at:
-                    stats.vmware_sync_status = "Failed"
+                last_ok_dates = [c.last_sync_ok_at for c in conns if c.last_sync_ok_at]
+                stats.vmware_last_sync = max(last_ok_dates) if last_ok_dates else None
+
+                enabled_count = sum(1 for c in conns if c.enabled)
+                if enabled_count == 0:
+                    stats.vmware_sync_status = "Disabled"
+                elif stats.vmware_connected == 0:
+                    stats.vmware_sync_status = "Disconnected"
                 else:
-                    stats.vmware_sync_status = "Never Synced"
-            elif cfg and not cfg.enabled:
-                stats.vmware_sync_status = "Disabled"
+                    stats.vmware_sync_status = (
+                        f"{stats.vmware_connected}/{stats.vmware_total} Connected"
+                    )
         except Exception:
             pass
 

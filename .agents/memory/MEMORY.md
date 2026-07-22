@@ -9,3 +9,4 @@
 - [Sprint 2 enterprise redesign](sprint2-redesign.md) — Packages=fleet(4 stat cards); Patching=new columns+YES/NO updates; server detail=2 pkg tabs; ComplianceConfig DB singleton; demo seeder 3 RHEL servers.
 - [Ansible Phase 2 facts](ansible-phase2-facts.md) — --tree collection; bulk DB; migration g7h8i9j0k1l2; Patching has no last_ansible_sync; no double create_index in migrations.
 - [Phase 3 playbook execution](phase3-playbook-exec.md) — AWX-style ops workspace at /ansible/*; ops_bp must import routes; lop_dt=alias of lop_ts; POSIX _q quoting; append-only log SQL; PID capture via bash wrapper.
+- [Phase 4 multi-vCenter](vmware-phase4.md) — VmwareConnection table replaces singleton; VmwareConfig kept as shim; per-conn locks; stale scoped to conn+other-conns; scheduler jobs vmware_conn_<id>.

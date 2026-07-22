@@ -65,6 +65,7 @@ def create_app(config_name: str | None = None) -> Flask:
             server,
             user,
             vmware_config,
+            vmware_connection,
             vmware_server_meta,
             ansible_config,
         )

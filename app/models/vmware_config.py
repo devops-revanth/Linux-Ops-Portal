@@ -1,8 +1,9 @@
 """
 VMware vCenter configuration and sync log models.
 
-VmwareConfig  — singleton table storing connection settings and sync stats.
+VmwareConfig  — legacy singleton table (kept for backward compat).
 VmwareSyncLog — one row per sync run (running / completed / failed).
+                Now includes connection_id FK to vmware_connections.
 """
 from __future__ import annotations
 
@@ -30,21 +31,22 @@ CONNECTION_STATUS_OPTIONS = [
 
 
 class VmwareConfig(db.Model):
+    """Legacy singleton config — kept so existing data and migrations are intact."""
     __tablename__ = "vmware_config"
 
     id: int = db.Column(db.Integer, primary_key=True)
 
-    # ── Enable / disable ────────────────────────────────────────────────── #
+    # ── Enable / disable ─────────────────────────────────────────────────── #
     enabled: bool = db.Column(db.Boolean, nullable=False, default=False)
 
-    # ── Connection ──────────────────────────────────────────────────────── #
+    # ── Connection ───────────────────────────────────────────────────────── #
     vcenter_host: str = db.Column(db.String(255), nullable=True)
     port: int = db.Column(db.Integer, nullable=False, default=443)
     username: str = db.Column(db.String(255), nullable=True)
     password_enc: str = db.Column(db.Text, nullable=True)
     ignore_ssl: bool = db.Column(db.Boolean, nullable=False, default=False)
 
-    # ── Default mappings ────────────────────────────────────────────────── #
+    # ── Default mappings ─────────────────────────────────────────────────── #
     default_location_id: int = db.Column(
         db.Integer, db.ForeignKey("locations.id"), nullable=True
     )
@@ -52,13 +54,13 @@ class VmwareConfig(db.Model):
         db.Integer, db.ForeignKey("environments.id"), nullable=True
     )
 
-    # ── Connection status ───────────────────────────────────────────────── #
+    # ── Connection status ────────────────────────────────────────────────── #
     connection_status: str = db.Column(
         db.String(50), nullable=False, default="Not Tested"
     )
     last_test_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # ── Sync stats ──────────────────────────────────────────────────────── #
+    # ── Sync stats ───────────────────────────────────────────────────────── #
     last_sync_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     last_sync_ok_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     last_sync_fail_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -73,11 +75,11 @@ class VmwareConfig(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # ── Relationships ───────────────────────────────────────────────────── #
-    default_location = db.relationship("Location", foreign_keys=[default_location_id])
+    # ── Relationships ─────────────────────────────────────────────────────── #
+    default_location = db.relationship("Location",    foreign_keys=[default_location_id])
     default_environment = db.relationship("Environment", foreign_keys=[default_environment_id])
 
-    # ── Helpers ─────────────────────────────────────────────────────────── #
+    # ── Helpers ───────────────────────────────────────────────────────────── #
     @classmethod
     def get(cls) -> "VmwareConfig":
         """Return (or create with defaults) the singleton config record."""
@@ -94,7 +96,7 @@ class VmwareConfig(db.Model):
 
     def set_password(self, plaintext: str) -> None:
         if not plaintext:
-            return  # keep existing encrypted password if blank submitted
+            return
         from ..encryption import encrypt_value
         self.password_enc = encrypt_value(plaintext)
 
@@ -112,6 +114,15 @@ class VmwareSyncLog(db.Model):
     __tablename__ = "vmware_sync_logs"
 
     id: int = db.Column(db.Integer, primary_key=True)
+
+    # ── Multi-vCenter FK (nullable for backward compat) ─────────────────── #
+    connection_id: int = db.Column(
+        db.Integer,
+        db.ForeignKey("vmware_connections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     status: str = db.Column(
         db.String(20), nullable=False, default="running"
     )  # running | completed | failed
@@ -122,11 +133,14 @@ class VmwareSyncLog(db.Model):
     )
     finished_at: datetime = db.Column(db.DateTime(timezone=True), nullable=True)
     vms_imported: int = db.Column(db.Integer, nullable=False, default=0)
-    vms_updated: int = db.Column(db.Integer, nullable=False, default=0)
-    vms_skipped: int = db.Column(db.Integer, nullable=False, default=0)
+    vms_updated:  int = db.Column(db.Integer, nullable=False, default=0)
+    vms_skipped:  int = db.Column(db.Integer, nullable=False, default=0)
     error_message: str = db.Column(db.Text, nullable=True)
-    triggered_by: str = db.Column(db.String(20), nullable=False, default="manual")
-    # manual | scheduled
+    triggered_by: str = db.Column(db.String(50), nullable=False, default="manual")
+
+    # ── Relationship ──────────────────────────────────────────────────────── #
+    connection = db.relationship("VmwareConnection", back_populates="sync_logs",
+                                 foreign_keys=[connection_id])
 
     def __repr__(self) -> str:
-        return f"<VmwareSyncLog id={self.id} status={self.status!r}>"
+        return f"<VmwareSyncLog id={self.id} conn={self.connection_id} status={self.status!r}>"

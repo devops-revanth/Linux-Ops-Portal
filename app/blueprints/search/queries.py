@@ -44,7 +44,7 @@ DEFAULT_SORT  = "hostname"
 DEFAULT_ORDER = "asc"
 
 # Smart-search prefix markers
-_PREFIXES = ("package:", "service:", "repo:")
+_PREFIXES = ("package:", "service:", "repo:", "vcenter:", "datacenter:", "cluster:", "esxi:", "datastore:")
 
 
 @dataclass
@@ -114,6 +114,16 @@ def get_search_page(
             q = _service_search(term)
         elif search_type == "repo":
             q = _repo_search(term)
+        elif search_type == "vcenter":
+            q = _vmware_meta_search("vcenter_name", term)
+        elif search_type == "datacenter":
+            q = _vmware_meta_search("datacenter", term)
+        elif search_type == "cluster":
+            q = _vmware_meta_search("cluster", term)
+        elif search_type == "esxi":
+            q = _vmware_meta_search("esxi_host", term)
+        elif search_type == "datastore":
+            q = _vmware_meta_search("datastore", term)
         else:
             q = _fulltext_search(term)
 
@@ -214,4 +224,23 @@ def _repo_search(term: str):
         )
     except Exception:
         logger.warning("repo_search: could not join AnsibleRepository")
+        return _base_q().filter(Server.id == None)  # noqa: E711
+
+
+def _vmware_meta_search(field: str, term: str):
+    """Return servers whose VMware metadata field matches the search term.
+
+    Supports: vcenter_name, datacenter, cluster, esxi_host, datastore.
+    """
+    try:
+        from ...models.vmware_server_meta import VmwareServerMeta
+        pat = f"%{term}%"
+        col = getattr(VmwareServerMeta, field)
+        return (
+            _base_q()
+            .join(VmwareServerMeta, VmwareServerMeta.server_id == Server.id)
+            .filter(col.ilike(pat))
+        )
+    except Exception:
+        logger.warning("vmware_meta_search: could not join VmwareServerMeta (field=%s)", field)
         return _base_q().filter(Server.id == None)  # noqa: E711

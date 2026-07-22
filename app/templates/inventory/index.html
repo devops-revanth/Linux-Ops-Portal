@@ -391,6 +391,7 @@
             <th>{{ sort_link('ram_gb',           'Memory') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
+            <th>vCenter</th>
             <th>Facts</th>
           </tr>
         </thead>
@@ -507,6 +508,17 @@
                 </span>
               </td>
 
+              {# vCenter (for VMware servers only) #}
+              <td>
+                {% if srv.source == 'vmware' and srv.vmware_meta and srv.vmware_meta.vcenter_name %}
+                  <span class="text-secondary small">{{ srv.vmware_meta.vcenter_name }}</span>
+                {% elif srv.source == 'vmware' and srv.vmware_meta and srv.vmware_meta.vcenter_host %}
+                  <span class="text-secondary small font-monospace" style="font-size:.75rem;">{{ srv.vmware_meta.vcenter_host }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
+
               {# Fact age #}
               <td style="white-space:nowrap;">
                 {% if srv.ansible_fact_status == 'failed' %}
@@ -527,7 +539,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="12">
+              <td colspan="13">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}

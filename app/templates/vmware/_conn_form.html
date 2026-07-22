@@ -1,0 +1,116 @@
+{#
+  Shared Add/Edit form fields for VmwareConnection.
+  Used by connections.html in both Add and Edit modals.
+  Pre-filled by JS (edit) or empty (add).
+#}
+<div class="row g-3">
+
+  {# Name #}
+  <div class="col-md-6">
+    <label class="form-label fw-semibold" for="conn-name">
+      Connection Name <span class="text-danger">*</span>
+    </label>
+    <input type="text" class="form-control form-control-sm"
+           id="conn-name" name="name"
+           placeholder="e.g. Production vCenter, DR Site"
+           required maxlength="255">
+  </div>
+
+  {# Location #}
+  <div class="col-md-6">
+    <label class="form-label fw-semibold" for="conn-location">
+      Location <span class="text-danger">*</span>
+    </label>
+    <select class="form-select form-select-sm" id="conn-location" name="location_id" required>
+      <option value="">— Select a location —</option>
+      {% for loc in locations %}
+        <option value="{{ loc.id }}">{{ loc.name }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text text-secondary" style="font-size:.72rem;">
+      VMs imported from this vCenter will be assigned to this location by default.
+    </div>
+  </div>
+
+  {# vCenter FQDN #}
+  <div class="col-md-7">
+    <label class="form-label fw-semibold" for="conn-host">
+      vCenter Host / FQDN <span class="text-danger">*</span>
+    </label>
+    <input type="text" class="form-control form-control-sm font-monospace"
+           id="conn-host" name="vcenter_host"
+           placeholder="vcenter.corp.example.com"
+           required maxlength="255">
+  </div>
+
+  {# Port #}
+  <div class="col-md-2">
+    <label class="form-label fw-semibold" for="conn-port">Port</label>
+    <input type="number" class="form-control form-control-sm"
+           id="conn-port" name="port"
+           value="443" min="1" max="65535">
+  </div>
+
+  {# Ignore SSL #}
+  <div class="col-md-3 d-flex align-items-end pb-1">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox"
+             id="conn-ssl" name="ignore_ssl" value="1">
+      <label class="form-check-label small" for="conn-ssl">
+        Ignore Invalid SSL
+      </label>
+    </div>
+  </div>
+
+  {# Username #}
+  <div class="col-md-5">
+    <label class="form-label fw-semibold" for="conn-user">Username</label>
+    <input type="text" class="form-control form-control-sm"
+           id="conn-user" name="username"
+           placeholder="administrator@vsphere.local"
+           autocomplete="off" maxlength="255">
+  </div>
+
+  {# Password #}
+  <div class="col-md-5">
+    <label class="form-label fw-semibold" for="conn-pass">Password</label>
+    <input type="password" class="form-control form-control-sm"
+           id="conn-pass" name="password"
+           placeholder="Enter password"
+           autocomplete="new-password">
+  </div>
+
+  {# Default Environment #}
+  <div class="col-md-6">
+    <label class="form-label fw-semibold" for="conn-env">
+      Default Environment <span class="text-secondary fw-normal">(optional)</span>
+    </label>
+    <select class="form-select form-select-sm" id="conn-env" name="default_environment_id">
+      <option value="">— None —</option>
+      {% for env in environments %}
+        <option value="{{ env.id }}">{{ env.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# Sync Schedule #}
+  <div class="col-md-4">
+    <label class="form-label fw-semibold" for="conn-schedule">Sync Schedule</label>
+    <select class="form-select form-select-sm" id="conn-schedule" name="sync_schedule">
+      {% for val, lbl in sync_schedules %}
+        <option value="{{ val }}"
+          {{ 'selected' if val == 'disabled' }}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# Enable toggle #}
+  <div class="col-md-2 d-flex align-items-end pb-1">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox"
+             id="conn-enabled" name="enabled" value="1" checked>
+      <label class="form-check-label small fw-semibold" for="conn-enabled">Enabled</label>
+    </div>
+  </div>
+
+</div>

@@ -61,22 +61,6 @@ def _get_localization_config():
         return None
 
 
-def _get_vmware_config():
-    """Load VmwareConfig safely (returns None if table not yet migrated)."""
-    try:
-        from ...models.vmware_config import VmwareConfig
-        return VmwareConfig.get()
-    except Exception:
-        return None
-
-
-def _get_vmware_schedule_choices():
-    try:
-        from ...models.vmware_config import SYNC_SCHEDULE_CHOICES
-        return SYNC_SCHEDULE_CHOICES
-    except Exception:
-        return []
-
 
 def _get_ansible_config():
     """Load AnsibleConfig safely (returns None if table not yet migrated)."""
@@ -117,8 +101,6 @@ def _render_settings(new_token: str | None = None):
         timezone_choices    = TIMEZONE_CHOICES,
         date_format_choices = DATE_FORMAT_CHOICES,
         time_format_choices = TIME_FORMAT_CHOICES,
-        vmware_cfg          = _get_vmware_config(),
-        vmware_sync_schedules = _get_vmware_schedule_choices(),
         ansible_cfg         = _get_ansible_config(),
         ansible_auth_methods = _get_ansible_choices()[0],
         ansible_inv_sources  = _get_ansible_choices()[1],
