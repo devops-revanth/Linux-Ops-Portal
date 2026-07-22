@@ -57,6 +57,12 @@ class Server(db.Model):
     mac_address: str = db.Column(db.String(20), nullable=True)
     virtualization_type: str = db.Column(db.String(30), nullable=True)
 
+    # ── Per-server fact collection status (Phase 2.1) ─────────────────────── #
+    ansible_fact_status: str   = db.Column(db.String(20), nullable=True)
+    # success | failed | running | None (never collected)
+    ansible_fact_duration_secs: int = db.Column(db.Integer, nullable=True)
+    ansible_fact_error: str    = db.Column(db.Text, nullable=True)
+
     # ------------------------------------------------------------------ #
     # Source tracking
     # ------------------------------------------------------------------ #

@@ -1134,7 +1134,7 @@
 
       {# ── Action buttons (Validate + Discover + Collect Facts) ────────────── #}
       {% if ansible_cfg and ansible_cfg.enabled and ansible_cfg.connection_status == 'Connected' %}
-      <div class="d-flex gap-2 mb-3 flex-wrap">
+      <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
         <button type="button" class="btn btn-sm btn-outline-primary"
                 onclick="ansibleValidate()">
           <i class="bi bi-shield-check me-1"></i>Validate Inventory
@@ -1147,7 +1147,39 @@
                 onclick="ansibleCollectFacts()">
           <i class="bi bi-cloud-download me-1"></i>Collect Facts Now
         </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="ansible-retry-btn"
+                onclick="ansibleViewFailedHosts(); new bootstrap.Modal(document.getElementById('failedHostsModal')).show();"
+                style="display:none;">
+          <i class="bi bi-x-circle me-1"></i>Failed Hosts
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                onclick="ansibleLoadHistory()">
+          <i class="bi bi-clock-history me-1"></i>History
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info"
+                onclick="ansibleCheckDrift()">
+          <i class="bi bi-shuffle me-1"></i>Check Drift
+        </button>
         <span id="ansible-action-status" class="text-secondary small align-self-center ms-2" style="font-size:.82rem;"></span>
+      </div>
+
+      {# ── Fact collection live progress ──────────────────────────────────── #}
+      <div id="ansible-collect-progress" style="display:none;" class="mb-3">
+        <div class="border border-secondary rounded p-3" style="font-size:.85rem;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-medium">
+              <i class="bi bi-cloud-download me-1 text-success"></i>Collecting Facts
+            </span>
+            <span id="ansible-progress-count" class="text-secondary small">0 / 0</span>
+          </div>
+          <div class="progress mb-2" style="height:8px;">
+            <div id="ansible-progress-bar" class="progress-bar bg-success" role="progressbar"
+                 style="width:0%; transition:width .4s ease;"></div>
+          </div>
+          <div class="text-secondary small">
+            Current host: <span id="ansible-progress-host" class="lop-mono"></span>
+          </div>
+        </div>
       </div>
 
       {# ── Last fact sync status ───────────────────────────────────────────── #}
@@ -1180,6 +1212,9 @@
       <div id="ansible-collect-result" style="display:none;" class="mb-3">
         <div id="ansible-collect-msg" class="small p-2 rounded border"></div>
       </div>
+
+      {# ── Drift detection result (AJAX populated) ─────────────────────────── #}
+      <div id="ansible-drift-result" style="display:none;" class="mb-3"></div>
 
       {# ── Inventory validation result ────────────────────────────────────── #}
       <div id="ansible-inv-result" style="display:none;" class="mb-3">
@@ -1599,37 +1634,258 @@
   var _factPollTimer = null;
   function _startFactCollectionPoller(statusEl, btn) {
     var attempts = 0;
-    var maxAttempts = 36; // up to 6 minutes
+    var maxAttempts = 72; // up to 12 minutes
+    var progressDiv = document.getElementById('ansible-collect-progress');
+    var progressBar = document.getElementById('ansible-progress-bar');
+    var progressCount = document.getElementById('ansible-progress-count');
+    var progressHost = document.getElementById('ansible-progress-host');
+    if (progressDiv) progressDiv.style.display = 'block';
     if (_factPollTimer) clearInterval(_factPollTimer);
     _factPollTimer = setInterval(function() {
       attempts++;
       fetch('{{ url_for("ansible.collect_status") }}')
         .then(r => r.json())
         .then(data => {
-          if (!data.running) {
-            clearInterval(_factPollTimer);
-            _factPollTimer = null;
+          if (data.running) {
+            // Update progress bar
+            if (data.progress_total && progressBar) {
+              var pct = data.progress_pct || 0;
+              progressBar.style.width = pct + '%';
+              if (progressCount) progressCount.textContent =
+                (data.progress_done || 0) + ' / ' + (data.progress_total || 0) + ' hosts — ' + pct + '%';
+              if (progressHost) progressHost.textContent = data.current_host || '';
+            }
+            if (statusEl) statusEl.textContent =
+              '⟳ Collecting facts… ' +
+              (data.progress_total ? (data.progress_done||0) + '/' + data.progress_total + ' hosts' : '');
+            if (attempts >= maxAttempts) {
+              clearInterval(_factPollTimer); _factPollTimer = null;
+              if (btn) btn.disabled = false;
+              if (progressDiv) progressDiv.style.display = 'none';
+              if (statusEl) statusEl.textContent = '⚠ Still running — refresh for status';
+            }
+          } else {
+            clearInterval(_factPollTimer); _factPollTimer = null;
+            if (progressDiv) progressDiv.style.display = 'none';
             if (btn) btn.disabled = false;
             var ok = data.servers_ok || 0;
             var failed = data.servers_failed || 0;
+            if (failed > 0) {
+              var retryBtn = document.getElementById('ansible-retry-btn');
+              if (retryBtn) retryBtn.style.display = 'inline-flex';
+            }
             var st = data.status || 'unknown';
             if (statusEl) statusEl.textContent =
-              '✓ Fact collection ' + st + ' — ' + ok + ' ok, ' + failed + ' failed';
-            // Refresh page to show updated stats
+              '✓ ' + st + ' — ' + ok + ' ok, ' + failed + ' failed';
             setTimeout(function() { location.reload(); }, 2000);
-          } else if (attempts >= maxAttempts) {
-            clearInterval(_factPollTimer);
-            _factPollTimer = null;
-            if (btn) btn.disabled = false;
-            if (statusEl) statusEl.textContent = '⚠ Collection still running — refresh page for status';
-          } else {
-            if (statusEl) statusEl.textContent = '⟳ Collecting facts… (' + (attempts * 10) + 's)';
           }
         })
         .catch(() => { /* silent — keep polling */ });
-    }, 10000);
+    }, 5000);
+  }
+
+  // ── Retry failed hosts ─────────────────────────────────────────────────── //
+  function ansibleRetryFailed() {
+    var btn = document.getElementById('ansible-retry-btn');
+    var statusEl = document.getElementById('ansible-action-status');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = '⟳ Retrying failed hosts…';
+    var fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+    fetch('{{ url_for("ansible.retry_failed") }}', { method:'POST', body:fd })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          if (statusEl) statusEl.textContent = '⟳ ' + data.message;
+          var collectBtn = document.getElementById('ansible-collect-btn');
+          if (collectBtn) collectBtn.disabled = true;
+          _startFactCollectionPoller(statusEl, collectBtn);
+        } else {
+          if (statusEl) statusEl.textContent = '✗ ' + data.message;
+          if (btn) btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        if (statusEl) statusEl.textContent = '✗ Request failed: ' + err;
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  // ── Failed hosts modal ─────────────────────────────────────────────────── //
+  function ansibleViewFailedHosts() {
+    var tbody = document.getElementById('failed-hosts-tbody');
+    var countEl = document.getElementById('failed-hosts-count');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary py-3">' +
+      '<div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>';
+    fetch('{{ url_for("ansible.failed_hosts") }}')
+      .then(r => r.json())
+      .then(data => {
+        if (countEl) countEl.textContent = data.count || 0;
+        if (!data.hosts || data.hosts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" class="text-center text-secondary py-3">' +
+            '<i class="bi bi-check-circle me-1 text-success"></i>No failed hosts</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.hosts.map(function(h) {
+          return '<tr><td class="lop-mono">' + h.hostname + '</td>' +
+            '<td class="text-danger small">' + (h.error || '—') + '</td>' +
+            '<td class="text-secondary small">' + (h.synced ? h.synced.replace('T',' ').slice(0,16) : '—') + '</td></tr>';
+        }).join('');
+      })
+      .catch(err => {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-danger small">Error: ' + err + '</td></tr>';
+      });
+  }
+
+  // ── Collection history ─────────────────────────────────────────────────── //
+  function ansibleLoadHistory() {
+    var modal = new bootstrap.Modal(document.getElementById('historyModal'));
+    var tbody = document.getElementById('history-tbody');
+    if (!tbody) { modal.show(); return; }
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary py-3">' +
+      '<div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>';
+    modal.show();
+    fetch('{{ url_for("ansible.collection_history") }}')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.jobs || data.jobs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary py-3">No history found</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.jobs.map(function(j) {
+          var dur = j.duration_secs != null ? j.duration_secs + 's' : '—';
+          var started = j.started_at ? j.started_at.replace('T',' ').slice(0,16) : '—';
+          var badgeCls = j.status === 'completed' ? 'bg-success' :
+            j.status === 'partial' ? 'bg-warning text-dark' :
+            j.status === 'failed'  ? 'bg-danger' : 'bg-secondary';
+          return '<tr>' +
+            '<td class="small">' + started + '</td>' +
+            '<td class="small">' + (j.triggered_by || '—') + '</td>' +
+            '<td class="text-center"><span class="badge ' + badgeCls + '">' + (j.status || '—') + '</span></td>' +
+            '<td class="text-center">' + (j.servers_ok || 0) + ' / ' + (j.servers_total || 0) + '</td>' +
+            '<td class="text-center ' + (j.servers_failed > 0 ? 'text-danger' : '') + '">' + (j.servers_failed || 0) + '</td>' +
+            '<td class="text-center text-secondary">' + dur + '</td>' +
+            '</tr>';
+        }).join('');
+      })
+      .catch(err => {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-danger small">Error: ' + err + '</td></tr>';
+      });
+  }
+
+  // ── Inventory drift ────────────────────────────────────────────────────── //
+  function ansibleCheckDrift() {
+    var statusEl = document.getElementById('ansible-action-status');
+    var driftDiv = document.getElementById('ansible-drift-result');
+    if (statusEl) statusEl.textContent = '⟳ Checking drift…';
+    fetch('{{ url_for("ansible.inventory_drift") }}')
+      .then(r => r.json())
+      .then(data => {
+        if (statusEl) statusEl.textContent = '';
+        if (!driftDiv) return;
+        var missingLop = data.missing_in_lop || [];
+        var missingAns = data.missing_in_ansible || [];
+        var html = '<div class="border border-secondary rounded p-3 mt-2" style="font-size:.85rem;">';
+        html += '<div class="d-flex gap-4 flex-wrap mb-2">';
+        html += '<div><span class="text-secondary">Inventory Hosts</span><br><strong>' + (data.inventory_hosts||0) + '</strong></div>';
+        html += '<div><span class="text-secondary">LOP Servers</span><br><strong>' + (data.lop_servers||0) + '</strong></div>';
+        html += '<div><span class="text-secondary">Missing in LOP</span><br><strong class="' + (missingLop.length > 0 ? 'text-warning' : 'text-success') + '">' + missingLop.length + '</strong></div>';
+        html += '<div><span class="text-secondary">Missing in Ansible</span><br><strong class="' + (missingAns.length > 0 ? 'text-warning' : 'text-success') + '">' + missingAns.length + '</strong></div>';
+        html += '</div>';
+        if (missingLop.length > 0) {
+          html += '<div class="mt-2"><span class="text-warning fw-medium small">Hosts in Ansible but not in LOP:</span><br>';
+          html += '<div class="lop-mono small mt-1" style="max-height:120px;overflow-y:auto;">' + missingLop.join('<br>') + '</div></div>';
+        }
+        if (missingAns.length > 0) {
+          html += '<div class="mt-2"><span class="text-secondary fw-medium small">Servers in LOP but not in Ansible inventory:</span><br>';
+          html += '<div class="lop-mono small mt-1" style="max-height:80px;overflow-y:auto;">' + missingAns.join('<br>') + '</div></div>';
+        }
+        if (missingLop.length === 0 && missingAns.length === 0) {
+          html += '<div class="text-success small"><i class="bi bi-check-circle me-1"></i>Inventory is in sync</div>';
+        }
+        html += '</div>';
+        driftDiv.innerHTML = html;
+        driftDiv.style.display = 'block';
+      })
+      .catch(err => {
+        if (statusEl) statusEl.textContent = '✗ Drift check failed: ' + err;
+      });
   }
   </script>
+
+  {# ── Failed Hosts Modal ─────────────────────────────────────────────────── #}
+  <div class="modal fade" id="failedHostsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" style="background:var(--lop-surface); border:1px solid var(--lop-border);">
+        <div class="modal-header border-bottom border-secondary">
+          <h5 class="modal-title fw-semibold">
+            <i class="bi bi-x-circle me-2 text-danger"></i>Failed Hosts
+            <span class="badge bg-danger ms-2" id="failed-hosts-count">—</span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="table-responsive">
+            <table class="table lop-table mb-0">
+              <thead>
+                <tr>
+                  <th>Hostname</th>
+                  <th>Reason</th>
+                  <th>Last Attempt</th>
+                </tr>
+              </thead>
+              <tbody id="failed-hosts-tbody">
+                <tr><td colspan="3" class="text-secondary text-center py-3">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer border-top border-secondary">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-sm btn-danger" onclick="bootstrap.Modal.getInstance(document.getElementById('failedHostsModal')).hide(); ansibleRetryFailed();">
+            <i class="bi bi-arrow-repeat me-1"></i>Retry All Failed
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Collection History Modal ─────────────────────────────────────────────── #}
+  <div class="modal fade" id="historyModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content" style="background:var(--lop-surface); border:1px solid var(--lop-border);">
+        <div class="modal-header border-bottom border-secondary">
+          <h5 class="modal-title fw-semibold">
+            <i class="bi bi-clock-history me-2 text-secondary"></i>Collection History
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="table-responsive">
+            <table class="table lop-table mb-0">
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Triggered By</th>
+                  <th class="text-center">Status</th>
+                  <th class="text-center">OK / Total</th>
+                  <th class="text-center">Failed</th>
+                  <th class="text-center">Duration</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr><td colspan="6" class="text-secondary text-center py-3">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer border-top border-secondary">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   {# ══════════════════════════════ API SETTINGS ═════════════════════════════ #}
   <div class="card border-0 mb-4" id="api-settings">

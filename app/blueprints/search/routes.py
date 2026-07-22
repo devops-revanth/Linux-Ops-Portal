@@ -31,6 +31,7 @@ def index():
     return render_template(
         "search/index.html",
         results=results,
+        search_type=results.filters.search_type,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )

@@ -30,9 +30,80 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Generator
 
+import threading
+import time
+
 logger = logging.getLogger(__name__)
 
-# Filesystem types to skip (virtual / pseudo fs)
+# ── Thread-safe progress state ────────────────────────────────────────────── #
+# Updated during collection so the /collect-status endpoint can report live.
+_progress: dict = {
+    "running":      False,
+    "total":        0,
+    "done":         0,
+    "current_host": "",
+    "started_at":   None,
+}
+_progress_lock = threading.Lock()
+
+
+def get_progress() -> dict:
+    """Return a snapshot of the current collection progress (thread-safe)."""
+    with _progress_lock:
+        return dict(_progress)
+
+
+def _reset_progress(total: int) -> None:
+    with _progress_lock:
+        _progress.update({
+            "running":      True,
+            "total":        total,
+            "done":         0,
+            "current_host": "",
+            "started_at":   time.monotonic(),
+        })
+
+
+def _update_progress(hostname: str) -> None:
+    with _progress_lock:
+        _progress["current_host"] = hostname
+        _progress["done"] = _progress["done"] + 1
+
+
+def _finish_progress() -> None:
+    with _progress_lock:
+        _progress["running"] = False
+        _progress["current_host"] = ""
+
+
+# ── Error sanitizer ───────────────────────────────────────────────────────── #
+_SANITIZE_MAP = [
+    ("Permission denied", "Permission denied"),
+    ("Authentication failed", "Authentication failed"),
+    ("timed out", "Timeout"),
+    ("Connection refused", "Connection refused"),
+    ("No route to host", "Host unreachable"),
+    ("unreachable", "Host unreachable"),
+    ("python", "Python not found on remote host"),
+    ("MODULE FAILURE", "Ansible module failure"),
+]
+
+
+def _sanitize_error(exc_or_msg) -> str:
+    """
+    Return a short, user-facing error string.
+    Never exposes stack traces, credentials, or internal paths.
+    """
+    msg = str(exc_or_msg) if exc_or_msg else ""
+    for marker, friendly in _SANITIZE_MAP:
+        if marker.lower() in msg.lower():
+            return friendly
+    # Generic fallback — take only the first 120 chars of the first line
+    first_line = msg.splitlines()[0] if msg else "Unknown error"
+    return first_line[:120]
+
+
+# ── Filesystem types to skip (virtual / pseudo fs) ────────────────────────── #
 _SKIP_FSTYPES: set[str] = {
     "tmpfs", "proc", "sysfs", "devtmpfs", "overlay", "cgroup", "cgroup2",
     "pstore", "securityfs", "debugfs", "tracefs", "configfs", "fusectl",
@@ -133,7 +204,10 @@ def collect_facts(cfg, app, triggered_by: str = "manual") -> dict[str, Any]:
             _finalize_job(job, summary, app)
             return summary
 
-        # ── 5. Process in batches ─────────────────────────────────────── #
+        # ── 5. Initialize live progress counter ───────────────────────── #
+        _reset_progress(len(hosts))
+
+        # ── 6. Process in batches ─────────────────────────────────────── #
         with app.app_context():
             _server_map = _build_server_map()       # {hostname: server, fqdn: server}
             _package_map = _build_package_map()     # {name: package_id}
@@ -152,6 +226,7 @@ def collect_facts(cfg, app, triggered_by: str = "manual") -> dict[str, Any]:
         )
         logger.exception("Ansible fact collection failed")
     finally:
+        _finish_progress()
         if tmpdir and client:
             try:
                 AnsibleService._exec(client, f"rm -rf {tmpdir}", timeout=30)
@@ -356,21 +431,29 @@ def _persist_batch(
     now = datetime.now(timezone.utc)
 
     for hostname, data in batch_data.items():
+        # Live progress update: which host are we on right now?
+        _update_progress(hostname)
+        host_start = time.monotonic()
+
         setup = data.get("setup", {})
-        if not setup or setup.get("unreachable") or setup.get("failed"):
+        unreachable = setup.get("unreachable") or setup.get("failed")
+        if not setup or unreachable:
             summary["servers_failed"] += 1
             logger.debug("Host %r: setup facts not available", hostname)
+            # Try to set status on matching server even when unreachable
+            raw_err = setup.get("msg") or ("Host unreachable" if unreachable else "No setup facts returned")
+            _set_server_status(hostname, None, server_map, "failed", 0, _sanitize_error(raw_err))
             continue
 
         facts = setup.get("ansible_facts", {})
         if not facts:
             summary["servers_failed"] += 1
+            _set_server_status(hostname, None, server_map, "failed", 0, "No ansible_facts in response")
             continue
 
         # ── Find matching server ────────────────────────────────────── #
         server = _match_server(hostname, facts, server_map)
         if server is None:
-            # Server not in LOP — skip (never create new servers from Ansible alone)
             logger.debug("Host %r not found in LOP inventory — skipping", hostname)
             summary["servers_skipped"] = summary.get("servers_skipped", 0) + 1
             continue
@@ -408,17 +491,14 @@ def _persist_batch(
                 new_pkg_rows, new_packages = _build_package_rows(
                     server.id, pkgs_facts, updates_map, package_map, now
                 )
-                # Insert any new Package master records
                 if new_packages:
                     db.session.bulk_insert_mappings(Package, new_packages)
                     db.session.flush()
-                    # Refresh package_map with new IDs
                     for p in new_packages:
                         fresh = Package.query.filter_by(name=p["name"]).first()
                         if fresh:
                             package_map[fresh.name] = fresh.id
 
-                # Re-resolve package IDs for rows that needed new packages
                 resolved = []
                 for row in new_pkg_rows:
                     pid = row.get("package_id") or package_map.get(row.pop("_pkg_name", ""))
@@ -426,13 +506,11 @@ def _persist_batch(
                         row["package_id"] = pid
                         resolved.append(row)
 
-                # Replace all ServerPackage records for this server
                 ServerPackage.query.filter_by(server_id=server.id).delete()
                 if resolved:
                     db.session.bulk_insert_mappings(ServerPackage, resolved)
                     summary["packages_synced"] += len(resolved)
 
-                # Update patching record
                 update_count = sum(1 for r in resolved if r.get("update_available"))
                 _update_patching(server, update_count, now)
 
@@ -444,16 +522,34 @@ def _persist_batch(
                 for r in repo_rows:
                     db.session.add(AnsibleRepository(server_id=server.id, **r))
 
+            # ── Per-server sync status ─────────────────────────────────── #
+            duration = int(time.monotonic() - host_start)
+            server.ansible_fact_status       = "success"
+            server.ansible_fact_duration_secs = duration
+            server.ansible_fact_error        = None
+
             log_action(
                 "ansible.facts.server.update",
                 target=server.hostname,
-                details=f"source=ansible facts_collected=True",
+                details="source=ansible facts_collected=True",
             )
             summary["servers_ok"] += 1
 
         except Exception as exc:
             db.session.rollback()
-            logger.warning("Failed to persist facts for host %r: %s", hostname, exc)
+            duration = int(time.monotonic() - host_start)
+            err_msg  = _sanitize_error(exc)
+            logger.warning("Failed to persist facts for host %r: %s", hostname, err_msg)
+            # Update per-server status even on failure
+            try:
+                if server and server.id:
+                    server.ansible_fact_status        = "failed"
+                    server.ansible_fact_duration_secs = duration
+                    server.ansible_fact_error         = err_msg
+                    db.session.add(server)
+                    db.session.commit()
+            except Exception:
+                pass
             summary["servers_failed"] += 1
 
 
@@ -714,6 +810,31 @@ def _parse_yum_repolist(repo_data: dict) -> list[dict]:
                     "synced_at": now,
                 })
     return rows
+
+
+def _set_server_status(
+    hostname: str,
+    facts: dict | None,
+    server_map: dict,
+    status: str,
+    duration: int,
+    error: str | None,
+) -> None:
+    """
+    Update ansible_fact_status / duration / error on a matched server.
+    Used when the host setup facts are not available (unreachable / failed).
+    """
+    try:
+        from ..extensions import db
+        server = _match_server(hostname, facts or {}, server_map)
+        if server is None:
+            return
+        server.ansible_fact_status        = status
+        server.ansible_fact_duration_secs = duration
+        server.ansible_fact_error         = error
+        db.session.add(server)
+    except Exception:
+        pass
 
 
 def _update_patching(server, update_count: int, now: datetime) -> None:

@@ -358,25 +358,199 @@ def collect_facts():
 @ansible_bp.route("/settings/ansible/collect-status", methods=["GET"])
 @login_required
 def collect_status():
-    """AJAX: return the status of the last fact collection run."""
+    """AJAX: return the status of the last fact collection run, including live progress."""
     cfg = _get_cfg()
     if cfg is None:
         return jsonify({"running": False, "status": "Not Configured"})
 
-    running = not _fact_collection_running.acquire(blocking=False)
-    if not running:
-        _fact_collection_running.release()
+    # Use the service's progress dict for live state
+    from ...services.ansible_fact_service import get_progress
+    prog = get_progress()
+    running = prog.get("running", False)
 
-    return jsonify({
-        "running":       running,
-        "status":        getattr(cfg, "last_fact_sync_status", None) or "Never Run",
-        "last_sync_at":  (
+    resp: dict = {
+        "running":        running,
+        "status":         getattr(cfg, "last_fact_sync_status", None) or "Never Run",
+        "last_sync_at":   (
             cfg.last_fact_sync_at.isoformat()
             if getattr(cfg, "last_fact_sync_at", None) else None
         ),
-        "servers_ok":    getattr(cfg, "last_fact_sync_ok", 0) or 0,
-        "servers_failed":getattr(cfg, "last_fact_sync_failed", 0) or 0,
+        "servers_ok":     getattr(cfg, "last_fact_sync_ok", 0) or 0,
+        "servers_failed": getattr(cfg, "last_fact_sync_failed", 0) or 0,
+    }
+    if running:
+        total = prog.get("total", 0)
+        done  = prog.get("done",  0)
+        resp.update({
+            "progress_total":   total,
+            "progress_done":    done,
+            "progress_pct":     int(done / total * 100) if total else 0,
+            "current_host":     prog.get("current_host", ""),
+        })
+    return jsonify(resp)
+
+
+@ansible_bp.route("/settings/ansible/failed-hosts", methods=["GET"])
+@login_required
+def failed_hosts():
+    """AJAX: return servers where the last fact collection failed."""
+    from ...models.server import Server
+    try:
+        rows = (
+            Server.query
+            .filter(Server.ansible_fact_status == "failed")
+            .order_by(Server.hostname)
+            .all()
+        )
+        return jsonify({
+            "count": len(rows),
+            "hosts": [
+                {
+                    "id":       s.id,
+                    "hostname": s.hostname,
+                    "error":    s.ansible_fact_error or "Unknown error",
+                    "synced":   s.last_ansible_sync.isoformat() if s.last_ansible_sync else None,
+                }
+                for s in rows
+            ],
+        })
+    except Exception as exc:
+        logger.exception("failed-hosts query error")
+        return jsonify({"error": str(exc), "hosts": []}), 500
+
+
+@ansible_bp.route("/settings/ansible/retry-failed", methods=["POST"])
+@login_required
+def retry_failed():
+    """
+    AJAX: retry fact collection ONLY for hosts whose last run failed.
+    Does NOT re-collect from successfully synced hosts.
+    """
+    cfg = _get_cfg()
+    if cfg is None:
+        return jsonify({"success": False, "message": "No Ansible configuration found."})
+    if not cfg.enabled or cfg.connection_status != "Connected":
+        return jsonify({"success": False, "message": "Control node is not connected."})
+
+    from ...models.server import Server
+    failed_hosts_qs = (
+        Server.query
+        .filter(Server.ansible_fact_status == "failed")
+        .with_entities(Server.hostname, Server.fqdn)
+        .all()
+    )
+    if not failed_hosts_qs:
+        return jsonify({"success": False, "message": "No failed hosts to retry."})
+
+    if not _fact_collection_running.acquire(blocking=False):
+        return jsonify({"success": False, "message": "A collection is already in progress."})
+
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            from ...services.ansible_fact_service import collect_facts as _collect
+            _collect(cfg, app, triggered_by="retry-failed")
+        except Exception as exc:
+            logger.error("Retry-failed collection failed: %s", exc)
+        finally:
+            _fact_collection_running.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    commit_audit(
+        "ansible.facts.retry.trigger",
+        details=f"failed_hosts_count={len(failed_hosts_qs)}",
+        result="success",
+    )
+    return jsonify({
+        "success": True,
+        "message": f"Retrying {len(failed_hosts_qs)} failed host(s) in the background.",
     })
+
+
+@ansible_bp.route("/settings/ansible/history", methods=["GET"])
+@login_required
+def collection_history():
+    """AJAX: return last N sync job records."""
+    from ...models.ansible_facts import AnsibleSyncJob
+    limit = min(request.args.get("limit", 20, type=int), 100)
+    try:
+        jobs = (
+            AnsibleSyncJob.query
+            .order_by(AnsibleSyncJob.started_at.desc())
+            .limit(limit)
+            .all()
+        )
+        def _dur(j):
+            if j.completed_at and j.started_at:
+                return int((j.completed_at - j.started_at).total_seconds())
+            return None
+
+        return jsonify({
+            "jobs": [
+                {
+                    "id":              j.id,
+                    "started_at":      j.started_at.isoformat(),
+                    "completed_at":    j.completed_at.isoformat() if j.completed_at else None,
+                    "duration_secs":   _dur(j),
+                    "triggered_by":    j.triggered_by,
+                    "status":          j.status,
+                    "servers_total":   j.servers_total,
+                    "servers_ok":      j.servers_ok,
+                    "servers_failed":  j.servers_failed,
+                    "packages_synced": j.packages_synced,
+                    "error_message":   j.error_message,
+                }
+                for j in jobs
+            ]
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc), "jobs": []}), 500
+
+
+@ansible_bp.route("/settings/ansible/drift", methods=["GET"])
+@login_required
+def inventory_drift():
+    """
+    AJAX: compare Ansible inventory hosts vs LOP servers.
+    Returns counts and lists of hosts missing from each side.
+    """
+    try:
+        from ...models.ansible_config import AnsibleInventoryHost
+        from ...models.server import Server
+
+        # All Ansible inventory hostnames (lowercase)
+        inv_hosts = {
+            h.hostname.lower()
+            for h in AnsibleInventoryHost.query.with_entities(AnsibleInventoryHost.hostname).all()
+            if h.hostname
+        }
+
+        # All LOP server identifiers (hostname + fqdn, lowercase)
+        lop_servers = Server.query.with_entities(Server.hostname, Server.fqdn, Server.id).all()
+        lop_keys: dict[str, int] = {}   # lowercased key → server_id
+        for s in lop_servers:
+            if s.hostname:
+                lop_keys[s.hostname.lower()] = s.id
+            if s.fqdn:
+                lop_keys[s.fqdn.lower()] = s.id
+
+        missing_in_lop     = sorted(inv_hosts - set(lop_keys.keys()))
+        missing_in_ansible = sorted(
+            s.hostname for s in lop_servers
+            if s.hostname and s.hostname.lower() not in inv_hosts
+            and (not s.fqdn or s.fqdn.lower() not in inv_hosts)
+        )
+
+        return jsonify({
+            "inventory_hosts":    len(inv_hosts),
+            "lop_servers":        len(lop_servers),
+            "missing_in_lop":     missing_in_lop,
+            "missing_in_ansible": missing_in_ansible,
+        })
+    except Exception as exc:
+        logger.exception("drift query failed")
+        return jsonify({"error": str(exc)}), 500
 
 
 # ── Save Ansible settings + reschedule ────────────────────────────────────── #

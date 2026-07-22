@@ -311,9 +311,11 @@
 
   {# ── Ansible Live Fact Data Row (shown after first successful collection) ── #}
   {% if stats.ansible_synced_servers > 0 or stats.ansible_packages_total > 0 %}
-  <div class="row g-3 mb-4">
 
-    {# Synced Servers #}
+  {# Package summary row #}
+  <div class="row g-3 mb-3">
+
+    {# Facts Collected #}
     <div class="col-sm-6 col-xl-3">
       <div class="card lop-stat-card border-0 h-100">
         <div class="card-body d-flex align-items-center gap-3">
@@ -333,7 +335,7 @@
       </div>
     </div>
 
-    {# Total Packages #}
+    {# Installed Packages #}
     <div class="col-sm-6 col-xl-3">
       <div class="card lop-stat-card border-0 h-100">
         <div class="card-body d-flex align-items-center gap-3">
@@ -341,56 +343,169 @@
             <i class="bi bi-box-seam fs-3"></i>
           </div>
           <div>
-            <div class="lop-stat-number">{{ stats.ansible_packages_total | int | format_number if stats.ansible_packages_total else stats.ansible_packages_total }}</div>
+            <div class="lop-stat-number">{{ stats.ansible_packages_total }}</div>
             <div class="lop-stat-label">Installed Packages</div>
           </div>
         </div>
       </div>
     </div>
 
-    {# Updates Available #}
+    {# Available Updates #}
     <div class="col-sm-6 col-xl-3">
       <div class="card lop-stat-card border-0 h-100">
         <div class="card-body d-flex align-items-center gap-3">
-          <div class="lop-icon-wrap {% if stats.servers_with_updates > 0 %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
-            <i class="bi bi-{% if stats.servers_with_updates > 0 %}exclamation-triangle{% else %}check-circle{% endif %} fs-3"></i>
+          <div class="lop-icon-wrap {% if stats.ansible_updates_available > 0 %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">
+            <i class="bi bi-{% if stats.ansible_updates_available > 0 %}arrow-up-circle{% else %}check-circle{% endif %} fs-3"></i>
           </div>
           <div>
-            <div class="lop-stat-number">{{ stats.servers_with_updates }}</div>
-            <div class="lop-stat-label">Servers w/ Updates</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {# Last Fact Sync Status #}
-    <div class="col-sm-6 col-xl-3">
-      <div class="card lop-stat-card border-0 h-100">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="lop-icon-wrap
-            {% if stats.ansible_last_sync_status == 'completed' %}bg-success-subtle text-success
-            {% elif stats.ansible_last_sync_status == 'partial' %}bg-warning-subtle text-warning
-            {% elif stats.ansible_last_sync_status == 'failed' %}bg-danger-subtle text-danger
-            {% else %}bg-secondary-subtle text-secondary{% endif %}">
-            <i class="bi bi-arrow-repeat fs-3"></i>
-          </div>
-          <div>
-            <div class="lop-stat-number" style="font-size:.85rem;">
-              {% if stats.ansible_last_sync_status %}
-                {{ stats.ansible_last_sync_status | title }}
-                <span class="text-secondary fw-normal" style="font-size:.72rem;">
-                  ({{ stats.ansible_last_sync_ok }}/{{ stats.ansible_last_sync_ok + stats.ansible_last_sync_failed }})
-                </span>
-              {% else %}—{% endif %}
+            <div class="lop-stat-number">{{ stats.ansible_updates_available }}</div>
+            <div class="lop-stat-label">Available Updates</div>
+            {% if stats.ansible_security_updates > 0 %}
+            <div class="text-danger" style="font-size:.72rem; margin-top:.1rem;">
+              <i class="bi bi-shield-exclamation me-1"></i>{{ stats.ansible_security_updates }} security
             </div>
-            <div class="lop-stat-label">Last Fact Sync</div>
+            {% endif %}
           </div>
         </div>
       </div>
     </div>
 
-  </div>{# /live fact row #}
-  {% endif %}
+    {# Kernel Updates #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap {% if stats.ansible_kernel_updates > 0 %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}">
+            <i class="bi bi-cpu fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number">{{ stats.ansible_kernel_updates }}</div>
+            <div class="lop-stat-label">Kernel Updates</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# /package summary row #}
+
+  {# ── OS Distribution + Inventory Drift ────────────────────────────────── #}
+  <div class="row g-3 mb-4">
+
+    {# OS Distribution card #}
+    {% if stats.os_distribution %}
+    <div class="col-lg-{% if stats.ansible_drift_inv_hosts > 0 %}5{% else %}12{% endif %}">
+      <div class="card border-0 h-100">
+        <div class="card-header d-flex align-items-center justify-content-between py-3">
+          <h6 class="mb-0 fw-semibold">
+            <i class="bi bi-diagram-3 me-2 text-success"></i>Operating Systems
+          </h6>
+          <span class="badge bg-secondary-subtle text-secondary">{{ stats.os_distribution | length }} distros</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table lop-table mb-0">
+              <tbody>
+                {% for os in stats.os_distribution %}
+                <tr>
+                  <td>
+                    {% if 'Red Hat' in os.os_name or 'RHEL' in os.os_name %}
+                      <i class="bi bi-hat-fill me-2 text-danger" style="font-size:.75rem;"></i>
+                    {% elif 'Rocky' in os.os_name %}
+                      <i class="bi bi-gem me-2 text-success" style="font-size:.75rem;"></i>
+                    {% elif 'Alma' in os.os_name %}
+                      <i class="bi bi-star me-2 text-warning" style="font-size:.75rem;"></i>
+                    {% elif 'Ubuntu' in os.os_name %}
+                      <i class="bi bi-circle-fill me-2 text-warning" style="font-size:.75rem;"></i>
+                    {% elif 'Debian' in os.os_name %}
+                      <i class="bi bi-shield-fill me-2 text-danger" style="font-size:.75rem;"></i>
+                    {% elif 'Oracle' in os.os_name %}
+                      <i class="bi bi-database me-2 text-danger" style="font-size:.75rem;"></i>
+                    {% else %}
+                      <i class="bi bi-terminal me-2 text-secondary" style="font-size:.75rem;"></i>
+                    {% endif %}
+                    {{ os.os_name }}
+                  </td>
+                  <td class="text-end fw-semibold">{{ os.count }}</td>
+                  <td style="width:120px;">
+                    {% set pct = ((os.count / stats.ansible_synced_servers) * 100) | round | int if stats.ansible_synced_servers else 0 %}
+                    <div class="progress lop-progress">
+                      <div class="progress-bar bg-success" role="progressbar"
+                           style="width:{{ pct }}%"></div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Inventory Drift card (only when inventory has been validated) #}
+    {% if stats.ansible_drift_inv_hosts > 0 %}
+    <div class="col-lg-{% if stats.os_distribution %}7{% else %}12{% endif %}">
+      <div class="card border-0 h-100">
+        <div class="card-header d-flex align-items-center justify-content-between py-3">
+          <h6 class="mb-0 fw-semibold">
+            <i class="bi bi-shuffle me-2 {% if stats.ansible_drift_missing_lop > 0 or stats.ansible_drift_missing_ans > 0 %}text-warning{% else %}text-success{% endif %}"></i>
+            Inventory Drift
+          </h6>
+          {% if stats.ansible_drift_missing_lop == 0 and stats.ansible_drift_missing_ans == 0 %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle">In Sync</span>
+          {% else %}
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Drift Detected</span>
+          {% endif %}
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table lop-table mb-0">
+              <tbody>
+                <tr>
+                  <td><i class="bi bi-list-ul me-2 text-secondary"></i>Inventory Hosts</td>
+                  <td class="text-end fw-semibold">{{ stats.ansible_drift_inv_hosts }}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td><i class="bi bi-server me-2 text-secondary"></i>LOP Servers</td>
+                  <td class="text-end fw-semibold">{{ stats.ansible_drift_lop_servers }}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>
+                    <i class="bi bi-exclamation-triangle me-2 {% if stats.ansible_drift_missing_lop > 0 %}text-warning{% else %}text-success{% endif %}"></i>
+                    Missing in LOP
+                    {% if stats.ansible_drift_missing_lop > 0 %}
+                      <a href="{{ url_for('settings.index') }}#ansible-section"
+                         class="text-warning ms-1" style="font-size:.78rem;">(view)</a>
+                    {% endif %}
+                  </td>
+                  <td class="text-end fw-semibold {% if stats.ansible_drift_missing_lop > 0 %}text-warning{% endif %}">
+                    {{ stats.ansible_drift_missing_lop }}
+                  </td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>
+                    <i class="bi bi-exclamation-triangle me-2 {% if stats.ansible_drift_missing_ans > 0 %}text-warning{% else %}text-success{% endif %}"></i>
+                    Missing in Ansible
+                  </td>
+                  <td class="text-end fw-semibold {% if stats.ansible_drift_missing_ans > 0 %}text-warning{% endif %}">
+                    {{ stats.ansible_drift_missing_ans }}
+                  </td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>{# /OS + drift row #}
+
+  {% endif %}{# /ansible_synced_servers section #}
 
   {% endif %}{# /ansible section #}
 

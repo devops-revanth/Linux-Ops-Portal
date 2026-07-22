@@ -67,10 +67,18 @@ class DashboardStats:
     # Ansible fact collection stats (live data)
     ansible_synced_servers:    int = 0
     ansible_packages_total:    int = 0
+    ansible_updates_available: int = 0
+    ansible_security_updates:  int = 0
+    ansible_kernel_updates:    int = 0
     ansible_last_fact_sync:    datetime | None = None
     ansible_last_sync_status:  str = ""
     ansible_last_sync_ok:      int = 0
     ansible_last_sync_failed:  int = 0
+    # Inventory drift
+    ansible_drift_inv_hosts:    int = 0
+    ansible_drift_lop_servers:  int = 0
+    ansible_drift_missing_lop:  int = 0
+    ansible_drift_missing_ans:  int = 0
     os_distribution:           list[OsDistributionCount] = field(default_factory=list)
 
 
@@ -221,7 +229,7 @@ def get_dashboard_stats() -> DashboardStats:
 
         # ── Ansible live fact stats ────────────────────────────────────
         try:
-            from ...models.package import ServerPackage
+            from ...models.package import Package, ServerPackage
             stats.ansible_synced_servers = (
                 db.session.query(func.count(Server.id))
                 .filter(Server.last_ansible_sync != None)  # noqa: E711
@@ -230,6 +238,59 @@ def get_dashboard_stats() -> DashboardStats:
             stats.ansible_packages_total = (
                 db.session.query(func.count(ServerPackage.id)).scalar() or 0
             )
+            stats.ansible_updates_available = (
+                db.session.query(func.count(ServerPackage.id))
+                .filter(ServerPackage.update_available == True)  # noqa: E712
+                .scalar() or 0
+            )
+            stats.ansible_security_updates = (
+                db.session.query(func.count(ServerPackage.id))
+                .filter(
+                    ServerPackage.update_available == True,  # noqa: E712
+                    ServerPackage.update_type == "security",
+                )
+                .scalar() or 0
+            )
+            stats.ansible_kernel_updates = (
+                db.session.query(func.count(ServerPackage.id))
+                .join(Package, Package.id == ServerPackage.package_id)
+                .filter(
+                    ServerPackage.update_available == True,  # noqa: E712
+                    Package.name.ilike("kernel%"),
+                )
+                .scalar() or 0
+            )
+        except Exception:
+            pass
+
+        # ── Inventory drift ─────────────────────────────────────────────
+        try:
+            from ...models.ansible_config import AnsibleInventoryHost
+            inv_count = AnsibleInventoryHost.query.count()
+            lop_count = db.session.query(func.count(Server.id)).scalar() or 0
+            if inv_count > 0:
+                inv_hostnames = {
+                    h.hostname.lower()
+                    for h in AnsibleInventoryHost.query
+                        .with_entities(AnsibleInventoryHost.hostname).all()
+                    if h.hostname
+                }
+                all_lop = Server.query.with_entities(
+                    Server.hostname, Server.fqdn
+                ).all()
+                lop_keys = set()
+                for s in all_lop:
+                    if s.hostname: lop_keys.add(s.hostname.lower())
+                    if s.fqdn:     lop_keys.add(s.fqdn.lower())
+
+                stats.ansible_drift_inv_hosts   = inv_count
+                stats.ansible_drift_lop_servers = lop_count
+                stats.ansible_drift_missing_lop = len(inv_hostnames - lop_keys)
+                stats.ansible_drift_missing_ans = sum(
+                    1 for s in all_lop
+                    if s.hostname and s.hostname.lower() not in inv_hostnames
+                    and (not s.fqdn or s.fqdn.lower() not in inv_hostnames)
+                )
         except Exception:
             pass
 

@@ -585,7 +585,125 @@
             <span class="lop-field-label">Hostname in Inventory</span>
             <span class="lop-field-value lop-mono" style="font-size:.82rem;">{{ server.hostname }}</span>
           </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Last Fact Sync</span>
+            <span class="lop-field-value {% if not server.last_ansible_sync %}lop-field-empty{% endif %}">
+              {% if server.last_ansible_sync %}
+                {{ server.last_ansible_sync | lop_ts }}
+                <span class="text-secondary ms-1" style="font-size:.75rem;">({{ server.last_ansible_sync | lop_rel }})</span>
+              {% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Collection Status</span>
+            <span class="lop-field-value">
+              {% if server.ansible_fact_status == 'success' %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                  <i class="bi bi-check-circle me-1"></i>Success
+                </span>
+              {% elif server.ansible_fact_status == 'failed' %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                  <i class="bi bi-x-circle me-1"></i>Failed
+                </span>
+              {% elif server.ansible_fact_status == 'running' %}
+                <span class="badge bg-info-subtle text-info border border-info-subtle">
+                  <i class="bi bi-arrow-repeat me-1"></i>Running
+                </span>
+              {% else %}
+                <span class="text-secondary">Never Collected</span>
+              {% endif %}
+            </span>
+          </div>
+          {% if server.ansible_fact_duration_secs is not none %}
+          <div class="lop-field">
+            <span class="lop-field-label">Collection Duration</span>
+            <span class="lop-field-value">{{ server.ansible_fact_duration_secs }} second{{ 's' if server.ansible_fact_duration_secs != 1 }}</span>
+          </div>
+          {% endif %}
+          {% if server.ansible_fact_status == 'failed' and server.ansible_fact_error %}
+          <div class="lop-field">
+            <span class="lop-field-label">Last Error</span>
+            <span class="lop-field-value text-danger" style="font-size:.82rem;">
+              <i class="bi bi-exclamation-triangle me-1"></i>{{ server.ansible_fact_error }}
+            </span>
+          </div>
+          {% endif %}
         </div>
+
+        {# ── Extended Ansible Facts (only if collected) ────────────────── #}
+        {% if server.last_ansible_sync %}
+          {% if server.architecture or server.timezone or server.selinux_status or server.virtualization_type %}
+          <div class="lop-field-group mt-1">
+            {% if server.architecture %}
+            <div class="lop-field">
+              <span class="lop-field-label">Architecture</span>
+              <span class="lop-field-value lop-mono">{{ server.architecture }}</span>
+            </div>
+            {% endif %}
+            {% if server.timezone %}
+            <div class="lop-field">
+              <span class="lop-field-label">Timezone</span>
+              <span class="lop-field-value">{{ server.timezone }}</span>
+            </div>
+            {% endif %}
+            {% if server.selinux_status %}
+            <div class="lop-field">
+              <span class="lop-field-label">SELinux</span>
+              <span class="lop-field-value">{{ server.selinux_status | capitalize }}</span>
+            </div>
+            {% endif %}
+            {% if server.virtualization_type %}
+            <div class="lop-field">
+              <span class="lop-field-label">Virtualization</span>
+              <span class="lop-field-value">{{ server.virtualization_type }}</span>
+            </div>
+            {% endif %}
+            {% if server.default_gateway %}
+            <div class="lop-field">
+              <span class="lop-field-label">Default Gateway</span>
+              <span class="lop-field-value lop-mono">{{ server.default_gateway }}</span>
+            </div>
+            {% endif %}
+            {% if server.dns_servers %}
+            <div class="lop-field">
+              <span class="lop-field-label">DNS Servers</span>
+              <span class="lop-field-value lop-mono" style="font-size:.82rem;">{{ server.dns_servers }}</span>
+            </div>
+            {% endif %}
+            {% if server.primary_interface %}
+            <div class="lop-field">
+              <span class="lop-field-label">Primary Interface</span>
+              <span class="lop-field-value lop-mono">{{ server.primary_interface }}</span>
+            </div>
+            {% endif %}
+            {% if server.mac_address %}
+            <div class="lop-field">
+              <span class="lop-field-label">MAC Address</span>
+              <span class="lop-field-value lop-mono">{{ server.mac_address }}</span>
+            </div>
+            {% endif %}
+            {% if server.swap_gb is not none %}
+            <div class="lop-field">
+              <span class="lop-field-label">Swap</span>
+              <span class="lop-field-value">
+                {{ server.swap_gb | int if server.swap_gb == server.swap_gb | int else server.swap_gb }} GB
+              </span>
+            </div>
+            {% endif %}
+            {% if server.uptime_seconds is not none %}
+            <div class="lop-field">
+              <span class="lop-field-label">Uptime</span>
+              <span class="lop-field-value">
+                {% set days = (server.uptime_seconds // 86400) %}
+                {% set hrs  = (server.uptime_seconds % 86400 // 3600) %}
+                {% if days > 0 %}{{ days }}d {{ hrs }}h{% else %}{{ hrs }}h {{ server.uptime_seconds % 3600 // 60 }}m{% endif %}
+              </span>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        {% endif %}
+
       {% endif %}
 
       {# VMware Section (only shown for VMware-imported servers) #}

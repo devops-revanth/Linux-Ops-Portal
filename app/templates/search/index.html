@@ -97,6 +97,8 @@
     white-space: nowrap;
   }
   .lop-scope-pill i { font-size: .6rem; opacity: .7; }
+  .lop-scope-pill-mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: .67rem !important; }
+  .lop-scope-pill-mono em { font-style: normal; opacity: .7; }
 
   /* ── Hostname link ─────────────────────────────────────────────────── */
   .lop-hostname-link {
@@ -275,7 +277,7 @@
         {% endif %}
       </div>
 
-      {# Scope pills — purely decorative, communicates search coverage #}
+      {# Scope pills — full-text + smart-search prefixes #}
       <div class="lop-scope-pills">
         <span class="lop-scope-pill"><i class="bi bi-terminal"></i>Hostname</span>
         <span class="lop-scope-pill"><i class="bi bi-globe2"></i>FQDN</span>
@@ -285,9 +287,50 @@
         <span class="lop-scope-pill"><i class="bi bi-cpu"></i>Kernel</span>
         <span class="lop-scope-pill"><i class="bi bi-geo-alt"></i>Location</span>
         <span class="lop-scope-pill"><i class="bi bi-layers"></i>Environment</span>
+        <span class="lop-scope-pill lop-scope-pill-mono" title="Smart search: servers with this package installed">
+          <i class="bi bi-box-seam"></i>package:<em>name</em>
+        </span>
+        <span class="lop-scope-pill lop-scope-pill-mono" title="Smart search: servers where this service is tracked">
+          <i class="bi bi-toggles"></i>service:<em>name</em>
+        </span>
+        <span class="lop-scope-pill lop-scope-pill-mono" title="Smart search: servers with this repository">
+          <i class="bi bi-archive"></i>repo:<em>name</em>
+        </span>
       </div>
     </form>
   </div>
+
+  {# ── Smart search context banner ──────────────────────────────────────── #}
+  {% if has_query and search_type != 'fulltext' %}
+  <div class="alert alert-secondary d-flex align-items-center gap-2 py-2 px-3 mb-3"
+       style="border-color:var(--lop-border); background:var(--lop-surface); font-size:.85rem;">
+    {% if search_type == 'package' %}
+      <i class="bi bi-box-seam text-primary"></i>
+      <span>
+        Showing servers with package matching
+        <strong class="text-body ms-1">{{ f.search[8:] }}</strong>
+        installed
+      </span>
+    {% elif search_type == 'service' %}
+      <i class="bi bi-toggles text-info"></i>
+      <span>
+        Showing servers where service
+        <strong class="text-body ms-1">{{ f.search[8:] }}</strong>
+        is tracked
+      </span>
+    {% elif search_type == 'repo' %}
+      <i class="bi bi-archive text-warning"></i>
+      <span>
+        Showing servers with repository matching
+        <strong class="text-body ms-1">{{ f.search[5:] }}</strong>
+      </span>
+    {% endif %}
+    <a href="{{ url_for('search.index', q=f.search.split(':', 1)[-1]) }}"
+       class="ms-auto text-secondary small" title="Switch to full-text search">
+      <i class="bi bi-x me-1"></i>Clear prefix
+    </a>
+  </div>
+  {% endif %}
 
   {# ── Results card ─────────────────────────────────────────────────── #}
   <div class="card lop-card">

@@ -391,6 +391,7 @@
             <th>{{ sort_link('ram_gb',           'Memory') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
+            <th>Facts</th>
           </tr>
         </thead>
         <tbody>
@@ -506,11 +507,27 @@
                 </span>
               </td>
 
+              {# Fact age #}
+              <td style="white-space:nowrap;">
+                {% if srv.ansible_fact_status == 'failed' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
+                        title="{{ srv.ansible_fact_error or 'Collection failed' }}">
+                    <i class="bi bi-x-circle me-1"></i>Failed
+                  </span>
+                {% elif srv.last_ansible_sync %}
+                  <span class="text-success" style="font-size:.82rem;">
+                    {{ srv.last_ansible_sync | lop_rel }}
+                  </span>
+                {% else %}
+                  <span class="text-secondary" style="font-size:.8rem;">Never</span>
+                {% endif %}
+              </td>
+
             </tr>
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="11">
+              <td colspan="12">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}
