@@ -112,7 +112,7 @@ check_database() {
         return
     fi
 
-    if PGPASSWORD="" psql "$db_url" -c "SELECT 1" &>/dev/null 2>&1; then
+    if psql "$db_url" -c "SELECT 1" &>/dev/null 2>&1; then
         record "Database: connectivity" "PASS" "connected"
     else
         record "Database: connectivity" "FAIL" "cannot connect to database"
@@ -126,7 +126,14 @@ check_schema_versions() {
         return
     fi
 
-    load_lop_env 2>/dev/null || true
+    # Guard: config file and Flask binary must exist for alembic commands
+    if [[ ! -f "$LOP_CONF_FILE" ]] || [[ ! -x "$LOP_VENV_DIR/bin/flask" ]]; then
+        record "Database: deployed schema" "WARN" "LOP not fully installed (missing config or venv)"
+        record "Database: schema vs codebase" "WARN" "LOP not fully installed"
+        return
+    fi
+
+    load_lop_env
 
     local deployed head
     deployed=$(alembic_current 2>/dev/null || echo "unknown")

@@ -111,7 +111,7 @@ python_find_compatible() {
 python_install_best_available() {
     local min_minor
     min_minor="$(_py_min_minor)"
-    local try_minors=(13 12 11)
+    local try_minors=(13 12 11 10)
     # Only try minors >= the minimum
     local candidates=()
     for m in "${try_minors[@]}"; do
@@ -122,20 +122,20 @@ python_install_best_available() {
 
     log_step "Attempting to install Python 3.x via ${PKG_MGR}..."
     for minor in "${candidates[@]}"; do
-        local pkgs
-        pkgs=$(python_package_name "$minor")
-        log_info "Trying Python 3.${minor} (packages: ${pkgs})..."
+        local pkgs_str pkgs=()
+        pkgs_str=$(python_package_name "$minor")
+        IFS=' ' read -ra pkgs <<< "$pkgs_str"
+        log_info "Trying Python 3.${minor} (packages: ${pkgs[*]})..."
         case "$PKG_MGR" in
             dnf)
-                # Try without aborting
-                if dnf install -y ${pkgs} >> "$LOG_FILE" 2>&1; then
+                if dnf install -y "${pkgs[@]}" >> "$LOG_FILE" 2>&1; then
                     log_success "Installed Python 3.${minor}"
                     return 0
                 fi
                 ;;
             apt-get)
                 apt-get update -qq >> "$LOG_FILE" 2>&1 || true
-                if DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs} >> "$LOG_FILE" 2>&1; then
+                if DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}" >> "$LOG_FILE" 2>&1; then
                     log_success "Installed Python 3.${minor}"
                     return 0
                 fi
@@ -239,10 +239,17 @@ python_create_venv() {
 
     if [[ "$needs_rebuild" == "true" ]]; then
         log_step "Creating virtual environment at ${LOP_VENV_DIR}..."
-        [[ -d "$LOP_VENV_DIR" ]] && rm -rf "$LOP_VENV_DIR"
-        "$SELECTED_PYTHON" -m venv "$LOP_VENV_DIR" >> "$LOG_FILE" 2>&1 \
-            || abort "Failed to create virtual environment using ${SELECTED_PYTHON}.
+        # Move the old venv aside so it can be restored if creation fails
+        local _venv_backup="${LOP_VENV_DIR}.old.$$"
+        [[ -d "$LOP_VENV_DIR" ]] && mv "$LOP_VENV_DIR" "$_venv_backup"
+        if ! "$SELECTED_PYTHON" -m venv "$LOP_VENV_DIR" >> "$LOG_FILE" 2>&1; then
+            # Restore the previous working venv on failure
+            rm -rf "$LOP_VENV_DIR" 2>/dev/null || true
+            [[ -d "$_venv_backup" ]] && mv "$_venv_backup" "$LOP_VENV_DIR" || true
+            abort "Failed to create virtual environment using ${SELECTED_PYTHON}.
 Check that python3-venv / python3.x-venv is installed."
+        fi
+        rm -rf "$_venv_backup" 2>/dev/null || true
         track_change "Created Python virtual environment at ${LOP_VENV_DIR}"
         log_success "Virtual environment created."
     else

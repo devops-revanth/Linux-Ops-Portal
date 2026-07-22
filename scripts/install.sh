@@ -276,6 +276,15 @@ do_fresh_install() {
     # 5. Copy application
     copy_application
 
+    # Restore SELinux file contexts after copying (non-fatal; only active on enforcing systems)
+    if cmd_exists restorecon; then
+        log_step "Restoring SELinux file contexts..."
+        restorecon -Rv "$LOP_APP_DIR" "$LOP_CONF_DIR" \
+                      "$LOP_LOG_DIR" "$LOP_BACKUP_DIR" "$LOP_DATA_DIR" \
+                      >> "$LOG_FILE" 2>&1 || true
+        log_info "SELinux file contexts restored."
+    fi
+
     # 6. Generate configuration (before DB so we have the DB password)
     generate_lop_env
 

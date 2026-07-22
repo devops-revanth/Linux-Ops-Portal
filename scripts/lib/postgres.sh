@@ -33,6 +33,13 @@ pg_detect() {
         local raw
         raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
         PG_FOUND_VERSION="${raw%%.*}"
+        # On RHEL/Rocky/Alma, PGDG packages use /var/lib/pgsql/<major>/data
+        if [[ -n "$PG_FOUND_VERSION" ]] && \
+           [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
+            PG_DATA_DIR="/var/lib/pgsql/${PG_FOUND_VERSION}/data"
+            PG_HBA_CONF="/var/lib/pgsql/${PG_FOUND_VERSION}/data/pg_hba.conf"
+            PG_SERVICE="postgresql-${PG_FOUND_VERSION}"
+        fi
         PG_FOUND_SERVICE="$PG_SERVICE"
         return 0
     fi
@@ -42,6 +49,13 @@ pg_detect() {
         local raw
         raw=$(pg_ctl --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
         PG_FOUND_VERSION="${raw%%.*}"
+        # On RHEL/Rocky/Alma, PGDG packages use /var/lib/pgsql/<major>/data
+        if [[ -n "$PG_FOUND_VERSION" ]] && \
+           [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
+            PG_DATA_DIR="/var/lib/pgsql/${PG_FOUND_VERSION}/data"
+            PG_HBA_CONF="/var/lib/pgsql/${PG_FOUND_VERSION}/data/pg_hba.conf"
+            PG_SERVICE="postgresql-${PG_FOUND_VERSION}"
+        fi
         PG_FOUND_SERVICE="$PG_SERVICE"
         return 0
     fi
@@ -74,10 +88,12 @@ After upgrading, re-run: sudo $0"
     fi
 
     log_warn "PostgreSQL not found — installing..."
-    local pkgs
-    pkgs=$(pg_package_names)
-    pkg_install $pkgs
-    track_change "Installed PostgreSQL packages: ${pkgs}"
+    local pkgs_str
+    pkgs_str=$(pg_package_names)
+    # Convert space-separated string to array for safe expansion
+    IFS=' ' read -ra _pg_pkgs <<< "$pkgs_str"
+    pkg_install "${_pg_pkgs[@]}"
+    track_change "Installed PostgreSQL packages: ${pkgs_str}"
 
     # Re-detect after install
     if ! pg_detect || ! pg_version_ok; then
@@ -134,16 +150,18 @@ Log:   ${LOG_FILE}"
 
 # pg_execute <sql>
 # Executes a SQL command as the postgres system user.
+# SQL is passed via stdin to avoid shell-quoting injection.
 pg_execute() {
     local sql="$1"
-    su -s /bin/bash postgres -c "psql -q -c \"$sql\"" >> "$LOG_FILE" 2>&1
+    echo "$sql" | su -s /bin/bash postgres -c "psql -q" >> "$LOG_FILE" 2>&1
 }
 
 # pg_execute_check <sql>
 # Like pg_execute but returns the output (for existence checks).
+# SQL is passed via stdin to avoid shell-quoting injection.
 pg_execute_check() {
     local sql="$1"
-    su -s /bin/bash postgres -c "psql -tAq -c \"$sql\"" 2>/dev/null
+    echo "$sql" | su -s /bin/bash postgres -c "psql -tAq" 2>/dev/null
 }
 
 # pg_db_exists <dbname>
@@ -260,12 +278,25 @@ pg_dump_db() {
 pg_restore_db() {
     local db="$1" inp="$2"
     log_step "Restoring database '${db}' from ${inp}..."
-    # Drop and recreate
-    pg_execute "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${db}';" || true
-    pg_execute "DROP DATABASE IF EXISTS ${db};"
-    pg_execute "CREATE DATABASE ${db};"
 
-    su -s /bin/bash postgres -c "psql -q '${db}'" < "$inp" >> "$LOG_FILE" 2>&1 \
+    # Validate dump file is non-empty before touching the live database
+    [[ -s "$inp" ]] || abort "Database dump file is empty or missing: ${inp}"
+
+    # Terminate active connections then drop and recreate the database
+    pg_execute "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${db}';" || true
+    pg_execute "DROP DATABASE IF EXISTS \"${db}\";"
+    pg_execute "CREATE DATABASE \"${db}\";"
+
+    # Restore via stdin redirect (avoids further shell-quoting issues)
+    su -s /bin/bash postgres -c "psql -q -d \"${db}\"" < "$inp" >> "$LOG_FILE" 2>&1 \
         || abort "Database restore failed for '${db}'. Check ${LOG_FILE}."
+
+    # Re-grant access to the LOP database user (dump ownership metadata may differ)
+    local db_user
+    db_user=$(grep '^LOP_DB_USER=' "$LOP_CONF_FILE" 2>/dev/null | cut -d= -f2 || true)
+    if [[ -n "$db_user" ]]; then
+        pg_execute "GRANT ALL PRIVILEGES ON DATABASE \"${db}\" TO \"${db_user}\";" || true
+    fi
+
     log_success "Database '${db}' restored."
 }

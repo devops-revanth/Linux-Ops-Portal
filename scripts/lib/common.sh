@@ -197,6 +197,7 @@ health_check() {
 mask_secrets() {
     local file="$1"
     sed -E \
+        -e 's|(DATABASE_URL=(postgresql|postgres)://[^:]+:)[^@]*(@)|\1*** (masked)\3|' \
         -e 's/(PASSWORD|SECRET|KEY|TOKEN|PASS|BIND_PASSWORD|FREEIPA_BIND)([[:space:]]*=[[:space:]]*).*/\1\2*** (masked)/' \
         "$file"
 }

@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export LOG_FILE="/var/log/lop/install.log"   # Append backup events to install log
+export LOG_FILE="/var/log/lop/backup.log"
 
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/os.sh"
@@ -85,6 +85,10 @@ main() {
     tar -czf "$archive_path" -C "$LOP_TMP_DIR" "backup_${ts}" 2>> "$LOG_FILE" \
         || abort "Failed to create backup archive. Check ${LOG_FILE}."
     chmod 600 "$archive_path"
+
+    # Verify archive integrity — detect truncation or corruption before reporting success
+    tar -tzf "$archive_path" > /dev/null 2>&1 \
+        || abort "Backup archive failed integrity check. Archive may be corrupt: ${archive_path}"
 
     local archive_size
     archive_size=$(du -sh "$archive_path" | cut -f1)

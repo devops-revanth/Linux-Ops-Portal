@@ -74,6 +74,16 @@ main() {
     confirm "Proceed with uninstallation?" \
         || abort "Uninstall cancelled by user."
 
+    # Create a safety backup before removing anything (non-fatal if it fails)
+    if [[ -f "$LOP_CONF_FILE" ]] && [[ -d "$LOP_APP_DIR" ]]; then
+        log_info "Creating pre-uninstall safety backup..."
+        if "$SCRIPT_DIR/backup.sh" --quiet >> "$LOG_FILE" 2>&1; then
+            log_success "Pre-uninstall backup saved to ${LOP_BACKUP_DIR}"
+        else
+            log_warn "Pre-uninstall backup failed (non-fatal). Proceeding with uninstall."
+        fi
+    fi
+
     detect_os
 
     # ── 1. Stop and disable service ───────────────────────────────────────────

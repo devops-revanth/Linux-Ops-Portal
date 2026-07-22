@@ -131,7 +131,7 @@ To update without network access, use an archive:
             printf "Example: sudo ./update.sh --source /tmp/lop-2.0.0.tar.gz\n\n"
 
             # Check for --source flag in REMAINING_ARGS
-            local archive_path=""
+            local archive_path="" prev_arg=""
             for arg in "${REMAINING_ARGS[@]:-}"; do
                 [[ "$arg" == --source=* ]] && archive_path="${arg#--source=}"
                 [[ "$prev_arg" == "--source" ]] && archive_path="$arg"

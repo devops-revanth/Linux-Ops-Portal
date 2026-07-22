@@ -55,7 +55,7 @@ StartLimitBurst=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=${LOP_LOG_DIR} ${LOP_DATA_DIR} ${LOP_APP_DIR}/app/static
+ReadWritePaths=${LOP_LOG_DIR} ${LOP_DATA_DIR}
 
 StandardOutput=journal
 StandardError=journal
