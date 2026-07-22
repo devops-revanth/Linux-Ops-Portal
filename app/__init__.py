@@ -123,6 +123,15 @@ def create_app(config_name: str | None = None) -> Flask:
     # ------------------------------------------------------------------ #
     _register_template_helpers(app)
 
+    # ------------------------------------------------------------------ #
+    # Background scheduler (VMware scheduled sync)
+    # ------------------------------------------------------------------ #
+    try:
+        from .scheduler import init_scheduler
+        init_scheduler(app)
+    except Exception as _sched_exc:
+        app.logger.debug("Scheduler init skipped: %s", _sched_exc)
+
     app.logger.info(
         "LOP started  env=%s  debug=%s", config_name, app.debug
     )
