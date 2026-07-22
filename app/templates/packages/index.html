@@ -81,32 +81,29 @@
     border-radius: 4px;
   }
 
+  /* ── Dot-style status indicators (shared) ───────────────────────────── */
+  .lop-dot-badge {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-size: .82rem; font-weight: 500; white-space: nowrap;
+    color: var(--lop-text);
+  }
+  .lop-dot-badge .lop-dot-circle {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .lop-dot-green  { background: #3fb950; }
+  .lop-dot-yellow { background: #d4a017; }
+  .lop-dot-red    { background: #f85149; }
+  .lop-dot-gray   { background: #8b949e; }
+
   /* ── YES / NO badges ────────────────────────────────────────────────── */
   .lop-yes-badge {
-    display: inline-flex; align-items: center; gap: .3rem;
-    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
-    border-radius: 12px;
-    background: rgba(210,153,34,.15); color: #d4a017;
-    border: 1px solid rgba(210,153,34,.35);
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-size: .82rem; font-weight: 500; color: var(--lop-text);
   }
   .lop-no-badge {
-    display: inline-flex; align-items: center; gap: .3rem;
-    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
-    border-radius: 12px;
-    background: rgba(35,134,54,.1); color: #3fb950;
-    border: 1px solid rgba(35,134,54,.3);
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-size: .82rem; font-weight: 500; color: var(--lop-text);
   }
-
-  /* ── Compliance badges ──────────────────────────────────────────────── */
-  .lop-patch-badge {
-    display: inline-flex; align-items: center; gap: .35rem;
-    font-size: .73rem; font-weight: 600; padding: .2rem .6rem;
-    border-radius: 20px; white-space: nowrap; border: 1px solid;
-  }
-  .lop-compliance-compliant { background: rgba(35,134,54,.15); color: #3fb950; border-color: rgba(35,134,54,.35); }
-  .lop-compliance-due-soon  { background: rgba(210,153,34,.15); color: #d4a017; border-color: rgba(210,153,34,.35); }
-  .lop-compliance-overdue   { background: rgba(248,81,73,.15);  color: #f85149; border-color: rgba(248,81,73,.35); }
-  .lop-patch-unknown        { background: rgba(139,148,158,.1); color: #8b949e; border-color: rgba(139,148,158,.3); }
 
   /* ── Filter bar ─────────────────────────────────────────────────────── */
   .lop-filter-bar { flex-wrap: wrap; gap: .5rem; }
@@ -404,9 +401,13 @@
               <td>
                 {% if p and p.pending_updates is not none %}
                   {% if p.pending_updates > 0 %}
-                    <span class="lop-yes-badge"><i class="bi bi-exclamation-circle-fill"></i>YES</span>
+                    <span class="lop-yes-badge">
+                      <span class="lop-dot-circle lop-dot-yellow"></span>YES
+                    </span>
                   {% else %}
-                    <span class="lop-no-badge"><i class="bi bi-check2-circle"></i>NO</span>
+                    <span class="lop-no-badge">
+                      <span class="lop-dot-circle lop-dot-green"></span>NO
+                    </span>
                   {% endif %}
                 {% else %}
                   <span class="lop-na">—</span>
@@ -417,20 +418,20 @@
               <td>
                 {% set cs = p.compliance_status if p else 'unknown' %}
                 {% if cs == 'compliant' %}
-                  <span class="lop-patch-badge lop-compliance-compliant">
-                    <i class="bi bi-check-circle-fill"></i>Compliant
+                  <span class="lop-dot-badge">
+                    <span class="lop-dot-circle lop-dot-green"></span>Compliant
                   </span>
                 {% elif cs == 'due_soon' %}
-                  <span class="lop-patch-badge lop-compliance-due-soon">
-                    <i class="bi bi-exclamation-circle-fill"></i>Due Soon
+                  <span class="lop-dot-badge">
+                    <span class="lop-dot-circle lop-dot-yellow"></span>Due Soon
                   </span>
                 {% elif cs == 'overdue' %}
-                  <span class="lop-patch-badge lop-compliance-overdue">
-                    <i class="bi bi-x-circle-fill"></i>Overdue
+                  <span class="lop-dot-badge">
+                    <span class="lop-dot-circle lop-dot-red"></span>Overdue
                   </span>
                 {% else %}
-                  <span class="lop-patch-badge lop-patch-unknown">
-                    <i class="bi bi-question-circle-fill"></i>Unknown
+                  <span class="lop-dot-badge">
+                    <span class="lop-dot-circle lop-dot-gray"></span>Unknown
                   </span>
                 {% endif %}
               </td>

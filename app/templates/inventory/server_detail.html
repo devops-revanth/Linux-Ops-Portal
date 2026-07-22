@@ -799,16 +799,16 @@
                 </td>
                 <td>
                   {% if sp.update_type == 'security' %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle" style="font-size:.7rem;">
-                      <i class="bi bi-shield-exclamation me-1"></i>Security
+                    <span style="display:inline-flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:500;color:var(--lop-text,#e6edf3);">
+                      <span style="width:10px;height:10px;border-radius:50%;background:#f85149;flex-shrink:0;"></span>Security
                     </span>
                   {% elif sp.update_type == 'bugfix' %}
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size:.7rem;">
-                      <i class="bi bi-bug me-1"></i>Bugfix
+                    <span style="display:inline-flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:500;color:var(--lop-text,#e6edf3);">
+                      <span style="width:10px;height:10px;border-radius:50%;background:#d4a017;flex-shrink:0;"></span>Bugfix
                     </span>
                   {% elif sp.update_type == 'enhancement' %}
-                    <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.7rem;">
-                      <i class="bi bi-stars me-1"></i>Enhancement
+                    <span style="display:inline-flex;align-items:center;gap:.45rem;font-size:.82rem;font-weight:500;color:var(--lop-text,#e6edf3);">
+                      <span style="width:10px;height:10px;border-radius:50%;background:#58a6ff;flex-shrink:0;"></span>Enhancement
                     </span>
                   {% else %}
                     <span class="text-secondary">—</span>
