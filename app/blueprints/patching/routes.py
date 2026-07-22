@@ -29,7 +29,9 @@ def _parse_server_ids(raw: list[str]) -> list[int]:
 @patching_bp.route("/patching", methods=["GET"])
 def index():
     """Patch compliance view — filterable, sortable, paginated."""
-    per_page = current_app.config.get("ITEMS_PER_PAGE", 25)
+    _valid_pp   = {10, 20, 25, 50, 100}
+    _pp_raw     = request.args.get("per_page", type=int)
+    per_page    = _pp_raw if _pp_raw in _valid_pp else current_app.config.get("ITEMS_PER_PAGE", 25)
 
     search       = request.args.get("q",            "").strip()
     location_id  = request.args.get("location_id",  type=int)

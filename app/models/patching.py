@@ -49,6 +49,40 @@ class Patching(db.Model):
     # Relationship
     server = db.relationship("Server", back_populates="patching")
 
+    # ── Computed compliance status ─────────────────────────────────────────── #
+
+    @property
+    def compliance_status(self) -> str:
+        """
+        Derive compliance from pending_updates and last_patch_date.
+
+        Compliance window: 30 days (industry default for enterprise Linux).
+
+        Returns:
+            'compliant'  — no pending updates
+            'due_soon'   — updates pending but last patch within 30 days
+            'overdue'    — updates pending and last patch > 30 days ago (or never)
+            'unknown'    — pending_updates is None (data not yet collected)
+        """
+        from datetime import datetime, timezone
+
+        COMPLIANCE_WINDOW_DAYS = 30
+
+        if self.pending_updates is None:
+            return "unknown"
+
+        if self.pending_updates == 0:
+            return "compliant"
+
+        # Has pending updates — check whether we are still within the window
+        if self.last_patch_date:
+            now = datetime.now(timezone.utc)
+            days_since = (now - self.last_patch_date).days
+            if days_since <= COMPLIANCE_WINDOW_DAYS:
+                return "due_soon"
+
+        return "overdue"
+
     def __repr__(self) -> str:
         return f"<Patching server_id={self.server_id} status={self.patch_status}>"
 

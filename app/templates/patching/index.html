@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Patching | Linux Operations Portal{% endblock %}
+{% block title %}Patch Compliance | Linux Operations Portal{% endblock %}
 
 {% block breadcrumbs %}
 <div class="lop-breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item active" aria-current="page">
-      <i class="bi bi-shield-check me-1"></i>Patching
+      <i class="bi bi-shield-check me-1"></i>Patch Compliance
     </li>
   </ol>
 </div>
@@ -77,6 +77,23 @@
     background: rgba(139,148,158,.1);
     color: #8b949e;
     border: 1px solid rgba(139,148,158,.3);
+  }
+
+  /* ── Compliance status badges ──────────────────────────────────────────── */
+  .lop-compliance-compliant {
+    background: rgba(35,134,54,.15);
+    color: #3fb950;
+    border: 1px solid rgba(35,134,54,.35);
+  }
+  .lop-compliance-due-soon {
+    background: rgba(210,153,34,.15);
+    color: #d4a017;
+    border: 1px solid rgba(210,153,34,.35);
+  }
+  .lop-compliance-overdue {
+    background: rgba(248,81,73,.15);
+    color: #f85149;
+    border: 1px solid rgba(248,81,73,.35);
   }
 
   /* ── Environment pills ─────────────────────────────────────────────── */
@@ -249,6 +266,18 @@
           </select>
         </div>
 
+        {# Rows per page #}
+        <div style="min-width: 110px;">
+          <label class="form-label text-secondary small mb-1">Rows per page</label>
+          <select name="per_page"
+                  class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            {% for opt in [10, 20, 25, 50, 100] %}
+              <option value="{{ opt }}" {{ 'selected' if pt.per_page == opt }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         <div class="d-flex gap-2 align-self-end">
           <button type="submit" class="btn btn-sm btn-primary">Apply</button>
           {% if f.search or f.location_id or f.env_id or f.patch_status %}
@@ -332,7 +361,7 @@
               {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
               <a href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
                           env_id=f.env_id, patch_status=f.patch_status,
-                          sort=col, order=next_order, page=1) }}"
+                          sort=col, order=next_order, per_page=pt.per_page, page=1) }}"
                  class="lop-sort-link {{ 'active' if f.sort == col }}">
                 {{ label }}
                 {% if f.sort == col %}
@@ -352,7 +381,7 @@
             <th>Latest Avail. Kernel</th>
             <th>{{ sort_link('pending_updates',   'Updates Avail.') }}</th>
             <th>Reboot Req.</th>
-            <th>{{ sort_link('patch_status',      'Patch Status') }}</th>
+            <th>Compliance</th>
             <th>{{ sort_link('last_patch_date',   'Last Patched') }}</th>
             <th>{{ sort_link('last_reboot_date',  'Last Reboot') }}</th>
           </tr>
@@ -461,22 +490,34 @@
                 {% endif %}
               </td>
 
-              {# Patch Status badge #}
+              {# Compliance Status #}
               <td>
-                {% set ps = p.patch_status if p else 'unknown' %}
-                <span class="lop-patch-badge lop-patch-{{ ps }}">
-                  {% if ps == 'up-to-date' %}<i class="bi bi-check-circle-fill"></i>Up-to-date
-                  {% elif ps == 'pending'   %}<i class="bi bi-exclamation-circle-fill"></i>Pending
-                  {% elif ps == 'failed'    %}<i class="bi bi-x-circle-fill"></i>Failed
-                  {% else                   %}<i class="bi bi-question-circle-fill"></i>Unknown
-                  {% endif %}
-                </span>
+                {% set cs = p.compliance_status if p else 'unknown' %}
+                {% if cs == 'compliant' %}
+                  <span class="lop-patch-badge lop-compliance-compliant">
+                    <i class="bi bi-check-circle-fill"></i>Compliant
+                  </span>
+                {% elif cs == 'due_soon' %}
+                  <span class="lop-patch-badge lop-compliance-due-soon">
+                    <i class="bi bi-exclamation-circle-fill"></i>Due Soon
+                  </span>
+                {% elif cs == 'overdue' %}
+                  <span class="lop-patch-badge lop-compliance-overdue">
+                    <i class="bi bi-x-circle-fill"></i>Overdue
+                  </span>
+                {% else %}
+                  <span class="lop-patch-badge lop-patch-unknown">
+                    <i class="bi bi-question-circle-fill"></i>Unknown
+                  </span>
+                {% endif %}
               </td>
 
               {# Last Patch Date #}
               <td>
                 {% if p and p.last_patch_date %}
-                  <span class="text-secondary" style="font-size:.82rem;">
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ p.last_patch_date.isoformat() }}"
+                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
                     {{ p.last_patch_date.strftime('%Y-%m-%d') }}
                   </span>
                 {% else %}
@@ -487,7 +528,9 @@
               {# Last Reboot #}
               <td>
                 {% if p and p.last_reboot_date %}
-                  <span class="text-secondary" style="font-size:.82rem;">
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ p.last_reboot_date.isoformat() }}"
+                        title="{{ p.last_reboot_date.strftime('%Y-%m-%d %H:%M UTC') }}">
                     {{ p.last_reboot_date.strftime('%Y-%m-%d') }}
                   </span>
                 {% else %}
@@ -547,7 +590,7 @@
             <a class="page-link"
                href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
                         env_id=f.env_id, patch_status=f.patch_status,
-                        sort=f.sort, order=f.order, page=pt.page - 1) if pt.page > 1 else '#' }}">
+                        sort=f.sort, order=f.order, per_page=pt.per_page, page=pt.page - 1) if pt.page > 1 else '#' }}">
               <i class="bi bi-chevron-left"></i>
             </a>
           </li>
@@ -560,7 +603,7 @@
                 <a class="page-link"
                    href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
                             env_id=f.env_id, patch_status=f.patch_status,
-                            sort=f.sort, order=f.order, page=p) }}">{{ p }}</a>
+                            sort=f.sort, order=f.order, per_page=pt.per_page, page=p) }}">{{ p }}</a>
               </li>
             {% endif %}
           {% endfor %}
@@ -568,7 +611,7 @@
             <a class="page-link"
                href="{{ url_for('patching.index', q=f.search, location_id=f.location_id,
                         env_id=f.env_id, patch_status=f.patch_status,
-                        sort=f.sort, order=f.order, page=pt.page + 1) if pt.page < pt.total_pages else '#' }}">
+                        sort=f.sort, order=f.order, per_page=pt.per_page, page=pt.page + 1) if pt.page < pt.total_pages else '#' }}">
               <i class="bi bi-chevron-right"></i>
             </a>
           </li>

@@ -253,6 +253,18 @@
           </select>
         </div>
 
+        {# Rows per page #}
+        <div style="min-width: 110px;">
+          <label class="form-label text-secondary small mb-1">Rows per page</label>
+          <select name="per_page"
+                  class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            {% for opt in [10, 20, 25, 50, 100] %}
+              <option value="{{ opt }}" {{ 'selected' if inv.per_page == opt }}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         <div class="d-flex gap-2 align-self-end">
           <button type="submit" class="btn btn-sm btn-primary">Apply</button>
           {% if f.search or f.location_id or f.env_id or f.status %}
@@ -337,7 +349,8 @@
             {% macro sort_link(col, label) %}
               {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
               <a href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
-                          env_id=f.env_id, status=f.status, sort=col, order=next_order, page=1) }}"
+                          env_id=f.env_id, status=f.status, sort=col, order=next_order, page=1,
+                          per_page=inv.per_page) }}"
                  class="lop-sort-link {{ 'active' if f.sort == col }}">
                 {{ label }}
                 {% if f.sort == col %}
@@ -350,12 +363,13 @@
 
             <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
-            <th>{{ sort_link('ip_address',       'IP Address') }}</th>
+            <th>{{ sort_link('ip_address',       'Management IP') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
             <th>{{ sort_link('operating_system', 'OS') }}</th>
             <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
             <th>{{ sort_link('cpu_count',        'CPU') }}</th>
-            <th>{{ sort_link('ram_gb',           'RAM') }}</th>
+            <th>{{ sort_link('ram_gb',           'Memory') }}</th>
+            <th>Disk</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
           </tr>
@@ -374,9 +388,9 @@
                    class="lop-hostname-link">
                   <i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}
                 </a>
-                {% if srv.fqdn and srv.fqdn != srv.hostname %}
-                  <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem;">{{ srv.fqdn }}</div>
-                {% endif %}
+                <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem; opacity:.7;">
+                  {{ srv.fqdn if srv.fqdn else 'Not Available' }}
+                </div>
               </td>
 
               {# IP address #}
@@ -436,6 +450,9 @@
                 {% endif %}
               </td>
 
+              {# Disk #}
+              <td><span class="text-secondary" style="font-size:.78rem; font-style:italic;">Not Available</span></td>
+
               {# Location #}
               <td>
                 {% if srv.location %}
@@ -457,7 +474,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="10">
+              <td colspan="11">
                 <div class="lop-empty-state">
                   <i class="bi bi-server"></i>
                   {% if f.search or f.location_id or f.env_id or f.status %}
@@ -509,7 +526,7 @@
             <a class="page-link"
                href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
                         env_id=f.env_id, status=f.status, sort=f.sort, order=f.order,
-                        page=inv.page - 1) if inv.page > 1 else '#' }}">
+                        per_page=inv.per_page, page=inv.page - 1) if inv.page > 1 else '#' }}">
               <i class="bi bi-chevron-left"></i>
             </a>
           </li>
@@ -522,7 +539,7 @@
                 <a class="page-link"
                    href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
                             env_id=f.env_id, status=f.status, sort=f.sort, order=f.order,
-                            page=p) }}">{{ p }}</a>
+                            per_page=inv.per_page, page=p) }}">{{ p }}</a>
               </li>
             {% endif %}
           {% endfor %}
@@ -530,7 +547,7 @@
             <a class="page-link"
                href="{{ url_for('inventory.index', q=f.search, location_id=f.location_id,
                         env_id=f.env_id, status=f.status, sort=f.sort, order=f.order,
-                        page=inv.page + 1) if inv.page < inv.total_pages else '#' }}">
+                        per_page=inv.per_page, page=inv.page + 1) if inv.page < inv.total_pages else '#' }}">
               <i class="bi bi-chevron-right"></i>
             </a>
           </li>
