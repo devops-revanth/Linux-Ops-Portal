@@ -78,6 +78,23 @@ def _get_vmware_schedule_choices():
         return []
 
 
+def _get_ansible_config():
+    """Load AnsibleConfig safely (returns None if table not yet migrated)."""
+    try:
+        from ...models.ansible_config import AnsibleConfig
+        return AnsibleConfig.get()
+    except Exception:
+        return None
+
+
+def _get_ansible_choices():
+    try:
+        from ...models.ansible_config import AUTH_METHOD_CHOICES, INVENTORY_SOURCE_CHOICES
+        return AUTH_METHOD_CHOICES, INVENTORY_SOURCE_CHOICES
+    except Exception:
+        return [], []
+
+
 def _render_settings(new_token: str | None = None):
     data = get_settings_data()
     compliance_cfg = _get_compliance_config()
@@ -102,6 +119,9 @@ def _render_settings(new_token: str | None = None):
         time_format_choices = TIME_FORMAT_CHOICES,
         vmware_cfg          = _get_vmware_config(),
         vmware_sync_schedules = _get_vmware_schedule_choices(),
+        ansible_cfg         = _get_ansible_config(),
+        ansible_auth_methods = _get_ansible_choices()[0],
+        ansible_inv_sources  = _get_ansible_choices()[1],
         app_name    = current_app.config["APP_NAME"],
         app_version = current_app.config["APP_VERSION"],
         app_base_url = current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),

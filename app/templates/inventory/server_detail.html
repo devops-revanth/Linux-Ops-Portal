@@ -569,6 +569,25 @@
         </div>
       </div>
 
+      {# Ansible Managed indicator #}
+      {% if is_ansible_managed %}
+        <p class="lop-section-title mt-3"><i class="bi bi-gear me-1 text-success"></i>Ansible</p>
+        <div class="lop-field-group">
+          <div class="lop-field">
+            <span class="lop-field-label">Managed by Ansible</span>
+            <span class="lop-field-value">
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                <i class="bi bi-check-circle me-1"></i>Yes
+              </span>
+            </span>
+          </div>
+          <div class="lop-field">
+            <span class="lop-field-label">Hostname in Inventory</span>
+            <span class="lop-field-value lop-mono" style="font-size:.82rem;">{{ server.hostname }}</span>
+          </div>
+        </div>
+      {% endif %}
+
       {# VMware Section (only shown for VMware-imported servers) #}
       {% if server.vmware_meta %}
         {% set vm = server.vmware_meta %}

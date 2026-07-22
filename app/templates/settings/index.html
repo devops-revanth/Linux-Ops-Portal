@@ -1063,6 +1063,438 @@
   {% endif %}
   </script>
 
+  {# ══════════════════════════════ ANSIBLE ════════════════════════════════ #}
+  <div class="card border-0 mb-4" id="ansible-section">
+    <div class="card-header d-flex align-items-center justify-content-between py-3">
+      <h6 class="mb-0 fw-semibold">
+        <i class="bi bi-gear me-2 text-success"></i>Ansible
+      </h6>
+      <div class="d-flex align-items-center gap-2">
+        {% if ansible_cfg %}
+          {% set acs = ansible_cfg.connection_status %}
+          <span class="badge
+            {% if acs == 'Connected' %}bg-success-subtle text-success border border-success-subtle
+            {% elif acs in ('Authentication Failed', 'Host Key Mismatch') %}bg-danger-subtle text-danger border border-danger-subtle
+            {% elif acs in ('Connection Timeout', 'Ansible Not Installed', 'Inventory Missing', 'Playbook Directory Missing') %}bg-warning-subtle text-warning border border-warning-subtle
+            {% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
+            <i class="bi bi-{% if acs == 'Connected' %}check-circle{% else %}x-circle{% endif %} me-1"></i>
+            {{ acs }}
+          </span>
+          {% if ansible_cfg.enabled %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle">Enabled</span>
+          {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Disabled</span>
+          {% endif %}
+        {% endif %}
+        <button class="btn btn-sm btn-outline-secondary"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#ansibleForm"
+                aria-expanded="false"
+                aria-controls="ansibleForm">
+          <i class="bi bi-pencil me-1"></i>Configure
+        </button>
+      </div>
+    </div>
+
+    <div class="card-body">
+
+      {# ── Summary row ───────────────────────────────────────────────────── #}
+      {% if ansible_cfg and ansible_cfg.control_node %}
+      <div class="row g-3 mb-3" style="font-size:.85rem;">
+        <div class="col-sm-3">
+          <span class="text-secondary">Control Node</span><br>
+          <span class="fw-semibold">{{ ansible_cfg.control_node }}:{{ ansible_cfg.port }}</span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">Ansible Version</span><br>
+          <span class="fw-semibold">{{ ansible_cfg.ansible_version or '—' }}</span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">Python Version</span><br>
+          <span class="fw-semibold">{{ ansible_cfg.python_version or '—' }}</span>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-secondary">Inventory Hosts</span><br>
+          <span class="fw-semibold">{{ ansible_cfg.last_inventory_hosts or 0 }}</span>
+        </div>
+        <div class="col-sm-3">
+          <span class="text-secondary">Last Successful Connection</span><br>
+          <span class="fw-semibold">
+            {% if ansible_cfg.last_connected_at %}{{ ansible_cfg.last_connected_at | lop_ts }}
+            {% else %}Never{% endif %}
+          </span>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-secondary small mb-3">
+        Ansible integration is not yet configured. Click <strong>Configure</strong> to get started.
+      </p>
+      {% endif %}
+
+      {# ── Action buttons (Validate + Discover) ─────────────────────────── #}
+      {% if ansible_cfg and ansible_cfg.enabled and ansible_cfg.connection_status == 'Connected' %}
+      <div class="d-flex gap-2 mb-3 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                onclick="ansibleValidate()">
+          <i class="bi bi-shield-check me-1"></i>Validate Inventory
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                onclick="ansibleDiscover()">
+          <i class="bi bi-search me-1"></i>Discover Playbooks
+        </button>
+        <span id="ansible-action-status" class="text-secondary small align-self-center ms-2" style="font-size:.82rem;"></span>
+      </div>
+
+      {# ── Inventory validation result ────────────────────────────────────── #}
+      <div id="ansible-inv-result" style="display:none;" class="mb-3">
+        <div class="border border-secondary rounded p-3" style="font-size:.85rem;">
+          <div class="d-flex gap-4 flex-wrap mb-2">
+            <div><span class="text-secondary">Host Count</span><br><strong id="ansible-inv-hosts">—</strong></div>
+            <div><span class="text-secondary">Groups</span><br><strong id="ansible-inv-groups">—</strong></div>
+          </div>
+          <div id="ansible-inv-group-names" class="text-secondary small"></div>
+          <div id="ansible-inv-errors" class="text-danger small mt-1"></div>
+        </div>
+      </div>
+
+      {# ── Playbook discovery result ──────────────────────────────────────── #}
+      <div id="ansible-pb-result" style="display:none;" class="mb-3">
+        <div class="border border-secondary rounded p-3" style="font-size:.85rem;">
+          <div class="mb-2"><span class="text-secondary">Playbooks Found</span> — <strong id="ansible-pb-count">0</strong></div>
+          <div id="ansible-pb-list" class="lop-mono" style="font-size:.78rem; max-height:150px; overflow-y:auto;"></div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# ── Configuration form (collapsed) ────────────────────────────────── #}
+      <div class="collapse" id="ansibleForm">
+        <div class="border border-secondary rounded p-3">
+          <form method="POST" action="{{ url_for('ansible.save_ansible') }}" id="ansible-config-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# Enable toggle #}
+            <div class="mb-3">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox"
+                       id="ansible-enabled" name="enabled" value="1"
+                       {{ 'checked' if ansible_cfg and ansible_cfg.enabled }}>
+                <label class="form-check-label fw-medium" for="ansible-enabled">
+                  Enable Ansible Integration
+                </label>
+              </div>
+            </div>
+
+            {# Control node #}
+            <div class="row g-3 mb-3">
+              <div class="col-md-7">
+                <label class="form-label" for="ansible-host">Ansible Control Node / FQDN</label>
+                <input type="text" class="form-control form-control-sm"
+                       id="ansible-host" name="control_node"
+                       value="{{ ansible_cfg.control_node or '' if ansible_cfg else '' }}"
+                       placeholder="ansible-ctrl.corp.example.com">
+              </div>
+              <div class="col-md-2">
+                <label class="form-label" for="ansible-port">Port</label>
+                <input type="number" class="form-control form-control-sm"
+                       id="ansible-port" name="port"
+                       value="{{ ansible_cfg.port if ansible_cfg else 22 }}"
+                       min="1" max="65535">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="ansible-timeout">Timeout (seconds)</label>
+                <input type="number" class="form-control form-control-sm"
+                       id="ansible-timeout" name="connection_timeout"
+                       value="{{ ansible_cfg.connection_timeout if ansible_cfg else 30 }}"
+                       min="5" max="120">
+              </div>
+            </div>
+
+            {# SSH username #}
+            <div class="row g-3 mb-3">
+              <div class="col-md-5">
+                <label class="form-label" for="ansible-user">SSH Username</label>
+                <input type="text" class="form-control form-control-sm"
+                       id="ansible-user" name="username"
+                       value="{{ ansible_cfg.username or '' if ansible_cfg else '' }}"
+                       placeholder="ansible" autocomplete="off">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="ansible-auth">Authentication Method</label>
+                <select class="form-select form-select-sm" id="ansible-auth" name="auth_method"
+                        onchange="toggleAnsibleAuth(this.value)">
+                  {% for val, label in ansible_auth_methods %}
+                    <option value="{{ val }}"
+                      {{ 'selected' if ansible_cfg and ansible_cfg.auth_method == val }}>
+                      {{ label }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3 d-flex align-items-end pb-1">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox"
+                         id="ansible-hkc" name="host_key_checking" value="1"
+                         {{ 'checked' if not ansible_cfg or ansible_cfg.host_key_checking }}>
+                  <label class="form-check-label small" for="ansible-hkc">
+                    Strict Host Key Checking
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {# SSH Private Key panel #}
+            <div id="ansible-key-panel" class="mb-3">
+              <label class="form-label" for="ansible-key">SSH Private Key (PEM format)</label>
+              <textarea class="form-control form-control-sm lop-mono"
+                        id="ansible-key" name="ssh_private_key"
+                        rows="5"
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                        autocomplete="off"></textarea>
+              {% if ansible_cfg and ansible_cfg.ssh_private_key_enc %}
+                <div class="form-text">A private key is already stored. Leave blank to keep it.</div>
+              {% endif %}
+            </div>
+
+            {# SSH Password panel #}
+            <div id="ansible-pwd-panel" class="mb-3" style="display:none;">
+              <label class="form-label" for="ansible-sshpwd">SSH Password</label>
+              <input type="password" class="form-control form-control-sm"
+                     id="ansible-sshpwd" name="ssh_password"
+                     placeholder="{{ '••••••••' if ansible_cfg and ansible_cfg.ssh_password_enc else 'Enter SSH password' }}"
+                     autocomplete="new-password">
+              {% if ansible_cfg and ansible_cfg.ssh_password_enc %}
+                <div class="form-text">Leave blank to keep the existing password.</div>
+              {% endif %}
+            </div>
+
+            {# Test Connection button #}
+            <div class="mb-4">
+              <button type="button" class="btn btn-sm btn-outline-info"
+                      id="ansible-test-btn"
+                      onclick="testAnsibleConnection()">
+                <i class="bi bi-plug me-1"></i>Test Connection
+              </button>
+              <span id="ansible-test-spinner" style="display:none;"
+                    class="spinner-border spinner-border-sm text-info ms-2"></span>
+            </div>
+
+            {# Test result #}
+            <div id="ansible-test-result" class="mb-4" style="display:none;">
+              <div id="ansible-test-msg" class="small p-2 rounded border mb-2"></div>
+              <div id="ansible-test-checks" class="small"></div>
+            </div>
+
+            {# Inventory settings #}
+            <hr class="border-secondary my-3">
+            <p class="fw-medium mb-2" style="font-size:.85rem;">Inventory &amp; Paths</p>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label" for="ansible-inv-src">Inventory Source</label>
+                <select class="form-select form-select-sm" id="ansible-inv-src" name="inventory_source">
+                  {% for val, label in ansible_inv_sources %}
+                    <option value="{{ val }}"
+                      {{ 'selected' if ansible_cfg and ansible_cfg.inventory_source == val }}>
+                      {{ label }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label" for="ansible-inv-path">Inventory Path</label>
+                <input type="text" class="form-control form-control-sm lop-mono"
+                       id="ansible-inv-path" name="inventory_path"
+                       value="{{ ansible_cfg.inventory_path if ansible_cfg else '/etc/ansible/hosts' }}"
+                       placeholder="/etc/ansible/hosts">
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label" for="ansible-pb-dir">Playbook Directory</label>
+                <input type="text" class="form-control form-control-sm lop-mono"
+                       id="ansible-pb-dir" name="playbook_dir"
+                       value="{{ ansible_cfg.playbook_dir if ansible_cfg else '/etc/ansible/playbooks' }}"
+                       placeholder="/etc/ansible/playbooks">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="ansible-col-dir">Collections Directory <span class="text-secondary">(optional)</span></label>
+                <input type="text" class="form-control form-control-sm lop-mono"
+                       id="ansible-col-dir" name="collections_dir"
+                       value="{{ ansible_cfg.collections_dir or '' if ansible_cfg else '' }}"
+                       placeholder="/etc/ansible/collections">
+              </div>
+            </div>
+
+            {# Vault #}
+            <div class="mb-3">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox"
+                       id="ansible-vault" name="vault_enabled" value="1"
+                       {{ 'checked' if ansible_cfg and ansible_cfg.vault_enabled }}
+                       onchange="toggleAnsibleVault(this.checked)">
+                <label class="form-check-label small" for="ansible-vault">Ansible Vault Enabled</label>
+              </div>
+              <div id="ansible-vault-panel"
+                   style="display:{{ 'block' if ansible_cfg and ansible_cfg.vault_enabled else 'none' }}">
+                <label class="form-label" for="ansible-vault-pwd">Vault Password</label>
+                <input type="password" class="form-control form-control-sm"
+                       id="ansible-vault-pwd" name="vault_password"
+                       placeholder="{{ '••••••••' if ansible_cfg and ansible_cfg.vault_password_enc else 'Enter vault password' }}"
+                       autocomplete="new-password">
+                {% if ansible_cfg and ansible_cfg.vault_password_enc %}
+                  <div class="form-text">Leave blank to keep the existing vault password.</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 pt-2">
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="bi bi-floppy me-1"></i>Save Settings
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#ansibleForm">
+                Cancel
+              </button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  {# ── Ansible JavaScript ─────────────────────────────────────────────────── #}
+  <script>
+  // Show/hide auth panels
+  function toggleAnsibleAuth(method) {
+    document.getElementById('ansible-key-panel').style.display = method === 'key' ? 'block' : 'none';
+    document.getElementById('ansible-pwd-panel').style.display = method === 'password' ? 'block' : 'none';
+  }
+  // Set initial panel state on load
+  (function() {
+    var sel = document.getElementById('ansible-auth');
+    if (sel) toggleAnsibleAuth(sel.value);
+  })();
+
+  function toggleAnsibleVault(enabled) {
+    document.getElementById('ansible-vault-panel').style.display = enabled ? 'block' : 'none';
+  }
+
+  // ── Test Connection ────────────────────────────────────────────────────── //
+  function testAnsibleConnection() {
+    var btn     = document.getElementById('ansible-test-btn');
+    var spinner = document.getElementById('ansible-test-spinner');
+    var resDiv  = document.getElementById('ansible-test-result');
+    var msgDiv  = document.getElementById('ansible-test-msg');
+    var chkDiv  = document.getElementById('ansible-test-checks');
+
+    btn.disabled = true;
+    spinner.style.display = 'inline-block';
+    resDiv.style.display  = 'none';
+
+    var fd = new FormData(document.getElementById('ansible-config-form'));
+    fd.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch('{{ url_for("ansible.test_ansible") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        resDiv.style.display = 'block';
+        if (data.success) {
+          msgDiv.className = 'small p-2 rounded border text-success border-success-subtle bg-success-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + data.message;
+        } else {
+          msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle bg-danger-subtle';
+          msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>' + data.message;
+        }
+        // Render per-check detail rows
+        var checks = data.checks || [];
+        chkDiv.innerHTML = checks.map(c =>
+          '<div class="d-flex gap-2 mt-1">' +
+          '<span class="' + (c.ok ? 'text-success' : 'text-danger') + '">' +
+          '<i class="bi bi-' + (c.ok ? 'check' : 'x') + '"></i></span>' +
+          '<span class="text-secondary" style="min-width:160px;">' + c.label + '</span>' +
+          '<span class="lop-mono" style="font-size:.78rem;">' + (c.detail || '') + '</span>' +
+          '</div>'
+        ).join('');
+      })
+      .catch(err => {
+        resDiv.style.display = 'block';
+        msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle';
+        msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed: ' + err;
+        chkDiv.innerHTML = '';
+      })
+      .finally(() => {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+      });
+  }
+
+  // ── Validate Inventory ─────────────────────────────────────────────────── //
+  function ansibleValidate() {
+    var statusEl = document.getElementById('ansible-action-status');
+    var resDiv   = document.getElementById('ansible-inv-result');
+    if (statusEl) statusEl.textContent = '⟳ Validating inventory…';
+    resDiv.style.display = 'none';
+
+    var fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch('{{ url_for("ansible.validate_inventory") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        resDiv.style.display = 'block';
+        document.getElementById('ansible-inv-hosts').textContent  = data.host_count || 0;
+        document.getElementById('ansible-inv-groups').textContent = (data.groups || []).length;
+        var gnames = (data.groups || []).join(', ');
+        document.getElementById('ansible-inv-group-names').textContent =
+          gnames ? 'Groups: ' + gnames : '';
+        var errs = (data.errors || []).join(' | ');
+        document.getElementById('ansible-inv-errors').textContent = errs;
+        if (statusEl) statusEl.textContent =
+          data.success
+            ? '✓ Inventory loaded — ' + data.host_count + ' host(s)'
+            : '✗ Validation failed';
+      })
+      .catch(err => {
+        if (statusEl) statusEl.textContent = '✗ Request failed: ' + err;
+      });
+  }
+
+  // ── Discover Playbooks ─────────────────────────────────────────────────── //
+  function ansibleDiscover() {
+    var statusEl = document.getElementById('ansible-action-status');
+    var resDiv   = document.getElementById('ansible-pb-result');
+    if (statusEl) statusEl.textContent = '⟳ Discovering playbooks…';
+    resDiv.style.display = 'none';
+
+    var fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch('{{ url_for("ansible.discover_playbooks") }}', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        resDiv.style.display = 'block';
+        document.getElementById('ansible-pb-count').textContent = data.count || 0;
+        var pbs = data.playbooks || [];
+        document.getElementById('ansible-pb-list').innerHTML = pbs.map(p =>
+          '<div><i class="bi bi-file-earmark-code me-1 text-secondary"></i>' +
+          '<strong>' + p.name + '</strong>' +
+          ' <span class="text-secondary">' + p.path + '</span>' +
+          (p.tags ? ' <span class="badge bg-secondary-subtle text-secondary ms-1">' + p.tags + '</span>' : '') +
+          '</div>'
+        ).join('') || '<span class="text-secondary">No playbooks found.</span>';
+        if (statusEl) statusEl.textContent =
+          '✓ ' + (data.count || 0) + ' playbook(s) discovered';
+      })
+      .catch(err => {
+        if (statusEl) statusEl.textContent = '✗ Request failed: ' + err;
+      });
+  }
+  </script>
+
   {# ══════════════════════════════ API SETTINGS ═════════════════════════════ #}
   <div class="card border-0 mb-4" id="api-settings">
     <div class="card-header d-flex align-items-center justify-content-between py-3">

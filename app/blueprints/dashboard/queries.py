@@ -53,6 +53,11 @@ class DashboardStats:
     vmware_connected:     int = 0   # vCenters with status "Connected"
     vmware_last_sync:     datetime | None = None
     vmware_sync_status:   str = "Not Configured"
+    # Ansible stats
+    ansible_connected:    bool = False
+    ansible_inv_hosts:    int = 0
+    ansible_playbooks:    int = 0
+    ansible_last_valid:   datetime | None = None
 
 
 def get_dashboard_stats() -> DashboardStats:
@@ -180,6 +185,18 @@ def get_dashboard_stats() -> DashboardStats:
                     stats.vmware_sync_status = "Never Synced"
             elif cfg and not cfg.enabled:
                 stats.vmware_sync_status = "Disabled"
+        except Exception:
+            pass
+
+        # ── Ansible stats ──────────────────────────────────────────────
+        try:
+            from ...models.ansible_config import AnsibleConfig
+            acfg = AnsibleConfig.query.first()
+            if acfg and acfg.enabled:
+                stats.ansible_connected  = acfg.connection_status == "Connected"
+                stats.ansible_inv_hosts  = acfg.last_inventory_hosts or 0
+                stats.ansible_playbooks  = acfg.last_playbooks_found or 0
+                stats.ansible_last_valid = acfg.last_validation_at
         except Exception:
             pass
 

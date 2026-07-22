@@ -24,6 +24,9 @@ cryptography==43.0.3
 # VMware vSphere API
 pyVmomi>=8.0.3.0.1
 
+# Ansible control-node SSH connection
+paramiko>=3.0.0
+
 # Background scheduler (VMware scheduled sync)
 APScheduler>=3.10.4
 

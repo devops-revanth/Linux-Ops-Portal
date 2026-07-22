@@ -20,3 +20,4 @@ from .compliance_config import ComplianceConfig  # noqa: F401
 from .localization_config import LocalizationConfig  # noqa: F401
 from .vmware_config import VmwareConfig, VmwareSyncLog  # noqa: F401
 from .vmware_server_meta import VmwareServerMeta  # noqa: F401
+from .ansible_config import AnsibleConfig, AnsibleInventoryHost  # noqa: F401

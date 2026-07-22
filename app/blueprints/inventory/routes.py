@@ -72,9 +72,17 @@ def index():
 
     inventory = get_inventory_page(filters, page=page, per_page=per_page)
 
+    # Load Ansible-managed hostnames for badge display (graceful if not migrated)
+    try:
+        from ...models.ansible_config import AnsibleInventoryHost
+        ansible_managed: set[str] = {h.hostname for h in AnsibleInventoryHost.query.all()}
+    except Exception:
+        ansible_managed = set()
+
     return render_template(
         "inventory/index.html",
         inventory=inventory,
+        ansible_managed=ansible_managed,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
@@ -202,6 +210,15 @@ def server_detail(server_id: int):
         "rows":        pkg_rows,
     }
 
+    # Ansible managed check
+    try:
+        from ...models.ansible_config import AnsibleInventoryHost
+        is_ansible_managed = AnsibleInventoryHost.query.filter_by(
+            hostname=server.hostname
+        ).first() is not None
+    except Exception:
+        is_ansible_managed = False
+
     return render_template(
         "inventory/server_detail.html",
         server=server,
@@ -210,6 +227,7 @@ def server_detail(server_id: int):
         owners=owners,
         statuses=list(VALID_STATUSES),
         pkg_data=pkg_data,
+        is_ansible_managed=is_ansible_managed,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )

@@ -232,6 +232,84 @@
   </div>{# /vmware row #}
   {% endif %}
 
+  {# ── Ansible Stats Row (shown when Ansible is enabled) ───────────────── #}
+  {% if stats.ansible_connected or stats.ansible_inv_hosts or stats.ansible_playbooks %}
+  <div class="row g-3 mb-4">
+
+    {# Connected #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap {% if stats.ansible_connected %}bg-success-subtle text-success{% else %}bg-secondary-subtle text-secondary{% endif %}">
+            <i class="bi bi-{% if stats.ansible_connected %}check-circle{% else %}x-circle{% endif %} fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number" style="font-size:.9rem;">
+              {% if stats.ansible_connected %}Connected{% else %}Not Connected{% endif %}
+            </div>
+            <div class="lop-stat-label">Ansible Control Node</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Inventory Hosts #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-primary-subtle text-primary">
+            <i class="bi bi-list-check fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number">{{ stats.ansible_inv_hosts }}</div>
+            <div class="lop-stat-label">Inventory Hosts</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Playbooks Found #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-warning-subtle text-warning">
+            <i class="bi bi-file-earmark-code fs-3"></i>
+          </div>
+          <div>
+            <div class="lop-stat-number">{{ stats.ansible_playbooks }}</div>
+            <div class="lop-stat-label">Playbooks Found</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Last Validation #}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card lop-stat-card border-0 h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="lop-icon-wrap bg-info-subtle text-info">
+            <i class="bi bi-shield-check fs-3"></i>
+          </div>
+          <div>
+            {% if stats.ansible_last_valid %}
+              <div class="lop-stat-number" style="font-size:.9rem; line-height:1.4;">
+                {{ stats.ansible_last_valid | lop_ts(date_only=True) }}
+              </div>
+              <div class="text-secondary" style="font-size:.75rem;">
+                {{ stats.ansible_last_valid | lop_time }}
+              </div>
+            {% else %}
+              <div class="lop-stat-number" style="font-size:.9rem;">—</div>
+            {% endif %}
+            <div class="lop-stat-label">Last Validation</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# /ansible row #}
+  {% endif %}
+
   {# ── Row 3: Location Summary + Patch Status ───────────────────────────── #}
   <div class="row g-3">
 
