@@ -202,7 +202,7 @@
   {# ── Fleet summary stat cards ────────────────────────────────────────── #}
   <div class="row g-3 mb-4">
 
-    <div class="col-6 col-sm-3">
+    <div class="col-6 col-sm-6">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-primary"><i class="bi bi-server"></i></div>
         <div class="lop-stat-card-label">Servers Managed</div>
@@ -210,39 +210,13 @@
       </div>
     </div>
 
-    <div class="col-6 col-sm-3">
+    <div class="col-6 col-sm-6">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-warning"><i class="bi bi-box-arrow-in-down"></i></div>
         <div class="lop-stat-card-label">Available Updates</div>
         <div class="lop-stat-card-value {% if fleet.available_updates > 0 %}text-warning{% endif %}">
           {{ "{:,}".format(fleet.available_updates) }}
         </div>
-      </div>
-    </div>
-
-    <div class="col-6 col-sm-3">
-      <div class="lop-stat-card">
-        <div class="lop-stat-card-icon text-danger"><i class="bi bi-shield-exclamation"></i></div>
-        <div class="lop-stat-card-label">Security Updates</div>
-        {% if fleet.security_updates is none %}
-          <div class="lop-stat-card-value na">Not Available</div>
-        {% else %}
-          <div class="lop-stat-card-value {% if fleet.security_updates > 0 %}text-danger{% endif %}">
-            {{ fleet.security_updates }}
-          </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="col-6 col-sm-3">
-      <div class="lop-stat-card">
-        <div class="lop-stat-card-icon text-secondary"><i class="bi bi-cpu"></i></div>
-        <div class="lop-stat-card-label">Kernel Updates</div>
-        {% if fleet.kernel_updates is none %}
-          <div class="lop-stat-card-value na">Not Available</div>
-        {% else %}
-          <div class="lop-stat-card-value">{{ fleet.kernel_updates }}</div>
-        {% endif %}
       </div>
     </div>
 
@@ -305,9 +279,7 @@
         <thead>
           <tr>
             <th>{{ sort_link('hostname', 'Hostname') }}</th>
-            <th class="text-end">{{ sort_link('updates', 'Updates Available') }}</th>
-            <th class="text-end">Security Updates</th>
-            <th>Compliance</th>
+            <th>{{ sort_link('updates', 'Updates Available') }}</th>
             <th>{{ sort_link('last_inventory', 'Last Inventory') }}</th>
           </tr>
         </thead>
@@ -328,7 +300,7 @@
               </td>
 
               {# Updates Available count #}
-              <td class="text-end">
+              <td>
                 {% if p and p.pending_updates is not none %}
                   {% if p.pending_updates > 0 %}
                     <span class="lop-updates-badge">
@@ -341,33 +313,6 @@
                   {% endif %}
                 {% else %}
                   <span class="lop-na">—</span>
-                {% endif %}
-              </td>
-
-              {# Security Updates — not yet in model #}
-              <td class="text-end">
-                <span class="lop-na">—</span>
-              </td>
-
-              {# Compliance #}
-              <td>
-                {% set cs = p.compliance_status if p else 'unknown' %}
-                {% if cs == 'compliant' %}
-                  <span class="lop-patch-badge lop-compliance-compliant">
-                    <i class="bi bi-check-circle-fill"></i>Compliant
-                  </span>
-                {% elif cs == 'due_soon' %}
-                  <span class="lop-patch-badge lop-compliance-due-soon">
-                    <i class="bi bi-exclamation-circle-fill"></i>Due Soon
-                  </span>
-                {% elif cs == 'overdue' %}
-                  <span class="lop-patch-badge lop-compliance-overdue">
-                    <i class="bi bi-x-circle-fill"></i>Overdue
-                  </span>
-                {% else %}
-                  <span class="lop-patch-badge lop-patch-unknown">
-                    <i class="bi bi-question-circle-fill"></i>Unknown
-                  </span>
                 {% endif %}
               </td>
 
@@ -388,7 +333,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="5">
+              <td colspan="3">
                 <div class="lop-empty-state">
                   <i class="bi bi-box-seam"></i>
                   {% if f.search %}
