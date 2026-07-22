@@ -134,25 +134,29 @@ def _register_template_helpers(app: Flask) -> None:
     """Register Jinja2 filters and context processors for timestamp display."""
     from datetime import datetime as _dt, timezone as _utc
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError  # Python 3.9+
+    from .models.localization_config import (
+        DATE_FORMAT_STRFTIME, TIME_FORMAT_STRFTIME,
+    )
 
-    def _get_tz_name() -> str:
-        """Return the configured IANA timezone, cached on g for the request."""
+    def _get_regional_cfg():
+        """Return (tz_name, date_fmt_key, time_fmt_key), cached on g per request."""
         import flask
-        name = flask.g.get("_lop_tz_name")
-        if name is None:
+        cached = flask.g.get("_lop_regional")
+        if cached is None:
             try:
                 from .models.localization_config import LocalizationConfig
-                name = LocalizationConfig.get().timezone
+                cfg = LocalizationConfig.get()
+                cached = (cfg.timezone, cfg.date_format, cfg.time_format)
             except Exception:
-                name = "UTC"
-            flask.g._lop_tz_name = name
-        return name
+                cached = ("UTC", "MMM_DD_YYYY", "12")
+            flask.g._lop_regional = cached
+        return cached
 
     def _to_local(dt) -> "_dt | None":
         """Convert a UTC-stored datetime to the configured local timezone."""
         if not isinstance(dt, _dt):
             return None
-        tz_name = _get_tz_name()
+        tz_name, _, _ = _get_regional_cfg()
         try:
             tz = ZoneInfo(tz_name)
         except (ZoneInfoNotFoundError, Exception):
@@ -163,17 +167,21 @@ def _register_template_helpers(app: Flask) -> None:
 
     def lop_ts(dt, date_only: bool = False) -> str:
         """
-        Format a UTC datetime using the configured application timezone.
+        Format a UTC datetime using the configured regional settings.
 
-        Full:      "Jul 21, 2026 08:55 AM CDT"
-        Date only: "Jul 21, 2026"
+        Full (12h):  "Jul 21, 2026 08:55 AM CDT"
+        Full (24h):  "21/07/2026 20:55 CDT"
+        Date only:   "Jul 21, 2026"  (uses configured date format)
         """
         local = _to_local(dt)
         if local is None:
             return "—"
+        _, date_key, time_key = _get_regional_cfg()
+        date_fmt = DATE_FORMAT_STRFTIME.get(date_key, "%b %d, %Y")
         if date_only:
-            return local.strftime("%b %d, %Y")
-        return local.strftime("%b %d, %Y %I:%M %p %Z")
+            return local.strftime(date_fmt)
+        time_fmt = TIME_FORMAT_STRFTIME.get(time_key, "%I:%M %p")
+        return local.strftime(f"{date_fmt} {time_fmt} %Z")
 
     def lop_rel(dt) -> str:
         """Return a relative time string such as '19 days ago'."""
@@ -202,7 +210,8 @@ def _register_template_helpers(app: Flask) -> None:
     def _inject_lop_tz():
         """Inject lop_tz (IANA name) into every template context."""
         try:
-            return {"lop_tz": _get_tz_name()}
+            tz_name, _, _ = _get_regional_cfg()
+            return {"lop_tz": tz_name}
         except Exception:
             return {"lop_tz": "UTC"}
 

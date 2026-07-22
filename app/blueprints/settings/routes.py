@@ -34,7 +34,10 @@ from ...audit import commit_audit
 from ...freeipa import FreeIPAService
 from ...models.directory_config import DIRECTORY_TYPES, DEFAULT_USER_FILTERS, DEFAULT_GROUP_FILTERS
 from ...models.ldap_group_mapping import VALID_ROLES as MAPPING_VALID_ROLES
-from ...models.localization_config import LocalizationConfig, TIMEZONE_CHOICES
+from ...models.localization_config import (
+    LocalizationConfig, TIMEZONE_CHOICES,
+    DATE_FORMAT_CHOICES, TIME_FORMAT_CHOICES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,8 @@ def _render_settings(new_token: str | None = None):
         compliance_cfg      = compliance_cfg,
         localization_cfg    = _get_localization_config(),
         timezone_choices    = TIMEZONE_CHOICES,
+        date_format_choices = DATE_FORMAT_CHOICES,
+        time_format_choices = TIME_FORMAT_CHOICES,
         app_name    = current_app.config["APP_NAME"],
         app_version = current_app.config["APP_VERSION"],
         app_base_url = current_app.config.get("APP_BASE_URL", "https://your-domain.example.com"),
@@ -297,25 +302,40 @@ def save_compliance_route():
 @settings_bp.route("/settings/localization/save", methods=["POST"])
 @login_required
 def save_localization_route():
-    """Save the display timezone setting."""
-    tz = request.form.get("timezone", "UTC").strip()
+    """Save regional settings (timezone, date format, time format)."""
+    tz          = request.form.get("timezone",    "UTC").strip()
+    date_fmt    = request.form.get("date_format", "MMM_DD_YYYY").strip()
+    time_fmt    = request.form.get("time_format", "12").strip()
+    valid_date  = {v for v, _, _ in DATE_FORMAT_CHOICES}
+    valid_time  = {v for v, _, _ in TIME_FORMAT_CHOICES}
+
     if tz not in TIMEZONE_CHOICES:
         flash("Invalid timezone selection.", "danger")
-        return redirect(url_for("settings.index") + "#localization")
+        return redirect(url_for("settings.index") + "#regional-settings")
+    if date_fmt not in valid_date:
+        flash("Invalid date format selection.", "danger")
+        return redirect(url_for("settings.index") + "#regional-settings")
+    if time_fmt not in valid_time:
+        flash("Invalid time format selection.", "danger")
+        return redirect(url_for("settings.index") + "#regional-settings")
+
     try:
         from ...extensions import db as _db
         cfg = _get_localization_config()
         if cfg is None:
-            cfg = LocalizationConfig(timezone=tz)
+            cfg = LocalizationConfig(timezone=tz, date_format=date_fmt, time_format=time_fmt)
             _db.session.add(cfg)
         else:
-            cfg.timezone = tz
+            cfg.timezone    = tz
+            cfg.date_format = date_fmt
+            cfg.time_format = time_fmt
         _db.session.commit()
-        flash(f"Timezone updated to {tz}.", "success")
-        commit_audit("settings.localization.save", target=tz)
+        flash("Regional settings saved.", "success")
+        commit_audit("settings.regional.save", target=tz,
+                     details=f"date={date_fmt} time={time_fmt}")
     except Exception:
-        flash("An error occurred while saving the timezone.", "danger")
-    return redirect(url_for("settings.index") + "#localization")
+        flash("An error occurred while saving regional settings.", "danger")
+    return redirect(url_for("settings.index") + "#regional-settings")
 
 
 # ── Directory Services ─────────────────────────────────────────────────────── #
