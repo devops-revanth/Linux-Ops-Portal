@@ -203,8 +203,21 @@ def _register_template_helpers(app: Flask) -> None:
         yrs = days // 365
         return f"{yrs} year{'s' if yrs > 1 else ''} ago"
 
-    app.jinja_env.filters["lop_ts"]  = lop_ts
-    app.jinja_env.filters["lop_rel"] = lop_rel
+    def lop_time(dt) -> str:
+        """
+        Return just the time portion (with TZ abbreviation) in the configured
+        time format, e.g. '08:55 AM CDT'  or  '20:55 CDT'.
+        """
+        local = _to_local(dt)
+        if local is None:
+            return "—"
+        _, _, time_key = _get_regional_cfg()
+        time_fmt = TIME_FORMAT_STRFTIME.get(time_key, "%I:%M %p")
+        return local.strftime(f"{time_fmt} %Z")
+
+    app.jinja_env.filters["lop_ts"]   = lop_ts
+    app.jinja_env.filters["lop_time"] = lop_time
+    app.jinja_env.filters["lop_rel"]  = lop_rel
 
     @app.context_processor
     def _inject_lop_tz():

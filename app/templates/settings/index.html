@@ -781,9 +781,10 @@
     <div class="card-body">
 
       <p class="text-secondary small mb-3">
-        The API token authenticates Ansible push requests to
-        <code>POST /api/v1/inventory</code>.
-        Treat it like a password — store it in Ansible Vault in production.
+        The API token is required for authenticated Ansible inventory synchronisation.
+        Include it as a <code>Bearer</code> token in the <code>Authorization</code> header
+        of each <code>POST /api/v1/inventory</code> request.
+        Store it securely in Ansible Vault — never commit it to source control.
       </p>
 
       {# ── New token banner (shown only immediately after generation) ── #}

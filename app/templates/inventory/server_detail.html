@@ -560,16 +560,10 @@
           </span>
         </div>
         <div class="lop-field">
-          <span class="lop-field-label">CPU Model</span>
-          <span class="lop-field-value {% if not server.cpu_model %}lop-field-empty{% endif %}" style="font-size:.82rem;">
-            {{ server.cpu_model or '—' }}
-          </span>
-        </div>
-        <div class="lop-field">
-          <span class="lop-field-label">RAM</span>
+          <span class="lop-field-label">Memory</span>
           <span class="lop-field-value {% if server.ram_gb is none %}lop-field-empty{% endif %}">
             {% if server.ram_gb is not none %}
-              {{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB
+              {{ server.ram_gb | int if server.ram_gb == server.ram_gb | int else server.ram_gb }} GB RAM
             {% else %}—{% endif %}
           </span>
         </div>
@@ -930,7 +924,7 @@
       {% else %}
         <div class="text-center py-4 text-secondary">
           <i class="bi bi-sticky fs-2 d-block mb-2 opacity-25"></i>
-          <p class="small mb-0">No notes yet. Add the first note below.</p>
+          <p class="small mb-0">No notes have been recorded for this server.</p>
         </div>
       {% endif %}
 

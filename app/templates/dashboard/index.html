@@ -88,11 +88,11 @@
           <div>
             <div class="text-secondary small fw-medium">Last Inventory Sync</div>
             {% if stats.last_ansible_sync %}
-              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;">
-                {{ stats.last_ansible_sync | lop_ts }}
+              <div class="lop-stat-number" style="font-size: .95rem; line-height: 1.5;">
+                {{ stats.last_ansible_sync | lop_ts(date_only=True) }}
               </div>
               <div class="text-secondary" style="font-size: .75rem;">
-                {{ lop_tz }}
+                {{ stats.last_ansible_sync | lop_time }}
               </div>
             {% else %}
               <div class="lop-stat-number text-secondary" style="font-size: 1.1rem;">

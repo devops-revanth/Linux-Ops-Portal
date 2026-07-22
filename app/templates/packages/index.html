@@ -330,7 +330,7 @@
             <th>{{ sort_link('environment',      'Environment') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('operating_system', 'OS') }}</th>
-            <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
+            <th>{{ sort_link('kernel_version',   'Running Kernel') }}</th>
             <th>Updates Available</th>
             <th>Compliance</th>
             <th>{{ sort_link('last_patch_date',  'Last Patched') }}</th>
@@ -402,11 +402,11 @@
                 {% if p and p.pending_updates is not none %}
                   {% if p.pending_updates > 0 %}
                     <span class="lop-yes-badge">
-                      <span class="lop-dot-circle lop-dot-yellow"></span>YES
+                      <span class="lop-dot-circle lop-dot-green"></span>YES
                     </span>
                   {% else %}
                     <span class="lop-no-badge">
-                      <span class="lop-dot-circle lop-dot-green"></span>NO
+                      <span class="lop-dot-circle lop-dot-gray"></span>NO
                     </span>
                   {% endif %}
                 {% else %}
