@@ -7,10 +7,26 @@ Three environments are supported:
   testing      – in-memory SQLite, no side-effects
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from the project root (lop/) when running locally
+# Load .env from the project root when running locally
 load_dotenv()
+
+# ── Version resolution ────────────────────────────────────────────────────────
+# Read APP_VERSION from the VERSION file at the repo root.
+# This is the single source of truth; never hardcode it here.
+_BASE_DIR = Path(__file__).parent.parent   # app/ → repo root
+
+def _read_version_file_key(key: str, fallback: str = "unknown") -> str:
+    """Read a key=value entry from the repo-root VERSION file."""
+    ver_file = _BASE_DIR / "VERSION"
+    if ver_file.exists():
+        for line in ver_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip()
+    return fallback
 
 
 class Config:
@@ -46,7 +62,7 @@ class Config:
     # Application
     # ------------------------------------------------------------------ #
     APP_NAME: str = "Linux Operations Portal"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = _read_version_file_key("APP_VERSION", "1.0.0")
     ITEMS_PER_PAGE: int = 25
 
     # Base URL shown in API documentation (e.g. the Ansible example call).

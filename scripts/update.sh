@@ -1,0 +1,386 @@
+#!/usr/bin/env bash
+# =============================================================================
+# LOP — Intelligent update script
+# Usage: sudo ./update.sh [--yes] [--skip-backup]
+#
+# Detects what actually changed and only runs the necessary steps.
+# Automatically rolls back on failure.
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LOG_FILE="/var/log/lop/update.log"
+
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/os.sh"
+source "$SCRIPT_DIR/lib/python.sh"
+source "$SCRIPT_DIR/lib/deps.sh"
+source "$SCRIPT_DIR/lib/postgres.sh"
+source "$SCRIPT_DIR/lib/systemd.sh"
+source "$SCRIPT_DIR/lib/version.sh"
+
+# ── Flags ─────────────────────────────────────────────────────────────────────
+SKIP_BACKUP=false
+parse_common_flags "$@"
+for arg in "${REMAINING_ARGS[@]:-}"; do
+    [[ "$arg" == "--skip-backup" ]] && SKIP_BACKUP=true
+done
+
+# ── Pre-flight state ──────────────────────────────────────────────────────────
+PRE_UPDATE_HASH=""
+PRE_UPDATE_ALEMBIC=""
+PRE_UPDATE_VERSION=""
+RESTART_NEEDED=false
+BACKUP_PATH=""
+
+# Flags for what ran (used in rollback)
+DEPS_UPGRADED=false
+MIGRATIONS_RAN=false
+
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
+preflight_checks() {
+    log_section "Pre-flight Checks"
+
+    [[ -d "$LOP_APP_DIR" ]] \
+        || abort "LOP application not found at ${LOP_APP_DIR}.
+Is LOP installed? Try: sudo ./install.sh"
+
+    [[ -f "$LOP_CONF_FILE" ]] \
+        || abort "Configuration file not found: ${LOP_CONF_FILE}
+Is LOP installed? Try: sudo ./install.sh"
+
+    [[ -f "$LOP_INSTALL_INFO" ]] \
+        || abort "Install metadata not found: ${LOP_INSTALL_INFO}
+Cannot determine how LOP was installed. Try: sudo ./install.sh --force"
+
+    load_lop_env
+
+    # Detect OS for package manager
+    detect_os
+
+    # Record pre-update state
+    PRE_UPDATE_HASH=$(git -C "$LOP_APP_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+    PRE_UPDATE_ALEMBIC=$(alembic_current 2>/dev/null || echo "unknown")
+    PRE_UPDATE_VERSION=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
+
+    log_success "Pre-flight checks passed."
+    log_info "Current version: ${PRE_UPDATE_VERSION} (${PRE_UPDATE_HASH:0:8})"
+    log_info "Current DB schema: ${PRE_UPDATE_ALEMBIC}"
+}
+
+# ── Pre-update backup ─────────────────────────────────────────────────────────
+run_pre_update_backup() {
+    if [[ "$SKIP_BACKUP" == "true" ]]; then
+        log_warn "Pre-update backup skipped (--skip-backup)."
+        return 0
+    fi
+    log_step "Creating pre-update backup..."
+    BACKUP_PATH=$("$SCRIPT_DIR/backup.sh" --quiet 2>&1 | tail -1) || {
+        log_warn "Backup failed. Continuing with update (use --skip-backup to suppress this warning)."
+        BACKUP_PATH=""
+    }
+    [[ -n "$BACKUP_PATH" ]] && log_success "Backup: ${BACKUP_PATH}"
+}
+
+# ── Pull latest code ──────────────────────────────────────────────────────────
+pull_latest_code() {
+    log_section "Code Update"
+
+    local source
+    source=$(install_info_read "install_source")
+    local source_url
+    source_url=$(install_info_read "install_source_url")
+    local source_branch
+    source_branch=$(install_info_read "install_source_branch")
+    source_branch="${source_branch:-main}"
+
+    log_info "Install source type: ${source}"
+
+    case "$source" in
+        git)
+            log_step "Fetching from git remote (${source_url})..."
+            if ! git -C "$LOP_APP_DIR" fetch origin >> "$LOG_FILE" 2>&1; then
+                abort "git fetch failed.
+Possible causes:
+  • No network access
+  • Remote URL changed (${source_url})
+  • Authentication required
+
+To update without network access, use an archive:
+  sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
+            fi
+
+            # Check for local modifications
+            local dirty
+            dirty=$(git -C "$LOP_APP_DIR" status --porcelain 2>/dev/null | grep -v '^??' | wc -l)
+            if (( dirty > 0 )); then
+                log_warn "Local modifications detected in ${LOP_APP_DIR}."
+                confirm "Overwrite local changes and continue?" \
+                    || abort "Update cancelled. Stash or commit local changes first."
+                git -C "$LOP_APP_DIR" stash >> "$LOG_FILE" 2>&1 || true
+            fi
+
+            git -C "$LOP_APP_DIR" pull origin "$source_branch" >> "$LOG_FILE" 2>&1 \
+                || abort "git pull failed. Check ${LOG_FILE}."
+            log_success "Code updated from ${source_branch}."
+            ;;
+
+        archive)
+            log_warn "This installation was deployed from a release archive."
+            printf "\nTo update, provide the path to a new release archive:\n"
+            printf "Example: sudo ./update.sh --source /tmp/lop-2.0.0.tar.gz\n\n"
+
+            # Check for --source flag in REMAINING_ARGS
+            local archive_path=""
+            for arg in "${REMAINING_ARGS[@]:-}"; do
+                [[ "$arg" == --source=* ]] && archive_path="${arg#--source=}"
+                [[ "$prev_arg" == "--source" ]] && archive_path="$arg"
+                prev_arg="$arg"
+            done
+
+            if [[ -z "$archive_path" ]]; then
+                abort "No archive path provided.
+Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
+            fi
+
+            [[ -f "$archive_path" ]] \
+                || abort "Archive not found: ${archive_path}"
+
+            log_step "Extracting archive: ${archive_path}..."
+            local tmp_extract="$LOP_TMP_DIR/update_extract"
+            mkdir -p "$tmp_extract"
+            tar -xzf "$archive_path" -C "$tmp_extract" --strip-components=1 >> "$LOG_FILE" 2>&1 \
+                || abort "Failed to extract archive. Check ${LOG_FILE}."
+
+            rsync -a --delete \
+                --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+                --exclude='venv' --exclude='/etc/' \
+                "$tmp_extract/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
+                || abort "Failed to sync extracted archive. Check ${LOG_FILE}."
+
+            log_success "Code updated from archive."
+            ;;
+
+        local)
+            log_warn "This installation was deployed from a local directory (${source_url})."
+            log_warn "Ensure you have updated the source directory before running update."
+            confirm "Source directory updated and ready to sync?" \
+                || abort "Update cancelled."
+
+            [[ -d "$source_url" ]] \
+                || abort "Source directory not found: ${source_url}"
+
+            rsync -a --delete \
+                --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+                --exclude='venv' \
+                "$source_url/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
+                || abort "rsync from local source failed. Check ${LOG_FILE}."
+
+            log_success "Code synced from local source."
+            ;;
+
+        *)
+            abort "Unknown install source type: '${source}'.
+Cannot determine update mechanism. Re-install with: sudo ./install.sh"
+            ;;
+    esac
+}
+
+# ── Change detection and conditional steps ────────────────────────────────────
+apply_changes() {
+    log_section "Applying Changes"
+
+    local new_version
+    new_version=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
+    log_info "New version: ${new_version}"
+
+    # ── Python runtime check ─────────────────────────────────────────────────
+    local min_minor
+    min_minor=$(grep '^MIN_PYTHON=' "$LOP_APP_DIR/VERSION" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]' | cut -d. -f2)
+    source "$SCRIPT_DIR/lib/python.sh"   # re-source for fresh globals
+    if python_find_compatible; then
+        log_info "Python runtime: ${SELECTED_PYTHON} (${SELECTED_PYTHON_VERSION}) — OK"
+    else
+        log_warn "No compatible Python found — attempting installation..."
+        python_install_best_available
+        python_find_compatible || abort "Python installation failed."
+        python_create_venv --force
+        RESTART_NEEDED=true
+    fi
+
+    # ── Dependencies ─────────────────────────────────────────────────────────
+    if checksum_changed "$LOP_APP_DIR/requirements.txt" "requirements"; then
+        log_step "requirements.txt changed — updating Python dependencies..."
+        # Check if venv needs rebuild (Python changed)
+        python_create_venv
+        python_install_deps
+        checksum_save "$LOP_APP_DIR/requirements.txt" "requirements"
+        DEPS_UPGRADED=true
+        RESTART_NEEDED=true
+        log_success "Python dependencies updated."
+    else
+        log_info "requirements.txt unchanged — skipping pip install."
+    fi
+
+    # ── Node.js packages (optional) ──────────────────────────────────────────
+    local pkg_json="$LOP_APP_DIR/package.json"
+    if [[ -f "$pkg_json" ]] && checksum_changed "$pkg_json" "package_json"; then
+        if cmd_exists pnpm; then
+            log_step "package.json changed — updating Node.js dependencies..."
+            (cd "$LOP_APP_DIR" && pnpm install) >> "$LOG_FILE" 2>&1 || log_warn "pnpm install failed (non-fatal)."
+            checksum_save "$pkg_json" "package_json"
+            log_success "Node.js dependencies updated."
+        else
+            log_warn "package.json changed but pnpm not installed (optional — skipping)."
+        fi
+    else
+        log_info "package.json unchanged or not present — skipping pnpm install."
+    fi
+
+    # ── Database migrations ───────────────────────────────────────────────────
+    if alembic_head_changed; then
+        log_step "New database migrations detected — running upgrade..."
+        lop_flask db upgrade >> "$LOG_FILE" 2>&1 \
+            || {
+                log_error "Database migration failed — initiating rollback."
+                do_rollback
+                exit 1
+            }
+        MIGRATIONS_RAN=true
+        RESTART_NEEDED=true
+        log_success "Database migrations applied."
+    else
+        log_info "No new database migrations — skipping."
+    fi
+
+    # ── Service restart ───────────────────────────────────────────────────────
+    if [[ "$RESTART_NEEDED" == "true" ]]; then
+        log_step "Restarting lop-backend..."
+
+        # Re-write service file in case venv path or config changed
+        systemd_write_backend
+        systemd_reload
+        systemctl restart "$LOP_BACKEND_SERVICE" >> "$LOG_FILE" 2>&1 \
+            || {
+                log_error "Service restart failed — initiating rollback."
+                do_rollback
+                exit 1
+            }
+        log_success "Service restarted."
+    else
+        log_info "No code or dependency changes — service restart not required."
+    fi
+}
+
+# ── Post-update health check ──────────────────────────────────────────────────
+post_update_health_check() {
+    log_step "Verifying update (waiting up to 60s)..."
+    if health_check "http://localhost:5000/health" 12 5; then
+        log_success "Health check passed."
+        return 0
+    else
+        log_error "Health check failed after update — initiating rollback."
+        do_rollback
+        exit 1
+    fi
+}
+
+# ── Rollback ──────────────────────────────────────────────────────────────────
+do_rollback() {
+    log_section "ROLLBACK"
+    log_warn "Rolling back to: ${PRE_UPDATE_VERSION} (${PRE_UPDATE_HASH:0:8})"
+
+    # 1. Code rollback
+    if [[ "$PRE_UPDATE_HASH" != "unknown" ]]; then
+        git -C "$LOP_APP_DIR" checkout "$PRE_UPDATE_HASH" -- . >> "$LOG_FILE" 2>&1 \
+            || log_warn "Code rollback failed — manual intervention may be needed."
+        log_info "Code rolled back to ${PRE_UPDATE_HASH:0:8}."
+    fi
+
+    # 2. Schema rollback
+    if [[ "$MIGRATIONS_RAN" == "true" ]] && [[ "$PRE_UPDATE_ALEMBIC" != "unknown" ]]; then
+        log_step "Rolling back database schema to ${PRE_UPDATE_ALEMBIC}..."
+        lop_flask db downgrade "$PRE_UPDATE_ALEMBIC" >> "$LOG_FILE" 2>&1 \
+            || log_warn "Schema rollback failed. Manual DB restore may be required."
+        log_info "Database schema rolled back."
+    fi
+
+    # 3. Reinstall previous deps
+    if [[ "$DEPS_UPGRADED" == "true" ]]; then
+        python_install_deps >> "$LOG_FILE" 2>&1 || log_warn "Dep rollback failed."
+    fi
+
+    # 4. Restart service
+    systemctl restart "$LOP_BACKEND_SERVICE" >> "$LOG_FILE" 2>&1 || true
+
+    # 5. Verify rollback
+    log_step "Verifying rollback health..."
+    if health_check "http://localhost:5000/health" 6 5; then
+        log_success "ROLLBACK SUCCESSFUL — LOP is running ${PRE_UPDATE_VERSION}."
+        if [[ -n "$BACKUP_PATH" ]]; then
+            log_info "Pre-update backup is available at: ${BACKUP_PATH}"
+        fi
+    else
+        printf "\n%s%s[CRITICAL] Rollback health check failed.%s\n" "$CLR_BOLD" "$CLR_RED" "$CLR_RESET"
+        printf "LOP may be in an inconsistent state. Manual intervention required.\n\n"
+        printf "Recovery steps:\n"
+        printf "  1. Check logs:     sudo journalctl -u lop-backend -n 100\n"
+        printf "  2. Check log file: %s\n" "$LOG_FILE"
+        [[ -n "$BACKUP_PATH" ]] && \
+        printf "  3. Restore backup: sudo ./restore.sh %s\n" "$BACKUP_PATH"
+    fi
+}
+
+# ── Save post-update state ────────────────────────────────────────────────────
+save_update_state() {
+    checksums_save_all
+    local new_version
+    new_version=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
+    install_info_update "install_version" "$new_version"
+    install_info_update "last_update" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    install_info_update "previous_version" "$PRE_UPDATE_VERSION"
+}
+
+# ── Print update summary ──────────────────────────────────────────────────────
+print_update_summary() {
+    local new_version new_hash
+    new_version=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
+    new_hash=$(git -C "$LOP_APP_DIR" rev-parse HEAD 2>/dev/null | head -c 8 || echo "unknown")
+
+    printf "\n%s%s╔══════════════════════════════════════════════╗%s\n" "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"
+    printf "%s%s║         LOP Update Complete                  ║%s\n"   "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"
+    printf "%s%s╚══════════════════════════════════════════════╝%s\n\n" "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"
+
+    summary_line "Previous version:"    "${PRE_UPDATE_VERSION}"
+    summary_line "New version:"         "${new_version} (${new_hash})"
+    summary_line "DB schema:"           "$(alembic_current 2>/dev/null || echo 'unknown')"
+    summary_line "Dependencies updated:" "$([[ $DEPS_UPGRADED == true ]] && echo yes || echo no)"
+    summary_line "Migrations applied:"  "$([[ $MIGRATIONS_RAN  == true ]] && echo yes || echo no)"
+    summary_line "Service restarted:"   "$([[ $RESTART_NEEDED  == true ]] && echo yes || echo no)"
+    [[ -n "$BACKUP_PATH" ]] && summary_line "Pre-update backup:" "$BACKUP_PATH"
+    printf "\n"
+    summary_line "Log:" "$LOG_FILE"
+    printf "\n"
+}
+
+# =============================================================================
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+# =============================================================================
+main() {
+    require_root "$@"
+
+    mkdir -p "$(dirname "$LOG_FILE")"
+    touch "$LOG_FILE"
+
+    log_header "LOP Update — $(date)"
+
+    preflight_checks
+    run_pre_update_backup
+    pull_latest_code
+    apply_changes
+    post_update_health_check
+    save_update_state
+    print_update_summary
+}
+
+main "$@"
