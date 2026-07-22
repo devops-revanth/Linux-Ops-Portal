@@ -4,7 +4,22 @@
 # Usage: sudo ./diagnostics.sh [--output-dir <dir>]
 #
 # Collects everything needed for troubleshooting into a single archive.
-# Secrets are masked before inclusion.
+#
+# PRIVACY NOTE
+# ────────────
+# The bundle is designed to be safe to share with support personnel:
+#   • All secret values in configuration files are masked before inclusion
+#     (DATABASE_URL passwords, SECRET_KEY, bind passwords, API tokens, and
+#     any KEY= / PASSWORD= / SECRET= / TOKEN= patterns).
+#   • python_info.txt contains installed pip package names and versions —
+#     no credentials or secret values.
+#   • postgres_info.txt contains PostgreSQL version, service status, and
+#     cluster configuration — no database contents or passwords.
+#   • Application log tails (app_logs/) are included verbatim.  Ensure
+#     your logging configuration does not write plaintext passwords to logs.
+#
+# Never add password retrieval, private-key export, or umasked config dumps
+# to this script.
 # =============================================================================
 set -uo pipefail
 
@@ -221,7 +236,7 @@ main() {
     printf "  systemd_status.txt    — service status and unit file\n"
     printf "  journalctl.log        — service journal (7 days)\n"
     printf "  app_logs/             — application log files\n"
-    printf "  python_info.txt       — Python runtime and packages\n"
+    printf "  python_info.txt       — Python runtime and installed pip package versions\n"
     printf "  postgres_info.txt     — PostgreSQL version and status\n"
     printf "  db_migration.txt      — Alembic schema versions\n"
     printf "  version.txt           — app version, git log\n"

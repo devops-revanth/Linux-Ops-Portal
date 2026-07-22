@@ -148,6 +148,23 @@ Log:   ${LOG_FILE}"
     log_success "PostgreSQL service is running."
 }
 
+# pg_escape_literal <string>
+# Returns the value with every single-quote doubled for safe SQL string literal
+# embedding, per the SQL standard (ISO 9075, §5.3).  Always wrap the result in
+# surrounding single quotes when constructing the SQL statement.
+#
+# Safety guarantee: the escaped value is passed to psql via stdin (pg_execute),
+# which means the shell never re-interprets it.  The only transformation that
+# occurs is bash parameter expansion of the known, controlled SQL string —
+# there is no command substitution, no eval, and no further shell processing
+# of the password value itself.
+#
+# Covers all valid password characters including: ' " ` \ ; $ ! ( ) spaces,
+# and high-byte UTF-8 sequences.
+pg_escape_literal() {
+    printf '%s' "${1//\'/\'\'}"
+}
+
 # pg_execute <sql>
 # Executes a SQL command as the postgres system user.
 # SQL is passed via stdin to avoid shell-quoting injection.
@@ -167,30 +184,35 @@ pg_execute_check() {
 # pg_db_exists <dbname>
 pg_db_exists() {
     local db="$1"
-    local result
-    result=$(pg_execute_check "SELECT 1 FROM pg_database WHERE datname='${db}';")
+    local db_esc result
+    db_esc="$(pg_escape_literal "$db")"
+    result=$(pg_execute_check "SELECT 1 FROM pg_database WHERE datname='${db_esc}';")
     [[ "$result" == "1" ]]
 }
 
 # pg_user_exists <username>
 pg_user_exists() {
     local user="$1"
-    local result
-    result=$(pg_execute_check "SELECT 1 FROM pg_roles WHERE rolname='${user}';")
+    local user_esc result
+    user_esc="$(pg_escape_literal "$user")"
+    result=$(pg_execute_check "SELECT 1 FROM pg_roles WHERE rolname='${user_esc}';")
     [[ "$result" == "1" ]]
 }
 
 # pg_create_user <username> <password>
+# Passwords may contain any valid character — see pg_escape_literal above.
 pg_create_user() {
     local user="$1" pass="$2"
+    # Escape for SQL string literal embedding (each ' → '' per SQL standard).
+    local pass_esc
+    pass_esc="$(pg_escape_literal "$pass")"
     if pg_user_exists "$user"; then
-        log_info "PostgreSQL user '${user}' already exists — skipping creation."
-        # Update password in case it changed
-        pg_execute "ALTER USER ${user} WITH ENCRYPTED PASSWORD '${pass}';" || true
+        log_info "PostgreSQL user '${user}' already exists — updating password."
+        pg_execute "ALTER USER \"${user}\" WITH ENCRYPTED PASSWORD '${pass_esc}';" || true
         return 0
     fi
     log_step "Creating PostgreSQL user '${user}'..."
-    pg_execute "CREATE USER ${user} WITH ENCRYPTED PASSWORD '${pass}';" \
+    pg_execute "CREATE USER \"${user}\" WITH ENCRYPTED PASSWORD '${pass_esc}';" \
         || abort "Failed to create PostgreSQL user '${user}'. Check ${LOG_FILE}."
     track_change "Created PostgreSQL user '${user}'"
     log_success "Created PostgreSQL user '${user}'."

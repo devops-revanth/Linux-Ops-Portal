@@ -43,7 +43,28 @@ version_set() {
 
 # alembic_current
 # Returns the current deployed Alembic revision for the running DB.
+#
+# Implementation: queries the alembic_version table directly via psql — this
+# is faster, has no Flask startup cost, and works even when the application
+# venv or config is partially set up.  Falls back to the Flask/Alembic CLI
+# only when psql is unavailable or the direct query fails.
 alembic_current() {
+    # Prefer a direct database query when the config and psql are available.
+    if [[ -f "$LOP_CONF_FILE" ]] && cmd_exists psql; then
+        local db_url result
+        # Use cut -d= -f2- so that '=' characters inside the URL are preserved.
+        db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
+        if [[ -n "$db_url" ]]; then
+            result=$(psql -tAq "$db_url" \
+                -c "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;" \
+                2>/dev/null | tr -d '[:space:]' || true)
+            if [[ -n "$result" ]]; then
+                echo "$result"
+                return 0
+            fi
+        fi
+    fi
+    # Fallback: use Flask/Alembic CLI (requires venv and full app dependencies).
     lop_flask db current 2>/dev/null \
         | grep -oP '[0-9a-f]{12}' | head -1 \
         || echo "unknown"

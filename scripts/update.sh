@@ -130,6 +130,19 @@ To update without network access, use an archive:
             printf "\nTo update, provide the path to a new release archive:\n"
             printf "Example: sudo ./update.sh --source /tmp/lop-2.0.0.tar.gz\n\n"
 
+            # Rollback limitation: archive-based installs have no git history.
+            # If this update fails, automatic code rollback is NOT possible.
+            # The pre-update backup (taken in preflight) is the only recovery path.
+            log_warn "IMPORTANT: code rollback is not available for archive-based installs."
+            log_warn "If this update fails, recovery requires restoring the pre-update backup."
+            if [[ -z "${BACKUP_PATH:-}" ]]; then
+                log_warn "No pre-update backup was recorded. Proceeding without a rollback path."
+                confirm "No backup available. Continue with the update anyway?" \
+                    || abort "Update cancelled. Run 'sudo ./backup.sh' first, then retry."
+            else
+                log_info "Pre-update backup available at: ${BACKUP_PATH}"
+            fi
+
             # Check for --source flag in REMAINING_ARGS
             local archive_path="" prev_arg=""
             for arg in "${REMAINING_ARGS[@]:-}"; do
@@ -164,6 +177,17 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
         local)
             log_warn "This installation was deployed from a local directory (${source_url})."
             log_warn "Ensure you have updated the source directory before running update."
+
+            # Rollback limitation: local-directory installs have no git history.
+            # If this update fails, code rollback is NOT possible automatically.
+            log_warn "IMPORTANT: code rollback is not available for local-directory installs."
+            if [[ -n "${BACKUP_PATH:-}" ]]; then
+                log_info "Pre-update backup available at: ${BACKUP_PATH}"
+            else
+                log_warn "No pre-update backup was recorded. Recovery will require"
+                log_warn "manually re-syncing the previous source directory version."
+            fi
+
             confirm "Source directory updated and ready to sync?" \
                 || abort "Update cancelled."
 
@@ -290,11 +314,21 @@ do_rollback() {
     log_section "ROLLBACK"
     log_warn "Rolling back to: ${PRE_UPDATE_VERSION} (${PRE_UPDATE_HASH:0:8})"
 
-    # 1. Code rollback
+    # 1. Code rollback (git installs only)
     if [[ "$PRE_UPDATE_HASH" != "unknown" ]]; then
         git -C "$LOP_APP_DIR" checkout "$PRE_UPDATE_HASH" -- . >> "$LOG_FILE" 2>&1 \
             || log_warn "Code rollback failed — manual intervention may be needed."
         log_info "Code rolled back to ${PRE_UPDATE_HASH:0:8}."
+    else
+        log_warn "Code rollback is not available (archive or local-directory install)."
+        log_warn "The application code cannot be automatically restored."
+        if [[ -n "${BACKUP_PATH:-}" ]]; then
+            log_info "Restore from backup to recover the previous state:"
+            log_info "  sudo ./restore.sh ${BACKUP_PATH}"
+        else
+            log_warn "No pre-update backup was taken. Manual recovery required."
+            log_warn "Re-extract the previous version archive and re-run the installer."
+        fi
     fi
 
     # 2. Schema rollback

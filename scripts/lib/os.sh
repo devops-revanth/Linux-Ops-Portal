@@ -90,18 +90,32 @@ Then re-run: sudo $0"
             fi
             ;;
         apt-get)
-            # Refresh index only if it is stale (older than 1 hour)
+            # Refresh index only if it is stale (older than 1 hour).
+            # A failed refresh is a warning, not an immediate abort — the
+            # cached index may still be good enough.  If the subsequent
+            # install also fails, the abort message below tells the admin
+            # what to fix.
             local cache_age
             cache_age=$(find /var/cache/apt/pkgcache.bin -mmin +60 2>/dev/null | wc -l)
             if (( cache_age > 0 )); then
-                apt-get update -qq >> "$LOG_FILE" 2>&1 || true
+                log_step "Refreshing apt package index..."
+                if ! apt-get update -qq >> "$LOG_FILE" 2>&1; then
+                    log_warn "apt-get update failed (stale or unreachable repository).
+Attempting installation with the cached index.
+If the install below also fails, run:
+  sudo apt-get update
+then re-run: sudo $0"
+                fi
             fi
             if ! DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}" >> "$LOG_FILE" 2>&1; then
-                abort "Failed to install: ${pkgs[*]}
+                abort "Failed to install packages: ${pkgs[*]}
 Possible causes:
-  • No network access or repository unavailable
+  • apt-get update failed — repository metadata is stale or unreachable
+  • Network is unavailable or a proxy is blocking access
   • Package name differs on this OS version
-Manual fix: sudo apt-get install ${pkgs[*]}
+Manual fix:
+  sudo apt-get update
+  sudo apt-get install ${pkgs[*]}
 Then re-run: sudo $0"
             fi
             ;;

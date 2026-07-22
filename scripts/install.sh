@@ -276,6 +276,13 @@ do_fresh_install() {
     # 5. Copy application
     copy_application
 
+    # Firewalld: if the system uses firewalld, port 5000 must be opened manually.
+    # We do not run firewall-cmd automatically to avoid unexpected policy changes.
+    if cmd_exists firewall-cmd && firewall-cmd --state &>/dev/null 2>&1; then
+        log_warn "firewalld is active. Open port 5000 manually if external access is needed:"
+        log_warn "  sudo firewall-cmd --permanent --add-port=5000/tcp && sudo firewall-cmd --reload"
+    fi
+
     # Restore SELinux file contexts after copying (non-fatal; only active on enforcing systems)
     if cmd_exists restorecon; then
         log_step "Restoring SELinux file contexts..."
