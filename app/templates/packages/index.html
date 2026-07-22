@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <style>
-  /* ── Fleet stat cards ───────────────────────────────────────────────── */
+  /* ── Stat cards ─────────────────────────────────────────────────────── */
   .lop-stat-card {
     background: var(--lop-surface);
     border: 1px solid var(--lop-border);
@@ -28,15 +28,7 @@
     line-height: 1.1;
     color: var(--lop-text);
   }
-  .lop-stat-card-value.na {
-    font-size: 1rem;
-    color: var(--lop-muted);
-    font-weight: 400;
-  }
-  .lop-stat-card-icon {
-    font-size: 1.1rem;
-    margin-bottom: .15rem;
-  }
+  .lop-stat-card-icon { font-size: 1.1rem; margin-bottom: .15rem; }
 
   /* ── Table ──────────────────────────────────────────────────────────── */
   .lop-table th {
@@ -57,6 +49,13 @@
   }
   .lop-table tbody tr:hover { background: rgba(255,255,255,.03); }
 
+  /* ── Sort links ─────────────────────────────────────────────────────── */
+  .lop-sort-link { color: inherit; text-decoration: none; white-space: nowrap; }
+  .lop-sort-link:hover { color: var(--lop-text); }
+  .lop-sort-icon { color: var(--lop-muted); font-size: .65rem; margin-left: .15rem; }
+  .lop-sort-link.active .lop-sort-icon { color: #3fb950; }
+
+  /* ── Hostname / FQDN ────────────────────────────────────────────────── */
   .lop-hostname-link {
     color: #58a6ff;
     text-decoration: none;
@@ -71,91 +70,69 @@
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   }
 
-  /* ── Compliance badges ──────────────────────────────────────────────── */
-  .lop-patch-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: .3rem;
-    font-size: .72rem;
+  /* ── Environment pills ──────────────────────────────────────────────── */
+  .lop-env-pill {
+    display: inline-block;
+    font-size: .68rem;
     font-weight: 600;
-    padding: .2rem .55rem;
-    border-radius: 12px;
-    border: 1px solid;
-    white-space: nowrap;
-  }
-  .lop-compliance-compliant {
-    background: rgba(63,185,80,.12);
-    color: #3fb950;
-    border-color: rgba(63,185,80,.35);
-  }
-  .lop-compliance-due-soon {
-    background: rgba(210,153,34,.12);
-    color: #d4a017;
-    border-color: rgba(210,153,34,.35);
-  }
-  .lop-compliance-overdue {
-    background: rgba(248,81,73,.12);
-    color: #f85149;
-    border-color: rgba(248,81,73,.35);
-  }
-  .lop-patch-unknown {
-    background: rgba(139,148,158,.1);
-    color: #8b949e;
-    border-color: rgba(139,148,158,.3);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .15rem .45rem;
+    border-radius: 4px;
   }
 
-  /* ── Updates badge ──────────────────────────────────────────────────── */
-  .lop-updates-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: .3rem;
-    font-size: .72rem;
-    font-weight: 600;
-    padding: .15rem .5rem;
+  /* ── YES / NO badges ────────────────────────────────────────────────── */
+  .lop-yes-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
     border-radius: 12px;
-    background: rgba(210,153,34,.12);
-    color: #d4a017;
+    background: rgba(210,153,34,.15); color: #d4a017;
     border: 1px solid rgba(210,153,34,.35);
   }
+  .lop-no-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .18rem .55rem;
+    border-radius: 12px;
+    background: rgba(35,134,54,.1); color: #3fb950;
+    border: 1px solid rgba(35,134,54,.3);
+  }
 
-  /* ── Sort links ─────────────────────────────────────────────────────── */
-  .lop-sort-link { color: inherit; text-decoration: none; }
-  .lop-sort-link:hover { color: var(--lop-text); }
-  .lop-sort-active { color: #3fb950 !important; }
+  /* ── Compliance badges ──────────────────────────────────────────────── */
+  .lop-patch-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .73rem; font-weight: 600; padding: .2rem .6rem;
+    border-radius: 20px; white-space: nowrap; border: 1px solid;
+  }
+  .lop-compliance-compliant { background: rgba(35,134,54,.15); color: #3fb950; border-color: rgba(35,134,54,.35); }
+  .lop-compliance-due-soon  { background: rgba(210,153,34,.15); color: #d4a017; border-color: rgba(210,153,34,.35); }
+  .lop-compliance-overdue   { background: rgba(248,81,73,.15);  color: #f85149; border-color: rgba(248,81,73,.35); }
+  .lop-patch-unknown        { background: rgba(139,148,158,.1); color: #8b949e; border-color: rgba(139,148,158,.3); }
 
   /* ── Filter bar ─────────────────────────────────────────────────────── */
-  .lop-filter-bar { flex-wrap: wrap; gap: .75rem; }
+  .lop-filter-bar { flex-wrap: wrap; gap: .5rem; }
   .lop-filter-bar .form-control,
   .lop-filter-bar .form-select { color: var(--lop-text) !important; }
   .lop-filter-bar .form-control::placeholder { color: var(--lop-muted); }
+  #search-spinner { display: none; }
 
   /* ── Pagination ─────────────────────────────────────────────────────── */
   .lop-pagination .page-link {
-    background: var(--lop-surface);
-    border-color: var(--lop-border);
-    color: var(--lop-muted);
-    font-size: .82rem;
-    padding: .3rem .65rem;
+    background: var(--lop-surface); border-color: var(--lop-border);
+    color: var(--lop-muted); font-size: .82rem; padding: .3rem .65rem;
   }
   .lop-pagination .page-link:hover { background: rgba(255,255,255,.06); color: var(--lop-text); }
   .lop-pagination .page-item.active .page-link {
-    background: rgba(35,134,54,.2);
-    border-color: #238636;
-    color: #3fb950;
+    background: rgba(35,134,54,.2); border-color: #238636; color: #3fb950;
   }
   .lop-pagination .page-item.disabled .page-link { opacity: .4; }
 
   /* ── Empty state ────────────────────────────────────────────────────── */
-  .lop-empty-state {
-    padding: 4rem 2rem;
-    text-align: center;
-    color: var(--lop-muted);
-  }
+  .lop-empty-state { padding: 4rem 2rem; text-align: center; color: var(--lop-muted); }
   .lop-empty-state i { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .35; }
   .lop-empty-state h6 { color: var(--lop-text); margin-bottom: .4rem; }
 
-  /* ── NA text ────────────────────────────────────────────────────────── */
-  .lop-na { color: var(--lop-muted); font-size: .78rem; }
+  .lop-mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+  .lop-na   { color: var(--lop-muted); font-size: .78rem; }
 </style>
 {% endblock %}
 
@@ -171,56 +148,83 @@
 
 {% block content %}
 
-{# ── Shorthand aliases ──────────────────────────────────────────────────── #}
+{# ── Aliases ────────────────────────────────────────────────────────────── #}
 {% set f  = servers.filters %}
 {% set sv = servers %}
 
-{# ── Sort-link macro ────────────────────────────────────────────────────── #}
+{# ── Sort-link macro ─────────────────────────────────────────────────────── #}
 {% macro sort_link(col, label) %}
   {% set next_order = 'desc' if f.sort == col and f.order == 'asc' else 'asc' %}
-  <a href="{{ url_for('packages.index', q=f.search, sort=col, order=next_order, page=1, per_page=per_page) }}"
-     class="lop-sort-link {% if f.sort == col %}lop-sort-active{% endif %}">
+  <a href="{{ url_for('packages.index', q=f.search, env_id=f.env_id, location_id=f.location_id,
+                       sort=col, order=next_order, page=1, per_page=per_page) }}"
+     class="lop-sort-link {{ 'active' if f.sort == col }}">
     {{ label }}
     {% if f.sort == col %}
-      <i class="bi bi-caret-{{ 'up' if f.order == 'asc' else 'down' }}-fill ms-1" style="font-size:.65rem;"></i>
+      <i class="bi bi-arrow-{{ 'up' if f.order == 'asc' else 'down' }} lop-sort-icon"></i>
+    {% else %}
+      <i class="bi bi-arrow-down-up lop-sort-icon"></i>
     {% endif %}
   </a>
 {% endmacro %}
 
 <div class="container-fluid p-4">
 
-  {# ── Page header ────────────────────────────────────────────────────── #}
+  {# ── Page header ─────────────────────────────────────────────────────── #}
   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
     <div>
       <h4 class="mb-0 fw-bold">
-        <i class="bi bi-box me-2 text-info"></i>Packages
+        <i class="bi bi-box-seam me-2 text-info"></i>Packages
       </h4>
-      <small class="text-secondary">Fleet package summary — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
+      <small class="text-secondary">Fleet package &amp; patch management — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
     </div>
+    <a href="{{ url_for('settings.index') }}#patch-compliance"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-sliders me-1"></i>Compliance Settings
+    </a>
   </div>
 
-  {# ── Fleet summary stat cards ────────────────────────────────────────── #}
+  {# ── Stat cards ──────────────────────────────────────────────────────── #}
   <div class="row g-3 mb-4">
 
-    <div class="col-6 col-sm-6">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-primary"><i class="bi bi-server"></i></div>
         <div class="lop-stat-card-label">Servers Managed</div>
-        <div class="lop-stat-card-value">{{ fleet.servers_managed | int }}</div>
+        <div class="lop-stat-card-value">{{ fleet.servers_managed }}</div>
       </div>
     </div>
 
-    <div class="col-6 col-sm-6">
+    <div class="col-6 col-sm-3">
       <div class="lop-stat-card">
         <div class="lop-stat-card-icon text-warning"><i class="bi bi-box-arrow-in-down"></i></div>
-        <div class="lop-stat-card-label">Available Updates</div>
-        <div class="lop-stat-card-value {% if fleet.available_updates > 0 %}text-warning{% endif %}">
-          {{ "{:,}".format(fleet.available_updates) }}
+        <div class="lop-stat-card-label">Servers With Updates</div>
+        <div class="lop-stat-card-value {% if fleet.servers_with_updates > 0 %}text-warning{% endif %}">
+          {{ fleet.servers_with_updates }}
         </div>
       </div>
     </div>
 
-  </div>{# /row stat cards #}
+    <div class="col-6 col-sm-3">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-success"><i class="bi bi-check-circle"></i></div>
+        <div class="lop-stat-card-label">Compliant Servers</div>
+        <div class="lop-stat-card-value {% if fleet.compliant_servers > 0 %}text-success{% endif %}">
+          {{ fleet.compliant_servers }}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-3">
+      <div class="lop-stat-card">
+        <div class="lop-stat-card-icon text-danger"><i class="bi bi-x-circle"></i></div>
+        <div class="lop-stat-card-label">Overdue Servers</div>
+        <div class="lop-stat-card-value {% if fleet.overdue_servers > 0 %}text-danger{% endif %}">
+          {{ fleet.overdue_servers }}
+        </div>
+      </div>
+    </div>
+
+  </div>
 
   {# ── Filter bar ──────────────────────────────────────────────────────── #}
   <div class="card border-0 mb-3">
@@ -232,29 +236,54 @@
         <input type="hidden" name="order" value="{{ f.order }}">
         <input type="hidden" name="page"  value="1">
 
-        {# Hostname search #}
-        <div class="flex-grow-1" style="min-width:200px;max-width:340px;">
+        {# Search #}
+        <div class="flex-grow-1" style="min-width:200px;max-width:320px;">
           <label class="form-label text-secondary small mb-1">Search</label>
           <div class="input-group input-group-sm">
             <span class="input-group-text bg-transparent border-secondary">
               <i class="bi bi-search text-secondary" id="search-icon"></i>
-              <span class="spinner-border spinner-border-sm text-secondary" id="search-spinner"
-                    role="status" aria-hidden="true" style="display:none;"></span>
+              <span class="spinner-border spinner-border-sm text-secondary" id="search-spinner" role="status" aria-hidden="true"></span>
             </span>
             <input id="search-input" type="text" name="q"
                    class="form-control form-control-sm bg-transparent border-secondary text-light"
-                   placeholder="Hostname…" value="{{ f.search }}" autocomplete="off">
+                   placeholder="Hostname, FQDN or IP…" value="{{ f.search }}" autocomplete="off">
             {% if f.search %}
-              <a href="{{ url_for('packages.index', sort=f.sort, order=f.order) }}"
-                 class="btn btn-sm btn-outline-secondary" title="Clear search">
+              <a href="{{ url_for('packages.index', env_id=f.env_id, location_id=f.location_id, sort=f.sort, order=f.order) }}"
+                 class="btn btn-sm btn-outline-secondary" title="Clear">
                 <i class="bi bi-x"></i>
               </a>
             {% endif %}
           </div>
         </div>
 
+        {# Environment #}
+        <div style="min-width:150px;">
+          <label class="form-label text-secondary small mb-1">Environment</label>
+          <select name="env_id"
+                  class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            <option value="">All environments</option>
+            {% for env in sv.environments %}
+              <option value="{{ env.id }}" {{ 'selected' if f.env_id == env.id }}>{{ env.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Location #}
+        <div style="min-width:140px;">
+          <label class="form-label text-secondary small mb-1">Location</label>
+          <select name="location_id"
+                  class="form-select form-select-sm bg-transparent border-secondary text-light"
+                  onchange="this.form.submit()">
+            <option value="">All locations</option>
+            {% for loc in sv.locations %}
+              <option value="{{ loc.id }}" {{ 'selected' if f.location_id == loc.id }}>{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         {# Rows per page #}
-        <div style="min-width:120px;">
+        <div style="min-width:110px;">
           <label class="form-label text-secondary small mb-1">Rows per page</label>
           <select name="per_page"
                   class="form-select form-select-sm bg-transparent border-secondary text-light"
@@ -265,30 +294,57 @@
           </select>
         </div>
 
-        <button type="submit" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-funnel me-1"></i>Apply
-        </button>
+        <div class="d-flex gap-2 align-self-end">
+          <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+          {% if f.search or f.env_id or f.location_id %}
+            <a href="{{ url_for('packages.index', sort=f.sort, order=f.order) }}"
+               class="btn btn-sm btn-outline-secondary">Reset</a>
+          {% endif %}
+        </div>
+
       </form>
     </div>
   </div>
 
-  {# ── Server table ─────────────────────────────────────────────────────── #}
+  {# ── Fleet table ─────────────────────────────────────────────────────── #}
   <div class="card border-0">
+
+    {# Active filter pills #}
+    {% if f.search or f.env_id or f.location_id %}
+    <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+      <small class="text-secondary me-1">Filters:</small>
+      {% if f.search %}
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ f.search }}</span>
+      {% endif %}
+      {% for env in sv.environments %}{% if env.id == f.env_id %}
+        <span class="badge bg-info-subtle text-info border border-info-subtle">{{ env.name }}</span>
+      {% endif %}{% endfor %}
+      {% for loc in sv.locations %}{% if loc.id == f.location_id %}
+        <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{{ loc.name }}</span>
+      {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+
     <div class="table-responsive">
       <table class="table lop-table mb-0">
         <thead>
           <tr>
-            <th>{{ sort_link('hostname', 'Hostname') }}</th>
-            <th>{{ sort_link('updates', 'Updates Available') }}</th>
-            <th>{{ sort_link('last_inventory', 'Last Inventory') }}</th>
+            <th>{{ sort_link('hostname',         'Hostname') }}</th>
+            <th>{{ sort_link('environment',      'Environment') }}</th>
+            <th>{{ sort_link('location',         'Location') }}</th>
+            <th>{{ sort_link('operating_system', 'OS') }}</th>
+            <th>{{ sort_link('kernel_version',   'Running Kernel') }}</th>
+            <th>Updates Available</th>
+            <th>Compliance</th>
+            <th>{{ sort_link('last_patch_date',  'Last Patched') }}</th>
           </tr>
         </thead>
         <tbody>
           {% if sv.rows %}
-            {% for srv, p, pkg_count in sv.rows %}
+            {% for srv, p in sv.rows %}
             <tr>
 
-              {# Hostname + FQDN → Inventory > Packages tab #}
+              {# Hostname + FQDN #}
               <td>
                 <a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=packages"
                    class="lop-hostname-link">
@@ -299,33 +355,96 @@
                 {% endif %}
               </td>
 
-              {# Updates Available count #}
+              {# Environment #}
+              <td>
+                {% if srv.environment %}
+                  <span class="lop-env-pill
+                    {% if srv.environment.color == 'danger'  %} bg-danger-subtle    text-danger
+                    {% elif srv.environment.color == 'warning'%} bg-warning-subtle   text-warning
+                    {% elif srv.environment.color == 'info'  %} bg-info-subtle      text-info
+                    {% elif srv.environment.color == 'success'%} bg-success-subtle   text-success
+                    {% elif srv.environment.color == 'primary'%} bg-primary-subtle   text-primary
+                    {% else %}                                    bg-secondary-subtle text-secondary
+                    {% endif %}">{{ srv.environment.label }}</span>
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
+
+              {# Location #}
+              <td>
+                {% if srv.location %}
+                  <span class="text-secondary" style="font-size:.82rem;">
+                    <i class="bi bi-building me-1"></i>{{ srv.location.name }}
+                  </span>
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
+
+              {# OS #}
+              <td style="font-size:.82rem;">
+                {% if srv.operating_system %}
+                  {{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary"> {{ srv.os_version }}</span>{% endif %}
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
+
+              {# Running Kernel #}
+              <td>
+                {% if srv.kernel_version %}
+                  <span class="lop-mono text-secondary" style="font-size:.75rem;">{{ srv.kernel_version }}</span>
+                {% else %}
+                  <span class="lop-na">—</span>
+                {% endif %}
+              </td>
+
+              {# Updates Available — YES / NO only #}
               <td>
                 {% if p and p.pending_updates is not none %}
                   {% if p.pending_updates > 0 %}
-                    <span class="lop-updates-badge">
-                      <i class="bi bi-box-arrow-in-down"></i>{{ p.pending_updates }}
-                    </span>
+                    <span class="lop-yes-badge"><i class="bi bi-exclamation-circle-fill"></i>YES</span>
                   {% else %}
-                    <span class="text-success" style="font-size:.78rem;">
-                      <i class="bi bi-check2"></i> 0
-                    </span>
+                    <span class="lop-no-badge"><i class="bi bi-check2-circle"></i>NO</span>
                   {% endif %}
                 {% else %}
                   <span class="lop-na">—</span>
                 {% endif %}
               </td>
 
-              {# Last Inventory #}
+              {# Compliance #}
               <td>
-                {% if srv.last_ansible_sync %}
-                  <span class="text-secondary" style="font-size:.82rem;"
-                        data-utc="{{ srv.last_ansible_sync.isoformat() }}"
-                        title="{{ srv.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
-                    {{ srv.last_ansible_sync.strftime('%Y-%m-%d') }}
+                {% set cs = p.compliance_status if p else 'unknown' %}
+                {% if cs == 'compliant' %}
+                  <span class="lop-patch-badge lop-compliance-compliant">
+                    <i class="bi bi-check-circle-fill"></i>Compliant
+                  </span>
+                {% elif cs == 'due_soon' %}
+                  <span class="lop-patch-badge lop-compliance-due-soon">
+                    <i class="bi bi-exclamation-circle-fill"></i>Due Soon
+                  </span>
+                {% elif cs == 'overdue' %}
+                  <span class="lop-patch-badge lop-compliance-overdue">
+                    <i class="bi bi-x-circle-fill"></i>Overdue
                   </span>
                 {% else %}
-                  <span class="lop-na">Never</span>
+                  <span class="lop-patch-badge lop-patch-unknown">
+                    <i class="bi bi-question-circle-fill"></i>Unknown
+                  </span>
+                {% endif %}
+              </td>
+
+              {# Last Patched #}
+              <td>
+                {% if p and p.last_patch_date %}
+                  <span class="text-secondary" style="font-size:.82rem;"
+                        data-utc="{{ p.last_patch_date.isoformat() }}"
+                        title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
+                    {{ p.last_patch_date.strftime('%Y-%m-%d') }}
+                  </span>
+                {% else %}
+                  <span class="lop-na">—</span>
                 {% endif %}
               </td>
 
@@ -333,14 +452,14 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="3">
+              <td colspan="8">
                 <div class="lop-empty-state">
                   <i class="bi bi-box-seam"></i>
-                  {% if f.search %}
-                    <h6>No servers match your search</h6>
-                    <p class="mb-3 small">Try a different hostname.</p>
+                  {% if f.search or f.env_id or f.location_id %}
+                    <h6>No servers match your filters</h6>
+                    <p class="mb-3 small">Try adjusting the search or filter criteria.</p>
                     <a href="{{ url_for('packages.index') }}"
-                       class="btn btn-sm btn-outline-secondary">Clear search</a>
+                       class="btn btn-sm btn-outline-secondary">Clear all filters</a>
                   {% else %}
                     <h6>No servers found</h6>
                     <p class="mb-3 small">Add servers in Inventory and they will appear here.</p>
@@ -357,60 +476,47 @@
       </table>
     </div>
 
-    {# ── Pagination footer ──────────────────────────────────────────────── #}
-    {% if sv.total_pages > 1 or sv.total > 0 %}
+    {# ── Pagination footer ────────────────────────────────────────────── #}
+    {% if sv.total > 0 %}
     <div class="card-footer border-0 d-flex align-items-center justify-content-between flex-wrap gap-2 py-2"
-         style="background:transparent;border-top:1px solid var(--lop-border) !important;">
-
+         style="border-top:1px solid var(--lop-border) !important;">
       <small class="text-secondary">
-        {% if sv.total == 0 %}
-          No servers
-        {% else %}
-          {% set start = (sv.page - 1) * sv.per_page + 1 %}
-          {% set end   = [sv.page * sv.per_page, sv.total] | min %}
-          Showing {{ start }}–{{ end }} of {{ sv.total }} server{{ 's' if sv.total != 1 else '' }}
-        {% endif %}
+        {% set start = (sv.page - 1) * sv.per_page + 1 %}
+        {% set end   = [sv.page * sv.per_page, sv.total] | min %}
+        Showing {{ start }}–{{ end }} of {{ sv.total }} server{{ 's' if sv.total != 1 else '' }}
       </small>
-
       {% if sv.total_pages > 1 %}
       <nav aria-label="Packages pagination">
         <ul class="pagination pagination-sm mb-0 lop-pagination">
-          <li class="page-item {% if sv.page == 1 %}disabled{% endif %}">
+          <li class="page-item {{ 'disabled' if sv.page <= 1 }}">
             <a class="page-link"
-               href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=sv.page-1, per_page=sv.per_page) }}">
+               href="{{ url_for('packages.index', q=f.search, env_id=f.env_id, location_id=f.location_id, sort=f.sort, order=f.order, per_page=sv.per_page, page=sv.page-1) if sv.page > 1 else '#' }}">
               <i class="bi bi-chevron-left"></i>
             </a>
           </li>
           {% for pg in range(1, sv.total_pages + 1) %}
             {% if pg == 1 or pg == sv.total_pages or (pg >= sv.page - 2 and pg <= sv.page + 2) %}
-              <li class="page-item {% if pg == sv.page %}active{% endif %}">
+              <li class="page-item {{ 'active' if pg == sv.page }}">
                 <a class="page-link"
-                   href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=pg, per_page=sv.per_page) }}">
+                   href="{{ url_for('packages.index', q=f.search, env_id=f.env_id, location_id=f.location_id, sort=f.sort, order=f.order, per_page=sv.per_page, page=pg) }}">
                   {{ pg }}
                 </a>
               </li>
             {% endif %}
           {% endfor %}
-          <li class="page-item {% if sv.page == sv.total_pages %}disabled{% endif %}">
+          <li class="page-item {{ 'disabled' if sv.page >= sv.total_pages }}">
             <a class="page-link"
-               href="{{ url_for('packages.index', q=f.search, sort=f.sort, order=f.order, page=sv.page+1, per_page=sv.per_page) }}">
+               href="{{ url_for('packages.index', q=f.search, env_id=f.env_id, location_id=f.location_id, sort=f.sort, order=f.order, per_page=sv.per_page, page=sv.page+1) if sv.page < sv.total_pages else '#' }}">
               <i class="bi bi-chevron-right"></i>
             </a>
           </li>
         </ul>
       </nav>
       {% endif %}
-
     </div>
     {% endif %}
 
   </div>{# /card #}
-
-  <p class="text-secondary mt-3" style="font-size:.75rem;">
-    <i class="bi bi-info-circle me-1"></i>
-    Security and kernel update counts require Ansible integration. Click a hostname to view package details.
-  </p>
-
 </div>
 {% endblock %}
 
@@ -425,12 +531,10 @@
   var timer;
   if (si) {
     si.addEventListener("input", function () {
-      ico.style.display = "none";
-      spn.style.display = "";
+      ico.style.display = "none"; spn.style.display = "";
       clearTimeout(timer);
       timer = setTimeout(function () {
-        spn.style.display = "none";
-        ico.style.display = "";
+        spn.style.display = "none"; ico.style.display = "";
         frm.submit();
       }, 400);
     });

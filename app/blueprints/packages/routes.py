@@ -1,4 +1,4 @@
-"""Packages blueprint routes."""
+"""Packages blueprint routes — Fleet Package & Patch Management."""
 import logging
 
 from flask import current_app, render_template, request
@@ -8,9 +8,9 @@ from .queries import (
     DEFAULT_ORDER,
     DEFAULT_SORT,
     VALID_SORTS,
-    PackagesFilters,
+    FleetFilters,
+    get_fleet_page,
     get_fleet_summary,
-    get_servers_package_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ PER_PAGE_OPTIONS = [10, 20, 25, 50, 100]
 
 @packages_bp.route("/packages", methods=["GET"])
 def index():
-    """Fleet package management dashboard."""
+    """Fleet Package & Patch Management dashboard."""
     per_page_raw = request.args.get("per_page", type=int)
     per_page = (
         per_page_raw
@@ -29,25 +29,33 @@ def index():
         else current_app.config.get("ITEMS_PER_PAGE", 25)
     )
 
-    page  = max(1, request.args.get("page",  1, type=int))
-    q     = request.args.get("q",     "").strip()
-    sort  = request.args.get("sort",  DEFAULT_SORT)
-    order = request.args.get("order", DEFAULT_ORDER)
+    page         = max(1, request.args.get("page",        1,         type=int))
+    q            = request.args.get("q",           "").strip()
+    env_id       = request.args.get("env_id",      type=int)
+    location_id  = request.args.get("location_id", type=int)
+    sort         = request.args.get("sort",  DEFAULT_SORT)
+    order        = request.args.get("order", DEFAULT_ORDER)
 
-    if sort  not in VALID_SORTS:    sort  = DEFAULT_SORT
+    if sort  not in VALID_SORTS:     sort  = DEFAULT_SORT
     if order not in ("asc", "desc"): order = DEFAULT_ORDER
 
-    filters = PackagesFilters(search=q, sort=sort, order=order)
+    filters = FleetFilters(
+        search      = q,
+        env_id      = env_id,
+        location_id = location_id,
+        sort        = sort,
+        order       = order,
+    )
+
     fleet   = get_fleet_summary()
-    servers = get_servers_package_summary(filters, page=page, per_page=per_page)
+    servers = get_fleet_page(filters, page=page, per_page=per_page)
 
     return render_template(
         "packages/index.html",
-        fleet=fleet,
-        servers=servers,
-        filters=filters,
-        per_page=per_page,
-        per_page_options=PER_PAGE_OPTIONS,
-        app_name=current_app.config["APP_NAME"],
-        app_version=current_app.config["APP_VERSION"],
+        fleet            = fleet,
+        servers          = servers,
+        per_page         = per_page,
+        per_page_options = PER_PAGE_OPTIONS,
+        app_name         = current_app.config["APP_NAME"],
+        app_version      = current_app.config["APP_VERSION"],
     )

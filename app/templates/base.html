@@ -143,19 +143,6 @@
 
         <li class="nav-item">
           <a
-            class="nav-link {% if request.endpoint and request.endpoint.startswith('patching.') %}active{% endif %}"
-            href="{{ url_for('patching.index') }}"
-            data-bs-toggle="tooltip"
-            data-bs-placement="right"
-            title="Patch Compliance"
-          >
-            <i class="bi bi-shield-check"></i>
-            <span>Patch Compliance</span>
-          </a>
-        </li>
-
-        <li class="nav-item">
-          <a
             class="nav-link {% if request.endpoint and request.endpoint.startswith('search.') %}active{% endif %}"
             href="{{ url_for('search.index') }}"
             data-bs-toggle="tooltip"
