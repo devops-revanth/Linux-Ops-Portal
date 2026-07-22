@@ -386,7 +386,10 @@
         {% if server.last_ansible_sync %}
         <span class="lop-sync-badge align-self-center">
           <i class="bi bi-arrow-repeat me-1"></i>
-          Synced {{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+          Synced <span data-utc="{{ server.last_ansible_sync.isoformat() }}"
+                       title="{{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M UTC') }}">
+            {{ server.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}
+          </span>
         </span>
         {% endif %}
         <span data-bs-toggle="tooltip" title="Edit server details">
@@ -765,7 +768,7 @@
                 <th>Update Type</th>
                 {% endif %}
                 <th>Repository</th>
-                <th>{{ 'Install Date' if pkg_data.tab == 'recently-installed' else 'Collected' }}</th>
+                <th>{{ 'Install Date' if pkg_data.tab == 'recently-installed' else 'Update Detected' }}</th>
               </tr>
             </thead>
             <tbody>

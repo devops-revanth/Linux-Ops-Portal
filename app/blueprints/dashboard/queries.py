@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from ...extensions import db
 from ...models.environment import Environment
@@ -39,14 +39,15 @@ class LocationCount:
 
 @dataclass
 class DashboardStats:
-    total_servers: int = 0
-    active_servers: int = 0
-    pending_patches: int = 0
-    patched_servers: int = 0
-    failed_patches: int = 0
-    last_ansible_sync: datetime | None = None
-    environments: list[EnvironmentCount] = field(default_factory=list)
-    locations: list[LocationCount] = field(default_factory=list)
+    total_servers:        int = 0
+    active_servers:       int = 0
+    servers_with_updates: int = 0   # pending_updates > 0
+    compliant_servers:    int = 0   # pending_updates == 0
+    due_soon_servers:     int = 0   # updates pending, patched within window
+    overdue_servers:      int = 0   # updates pending, patched beyond window
+    last_ansible_sync:    datetime | None = None
+    environments:         list[EnvironmentCount] = field(default_factory=list)
+    locations:            list[LocationCount]     = field(default_factory=list)
 
 
 def get_dashboard_stats() -> DashboardStats:
@@ -68,19 +69,46 @@ def get_dashboard_stats() -> DashboardStats:
             or 0
         )
 
-        # ── Patching summary ─────────────────────────────────────────
-        patch_rows = (
-            db.session.query(Patching.patch_status, func.count(Patching.id))
-            .group_by(Patching.patch_status)
-            .all()
+        # ── Compliance-based patch counts ─────────────────────────────
+        try:
+            from ...models.compliance_config import ComplianceConfig
+            cfg = ComplianceConfig.get()
+            window_days = cfg.compliance_window_days
+        except Exception:
+            window_days = 90
+
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=window_days)
+
+        stats.servers_with_updates = (
+            db.session.query(func.count(Patching.id))
+            .filter(Patching.pending_updates > 0)
+            .scalar() or 0
         )
-        for status, count in patch_rows:
-            if status == "pending":
-                stats.pending_patches = count
-            elif status == "up-to-date":
-                stats.patched_servers = count
-            elif status == "failed":
-                stats.failed_patches = count
+        stats.compliant_servers = (
+            db.session.query(func.count(Patching.id))
+            .filter(Patching.pending_updates == 0)
+            .scalar() or 0
+        )
+        stats.due_soon_servers = (
+            db.session.query(func.count(Patching.id))
+            .filter(
+                Patching.pending_updates > 0,
+                Patching.last_patch_date >= cutoff,
+            )
+            .scalar() or 0
+        )
+        stats.overdue_servers = (
+            db.session.query(func.count(Patching.id))
+            .filter(
+                Patching.pending_updates > 0,
+                or_(
+                    Patching.last_patch_date < cutoff,
+                    Patching.last_patch_date == None,  # noqa: E711
+                ),
+            )
+            .scalar() or 0
+        )
 
         # ── Last Ansible sync across all servers ─────────────────────
         stats.last_ansible_sync = (

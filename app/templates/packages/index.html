@@ -333,7 +333,7 @@
             <th>{{ sort_link('environment',      'Environment') }}</th>
             <th>{{ sort_link('location',         'Location') }}</th>
             <th>{{ sort_link('operating_system', 'OS') }}</th>
-            <th>{{ sort_link('kernel_version',   'Running Kernel') }}</th>
+            <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
             <th>Updates Available</th>
             <th>Compliance</th>
             <th>{{ sort_link('last_patch_date',  'Last Patched') }}</th>
@@ -440,6 +440,7 @@
                 {% if p and p.last_patch_date %}
                   <span class="text-secondary" style="font-size:.82rem;"
                         data-utc="{{ p.last_patch_date.isoformat() }}"
+                        data-relative="true"
                         title="{{ p.last_patch_date.strftime('%Y-%m-%d %H:%M UTC') }}">
                     {{ p.last_patch_date.strftime('%Y-%m-%d') }}
                   </span>

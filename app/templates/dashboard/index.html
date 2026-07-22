@@ -27,7 +27,7 @@
       {% if stats.last_ansible_sync %}
         <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-2">
           <i class="bi bi-arrow-repeat me-1"></i>
-          Last sync: {{ stats.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }} UTC
+          Last sync: <span data-utc="{{ stats.last_ansible_sync.isoformat() }}">{{ stats.last_ansible_sync.strftime('%Y-%m-%d %H:%M') }}</span>
         </span>
       {% else %}
         <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-2">
@@ -58,24 +58,20 @@
       </div>
     </div>
 
-    {# Pending Patches #}
+    {# Servers With Updates #}
     <div class="col-sm-6 col-xl-3">
-      <div class="card lop-stat-card border-0 h-100 {% if stats.pending_patches > 0 %}lop-card-alert{% endif %}">
+      <div class="card lop-stat-card border-0 h-100 {% if stats.servers_with_updates > 0 %}lop-card-alert{% endif %}">
         <div class="card-body d-flex align-items-center gap-3">
-          <div class="lop-icon-wrap {% if stats.pending_patches > 0 %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}">
-            <i class="bi bi-shield-{% if stats.pending_patches > 0 %}exclamation{% else %}check{% endif %} fs-3"></i>
+          <div class="lop-icon-wrap {% if stats.servers_with_updates > 0 %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %}">
+            <i class="bi bi-shield-{% if stats.servers_with_updates > 0 %}exclamation{% else %}check{% endif %} fs-3"></i>
           </div>
           <div>
-            <div class="text-secondary small fw-medium">Pending Patches</div>
-            <div class="lop-stat-number {% if stats.pending_patches > 0 %}text-danger{% endif %}">
-              {{ stats.pending_patches }}
+            <div class="text-secondary small fw-medium">Servers With Updates</div>
+            <div class="lop-stat-number {% if stats.servers_with_updates > 0 %}text-danger{% endif %}">
+              {{ stats.servers_with_updates }}
             </div>
             <div class="text-secondary" style="font-size: .75rem;">
-              {% if stats.failed_patches > 0 %}
-                <span class="text-warning">{{ stats.failed_patches }} failed</span>
-              {% else %}
-                {{ stats.patched_servers }} up-to-date
-              {% endif %}
+              {{ stats.compliant_servers }} compliant
             </div>
           </div>
         </div>
@@ -92,11 +88,13 @@
           <div>
             <div class="text-secondary small fw-medium">Last Inventory Sync</div>
             {% if stats.last_ansible_sync %}
-              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;">
+              <div class="lop-stat-number" style="font-size: 1rem; line-height: 1.6;"
+                   data-utc="{{ stats.last_ansible_sync.isoformat() }}">
                 {{ stats.last_ansible_sync.strftime('%b %d, %Y') }}
               </div>
               <div class="text-secondary" style="font-size: .75rem;">
-                {{ stats.last_ansible_sync.strftime('%H:%M UTC') }}
+                <span data-utc="{{ stats.last_ansible_sync.isoformat() }}"
+                      style="display:none;"></span>{{ stats.last_ansible_sync.strftime('%H:%M') }} local
               </div>
             {% else %}
               <div class="lop-stat-number text-secondary" style="font-size: 1.1rem;">
@@ -233,59 +231,59 @@
         <div class="card-body">
           {% set total = stats.total_servers if stats.total_servers > 0 else 1 %}
 
-          {# Up-to-date #}
+          {# Compliant #}
           <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <span class="d-flex align-items-center gap-2">
                 <span class="lop-dot bg-success"></span>
-                <span class="small">Up-to-date</span>
+                <span class="small">Compliant</span>
               </span>
-              <span class="fw-semibold small">{{ stats.patched_servers }}</span>
+              <span class="fw-semibold small">{{ stats.compliant_servers }}</span>
             </div>
             <div class="progress lop-progress">
               <div
                 class="progress-bar bg-success"
-                style="width: {{ (stats.patched_servers / total * 100) | round(1) }}%"
+                style="width: {{ (stats.compliant_servers / total * 100) | round(1) }}%"
               ></div>
             </div>
           </div>
 
-          {# Pending #}
+          {# Due Soon #}
           <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <span class="d-flex align-items-center gap-2">
                 <span class="lop-dot bg-warning"></span>
-                <span class="small">Pending</span>
+                <span class="small">Due Soon</span>
               </span>
-              <span class="fw-semibold small">{{ stats.pending_patches }}</span>
+              <span class="fw-semibold small">{{ stats.due_soon_servers }}</span>
             </div>
             <div class="progress lop-progress">
               <div
                 class="progress-bar bg-warning"
-                style="width: {{ (stats.pending_patches / total * 100) | round(1) }}%"
+                style="width: {{ (stats.due_soon_servers / total * 100) | round(1) }}%"
               ></div>
             </div>
           </div>
 
-          {# Failed #}
+          {# Overdue #}
           <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <span class="d-flex align-items-center gap-2">
                 <span class="lop-dot bg-danger"></span>
-                <span class="small">Failed</span>
+                <span class="small">Overdue</span>
               </span>
-              <span class="fw-semibold small">{{ stats.failed_patches }}</span>
+              <span class="fw-semibold small">{{ stats.overdue_servers }}</span>
             </div>
             <div class="progress lop-progress">
               <div
                 class="progress-bar bg-danger"
-                style="width: {{ (stats.failed_patches / total * 100) | round(1) }}%"
+                style="width: {{ (stats.overdue_servers / total * 100) | round(1) }}%"
               ></div>
             </div>
           </div>
 
-          {# Unknown / no patching data #}
-          {% set unknown = stats.total_servers - stats.patched_servers - stats.pending_patches - stats.failed_patches %}
+          {# Unknown — servers with no patching record at all #}
+          {% set unknown = stats.total_servers - stats.compliant_servers - stats.due_soon_servers - stats.overdue_servers %}
           {% if unknown > 0 %}
           <div class="mb-2">
             <div class="d-flex justify-content-between align-items-center mb-1">
@@ -310,7 +308,7 @@
               <span><i class="bi bi-server me-1"></i>{{ stats.total_servers }} total servers</span>
               {% if stats.total_servers > 0 %}
                 <span>
-                  {{ (stats.patched_servers / stats.total_servers * 100) | round(0) | int }}% compliant
+                  {{ (stats.compliant_servers / stats.total_servers * 100) | round(0) | int }}% compliant
                 </span>
               {% endif %}
             </div>
