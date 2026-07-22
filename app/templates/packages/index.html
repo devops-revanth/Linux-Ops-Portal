@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Packages | {{ app_name }}{% endblock %}
+{% block title %}Patching | {{ app_name }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -137,7 +137,7 @@
 <div class="lop-breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item active" aria-current="page">
-      <i class="bi bi-box me-1"></i>Packages
+      <i class="bi bi-box me-1"></i>Patching
     </li>
   </ol>
 </div>
@@ -170,7 +170,7 @@
   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
     <div>
       <h4 class="mb-0 fw-bold">
-        <i class="bi bi-box-seam me-2 text-info"></i>Packages
+        <i class="bi bi-box-seam me-2 text-info"></i>Patching
       </h4>
       <small class="text-secondary">Fleet package &amp; patch management — {{ fleet.servers_managed }} server{{ 's' if fleet.servers_managed != 1 else '' }} managed</small>
     </div>
@@ -486,7 +486,7 @@
         Showing {{ start }}–{{ end }} of {{ sv.total }} server{{ 's' if sv.total != 1 else '' }}
       </small>
       {% if sv.total_pages > 1 %}
-      <nav aria-label="Packages pagination">
+      <nav aria-label="Patching pagination">
         <ul class="pagination pagination-sm mb-0 lop-pagination">
           <li class="page-item {{ 'disabled' if sv.page <= 1 }}">
             <a class="page-link"
