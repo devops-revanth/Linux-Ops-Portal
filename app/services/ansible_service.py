@@ -13,6 +13,8 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
+import pwd
 import re
 from typing import Any
 
@@ -100,19 +102,37 @@ class AnsibleService:
                 status=_STATUS_DISCONNECTED,
             )
 
+        # Resolve the known_hosts file from the SSH user's home directory,
+        # NOT from the backend service account (lop).  The service account
+        # runs as a no-login system user and has no SSH configuration of its
+        # own; os.path.expanduser("~") and load_system_host_keys() would
+        # both resolve to /opt/lop/.ssh which is wrong.
+        known_hosts = self._known_hosts_path(self.username)
+
         logger.debug(
             "_connect: host=%s port=%s user=%r auth_method=%s timeout=%ss "
             "host_key_checking=%s",
             self.host, self.port, self.username,
             self.auth_method, self.timeout, self.host_key_checking,
         )
+        logger.debug("_connect: known_hosts=%s (exists=%s)", known_hosts, os.path.isfile(known_hosts))
 
         client = paramiko.SSHClient()
         if self.host_key_checking:
-            client.load_system_host_keys()
+            if os.path.isfile(known_hosts):
+                client.load_host_keys(known_hosts)
+                logger.debug("_connect: loaded %s", known_hosts)
+            else:
+                logger.warning(
+                    "_connect: known_hosts not found at %s — strict host key "
+                    "checking is ON but no known_hosts file exists; the "
+                    "connection will be rejected for every host",
+                    known_hosts,
+                )
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
         else:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            logger.debug("_connect: host key checking disabled — AutoAddPolicy")
 
         connect_kwargs: dict[str, Any] = {
             "hostname":       self.host,
@@ -173,17 +193,30 @@ class AnsibleService:
                     status=_STATUS_AUTH_FAILED,
                 )
 
-            # ── Host key mismatch ──────────────────────────────────────────
-            if (
-                "not in known" in msg_lower
-                or "host key" in msg_lower
-                or "changed" in msg_lower
-                or exc_type in ("BadHostKeyException",)
-            ):
+            # ── Host key not present in known_hosts ───────────────────────
+            # paramiko raises SSHException("Server 'X' not found in
+            # known_hosts") when strict checking is on and the host has
+            # never been seen before.
+            if "not found in known_hosts" in msg_lower or "not in known" in msg_lower:
                 raise AnsibleConnectionError(
-                    f"Host Key Mismatch: The host key for {self.host} has "
-                    f"changed or is not in known_hosts. Update known_hosts "
-                    f"or disable host key checking.",
+                    f"Host Key Not Found: {self.host} is not in {known_hosts}. "
+                    f"Add the host key by running the following as the "
+                    f"'{self.username}' user:\n"
+                    f"  ssh-keyscan -H {self.host} >> {known_hosts}\n"
+                    f"Or disable Strict Host Key Checking in LOP settings.",
+                    status=_STATUS_HOST_KEY_MISMATCH,
+                )
+
+            # ── Host key changed (potential MITM) ─────────────────────────
+            # BadHostKeyException: host is in known_hosts but the key does
+            # not match — the host was rebuilt or a MITM is present.
+            if exc_type in ("BadHostKeyException",) or "host key" in msg_lower or "changed" in msg_lower:
+                raise AnsibleConnectionError(
+                    f"Host Key Mismatch: The host key for {self.host} does "
+                    f"not match the entry in {known_hosts}. "
+                    f"If the host was rebuilt, remove the old entry with:\n"
+                    f"  ssh-keygen -R {self.host} -f {known_hosts}\n"
+                    f"Or disable Strict Host Key Checking in LOP settings.",
                     status=_STATUS_HOST_KEY_MISMATCH,
                 )
 
@@ -216,6 +249,30 @@ class AnsibleService:
                 f"Connection Failed ({exc_type}): {exc_msg}",
                 status=_STATUS_DISCONNECTED,
             )
+
+    @staticmethod
+    def _known_hosts_path(username: str) -> str:
+        """
+        Return the known_hosts path for *username*, resolved via the local
+        passwd database.
+
+        The backend service runs as the ``lop`` system account.  SSH
+        operations connect as a completely different user (e.g. ``ansible``).
+        Using os.path.expanduser("~") or paramiko's load_system_host_keys()
+        would resolve to /opt/lop/.ssh — the service account's home — which
+        is wrong.  This helper looks up the SSH user's home directory from
+        /etc/passwd instead.
+
+        If the SSH user does not exist locally (it lives only on the remote
+        control node), the lookup raises KeyError and we fall back to the
+        conventional /home/<username> path, which is correct for the typical
+        Ansible managed-node layout.
+        """
+        try:
+            home = pwd.getpwnam(username).pw_dir
+        except KeyError:
+            home = os.path.join("/home", username)
+        return os.path.join(home, ".ssh", "known_hosts")
 
     @staticmethod
     def _sanitize_key_text(raw: str) -> str:
@@ -357,6 +414,35 @@ class AnsibleService:
             "playbook_dir_ok": False,
             "checks":          [],
         }
+
+        # Structured diagnostic block — visible in the application log at
+        # INFO level so administrators can immediately see what identity and
+        # SSH configuration are being used without having to guess.
+        try:
+            svc_user = pwd.getpwuid(os.getuid()).pw_name
+        except Exception:
+            svc_user = str(os.getuid())
+
+        known_hosts = self._known_hosts_path(self.username)
+        key_summary = "(provided)" if self.ssh_private_key else "(none)"
+
+        logger.info(
+            "Test Connection diagnostic:\n"
+            "  Backend Service User : %s\n"
+            "  SSH Username         : %s\n"
+            "  Control Node         : %s:%s\n"
+            "  Authentication Method: %s\n"
+            "  Private Key          : %s\n"
+            "  Known Hosts          : %s  (exists=%s)\n"
+            "  Strict Host Check    : %s",
+            svc_user,
+            self.username,
+            self.host, self.port,
+            self.auth_method,
+            key_summary,
+            known_hosts, os.path.isfile(known_hosts),
+            "Enabled" if self.host_key_checking else "Disabled",
+        )
 
         client = None
         try:
