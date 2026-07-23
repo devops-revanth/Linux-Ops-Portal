@@ -77,14 +77,40 @@ def create_app(config_name: str | None = None) -> Flask:
         def load_user(user_id: str):  # noqa: ANN202
             return User.query.get(int(user_id))
 
-        # Seed reference data on first run (idempotent).
-        # Wrapped in try/except so flask db upgrade can import the app
-        # before the schema has been applied.
+        # Seed production reference data on first run (locations, environments,
+        # admin user).  Wrapped in try/except so 'flask db upgrade' can import
+        # the app before the schema has been applied.
+        # Demo/sample servers are NEVER seeded here — use 'flask seed-demo'.
         try:
             from .seeder import seed_all  # noqa: E402
             seed_all()
         except Exception as exc:  # noqa: BLE001
             app.logger.debug("Seeder skipped (tables not ready yet): %s", exc)
+
+    # ------------------------------------------------------------------ #
+    # Development-only CLI commands
+    # ------------------------------------------------------------------ #
+    @app.cli.command("seed-demo")
+    def seed_demo_command() -> None:
+        """
+        Load sample/demo servers into the inventory (development only).
+
+        Creates three realistic demo servers with patching data and packages:
+          web-prod-01   RHEL 9.3       Compliant
+          db-prod-01    RHEL 8.10      Due Soon
+          jump-test-01  Rocky Linux 9  Overdue
+
+        This command is idempotent — it skips servers that already exist.
+        It is NEVER run automatically; it must be invoked explicitly:
+
+            flask seed-demo
+
+        Do not run this on a production instance.
+        """
+        with app.app_context():
+            from .seeder import seed_demo
+            seed_demo()
+            print("Demo servers loaded (or already present — no duplicates created).")
 
     # ------------------------------------------------------------------ #
     # Blueprints

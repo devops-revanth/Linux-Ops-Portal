@@ -31,13 +31,40 @@ _ENVIRONMENTS: list[dict] = [
 ]
 
 
-# ── Public entry point ────────────────────────────────────────────────────── #
+# ── Public entry points ───────────────────────────────────────────────────── #
 
 def seed_all() -> None:
-    """Seed all reference data.  Safe to call on every application start."""
+    """
+    Seed production reference data only.  Safe to call on every application
+    start — never creates demo or sample inventory.
+
+    Seeded:
+      • Locations    (USEG, UKDL, DEFR)
+      • Environments (Development, Stage, Demo, Production)
+      • Admin user   (only when no users exist)
+
+    NOT seeded automatically:
+      • Demo servers — call seed_demo() explicitly via 'flask seed-demo'
+    """
     _seed_locations()
     _seed_environments()
     _seed_admin_user()
+
+
+def seed_demo() -> None:
+    """
+    Load sample servers for development/demo purposes.
+
+    Creates three realistic servers:
+      web-prod-01   RHEL 9.3       — Compliant   (0 pending, patched 20 days ago)
+      db-prod-01    RHEL 8.10      — Due Soon    (5 pending, patched 75 days ago)
+      jump-test-01  Rocky Linux 9  — Overdue     (6 pending, patched 120 days ago)
+
+    This function is NEVER called automatically.  To load demo data, run:
+        flask seed-demo
+
+    It is idempotent — skips if any of the demo hostnames already exist.
+    """
     _seed_demo_servers()
 
 
