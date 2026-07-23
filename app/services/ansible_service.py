@@ -119,34 +119,84 @@ class AnsibleService:
 
         client = paramiko.SSHClient()
         if self.host_key_checking:
-            if os.path.isfile(known_hosts):
+            # ── Step 1: read the file ourselves so we get a clear error ───
+            # os.path.isfile() masks PermissionError as "not found".
+            # open() raises PermissionError directly, which lets us give an
+            # actionable message with the exact chmod/setfacl command.
+            raw_data_lines: list[str] = []
+            try:
+                with open(known_hosts, "r") as _f:
+                    for _line in _f:
+                        _s = _line.strip()
+                        if _s and not _s.startswith("#"):
+                            raw_data_lines.append(_s)
+                logger.debug(
+                    "_connect: known_hosts readable — %d data line(s) found",
+                    len(raw_data_lines),
+                )
+            except FileNotFoundError:
+                logger.warning(
+                    "_connect: known_hosts not found at %s — strict host key "
+                    "checking is ON but no known_hosts file exists; every "
+                    "connection attempt will be rejected by RejectPolicy",
+                    known_hosts,
+                )
+            except PermissionError:
+                # Surface this before any SSH attempt so the admin sees the
+                # real cause rather than "Server X not found in known_hosts".
+                raise AnsibleConnectionError(
+                    f"Permission Denied: The LOP service account cannot read "
+                    f"{known_hosts}.\n"
+                    f"Grant read access to the service account with:\n"
+                    f"  sudo setfacl -m u:lop:x {os.path.dirname(known_hosts)}\n"
+                    f"  sudo setfacl -m u:lop:r {known_hosts}\n"
+                    f"Or run: sudo chmod o+r {known_hosts} && "
+                    f"sudo chmod o+x {os.path.dirname(known_hosts)}\n"
+                    f"Or disable Strict Host Key Checking in LOP settings.",
+                    status=_STATUS_DISCONNECTED,
+                )
+
+            # ── Step 2: load into paramiko ────────────────────────────────
+            # Only attempt load if we successfully read at least one line.
+            if raw_data_lines:
                 client.load_host_keys(known_hosts)
-                # Diagnostic: show exactly what paramiko loaded so we can
-                # verify hashed entries are being parsed.  This answers
-                # "why does 'ssh -i' work but LOP says not found?" because
-                # hashed entries appear as '|1|...' keys, not the plain
-                # hostname — that is correct; paramiko resolves them via HMAC
-                # during connect() and we must not second-guess the result.
+
+                # Verify: how many entries did paramiko actually parse?
+                # Hashed entries (ssh-keyscan -H) appear as '|1|...' keys —
+                # that is correct; paramiko resolves them via HMAC inside
+                # connect() and we must NOT do a manual lookup here.
                 loaded_keys = client.get_host_keys()
                 entry_list  = list(loaded_keys.keys())
                 logger.debug(
-                    "_connect: loaded known_hosts\n"
-                    "  path          : %s\n"
-                    "  entries loaded: %d\n"
-                    "  entry keys    : %s\n"
-                    "  target host   : %s",
+                    "_connect: known_hosts loaded\n"
+                    "  path            : %s\n"
+                    "  paramiko version: %s\n"
+                    "  raw data lines  : %d\n"
+                    "  entries loaded  : %d\n"
+                    "  entry keys      : %s\n"
+                    "  target host     : %s",
                     known_hosts,
+                    paramiko.__version__,
+                    len(raw_data_lines),
                     len(entry_list),
                     entry_list if len(entry_list) <= 20 else entry_list[:20] + ["…"],
                     self.host,
                 )
-            else:
-                logger.warning(
-                    "_connect: known_hosts not found at %s — strict host key "
-                    "checking is ON but no known_hosts file exists; the "
-                    "connection will be rejected for every host",
-                    known_hosts,
-                )
+
+                if len(entry_list) == 0:
+                    # All lines were read but nothing parsed — log the
+                    # hostname fields only (first token of each line) so
+                    # the format is visible without exposing key material.
+                    samples = [l.split()[0] for l in raw_data_lines[:5] if l.split()]
+                    logger.warning(
+                        "_connect: known_hosts has %d raw line(s) but 0 "
+                        "entries were loaded by paramiko %s — all lines "
+                        "failed to parse.  Hostname field samples: %s",
+                        len(raw_data_lines),
+                        paramiko.__version__,
+                        samples,
+                    )
+
             client.set_missing_host_key_policy(paramiko.RejectPolicy())
         else:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -414,6 +464,17 @@ class AnsibleService:
         known_hosts = self._known_hosts_path(self.username)
         key_summary = "(provided)" if self.ssh_private_key else "(none)"
 
+        try:
+            import paramiko as _pm
+            pm_version = _pm.__version__
+        except Exception:
+            pm_version = "unknown"
+
+        # os.path.isfile() masks PermissionError as False — use os.access()
+        # to independently check existence vs readability for the diagnostic.
+        kh_exists   = os.path.exists(known_hosts)
+        kh_readable = os.access(known_hosts, os.R_OK)
+
         logger.info(
             "Test Connection diagnostic:\n"
             "  Backend Service User : %s\n"
@@ -421,15 +482,21 @@ class AnsibleService:
             "  Control Node         : %s:%s\n"
             "  Authentication Method: %s\n"
             "  Private Key          : %s\n"
-            "  Known Hosts          : %s  (exists=%s)\n"
-            "  Strict Host Check    : %s",
+            "  Known Hosts          : %s\n"
+            "    exists             : %s\n"
+            "    readable by lop    : %s\n"
+            "  Strict Host Check    : %s\n"
+            "  Paramiko Version     : %s",
             svc_user,
             self.username,
             self.host, self.port,
             self.auth_method,
             key_summary,
-            known_hosts, os.path.isfile(known_hosts),
+            known_hosts,
+            kh_exists,
+            kh_readable,
             "Enabled" if self.host_key_checking else "Disabled",
+            pm_version,
         )
 
         client = None
