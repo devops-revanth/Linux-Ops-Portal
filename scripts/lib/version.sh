@@ -104,6 +104,12 @@ alembic_needs_upgrade() {
 # one revision was actually applied; "false" when already at head.
 MIGRATION_APPLIED=false
 
+# MIGRATION_BACKUP_FILE — set to the absolute path of the pre-migration
+# database backup file by _migrate_pre_backup(); empty when no backup was made.
+# Callers (update.sh abort handler, error messages) read this to tell
+# administrators where to find the recovery point.
+MIGRATION_BACKUP_FILE=""
+
 # run_migrations_verbose
 # Self-contained, idempotent database migration runner for use by both
 # install.sh and update.sh.  Performs these steps in order:
@@ -113,16 +119,18 @@ MIGRATION_APPLIED=false
 #   3. Read the current Alembic revision from the database.
 #   4. Read the codebase head from migration files.
 #   5. Short-circuit with success if already at head (idempotent).
-#   6. Write the pending migration history to the log.
-#   7. Run `flask db upgrade` and capture full output.
-#   8. Classify failures with specific, actionable error messages.
-#   9. Confirm the post-migration revision.
-#  10. Set MIGRATION_APPLIED=true if new revisions were applied.
+#   6. Create a pre-migration database backup (only when migrations are pending).
+#   7. Write the pending migration history to the log.
+#   8. Run `flask db upgrade` and capture full output.
+#   9. Classify failures with specific, actionable error messages.
+#  10. Confirm the post-migration revision.
+#  11. Set MIGRATION_APPLIED=true if new revisions were applied.
 #
 # Returns 0 on success (including already-at-head), non-zero on failure.
 # On failure the caller is responsible for rollback / abort.
 run_migrations_verbose() {
     MIGRATION_APPLIED=false
+    MIGRATION_BACKUP_FILE=""
 
     local flask_bin="$LOP_VENV_DIR/bin/flask"
 
@@ -194,7 +202,12 @@ run_migrations_verbose() {
         log_warn "Cannot determine Alembic revision — attempting upgrade anyway."
     fi
 
-    # ── 6. Write pending migration history to log ─────────────────────────────
+    # ── 6. Pre-migration database backup ─────────────────────────────────────
+    # Only taken when migrations are actually pending (step 5 did not return).
+    # Non-fatal: a backup failure emits a warning but does not block the migration.
+    _migrate_pre_backup "$db_url" "$pre_rev"
+
+    # ── 7. Write pending migration history to log ─────────────────────────────
     log_step "Pending migrations: ${pre_rev} → ${head_rev}"
     {
         printf "\n=== Pending migration history (pre-upgrade) ===\n"
@@ -207,7 +220,7 @@ run_migrations_verbose() {
         printf "=== end pending migrations ===\n\n"
     } >> "$LOG_FILE" 2>/dev/null || true
 
-    # ── 7. Run flask db upgrade ───────────────────────────────────────────────
+    # ── 8. Run flask db upgrade ───────────────────────────────────────────────
     log_step "Applying migrations..."
     local mig_out mig_rc=0
     mig_out=$(
@@ -223,7 +236,7 @@ run_migrations_verbose() {
         printf "=== end flask db upgrade ===\n\n"
     } >> "$LOG_FILE" 2>/dev/null || true
 
-    # ── 8. Handle failure ─────────────────────────────────────────────────────
+    # ── 9. Handle failure ─────────────────────────────────────────────────────
     if (( mig_rc != 0 )); then
         # "Already up to date" is not a real failure
         if echo "$mig_out" | grep -qiE 'already up.to.date|up to date'; then
@@ -234,23 +247,94 @@ run_migrations_verbose() {
         return 1
     fi
 
-    # ── 9. Confirm new revision ───────────────────────────────────────────────
+    # ── 10. Confirm new revision ───────────────────────────────────────────────
     local post_rev
     post_rev=$(alembic_current 2>/dev/null || echo "unknown")
     log_info "  New DB revision     : ${post_rev}"
 
-    # ── 10. Report and set MIGRATION_APPLIED ─────────────────────────────────
+    # ── 11. Report and set MIGRATION_APPLIED ──────────────────────────────────
     if [[ "$post_rev" != "$pre_rev" ]]; then
-        log_success "Migrations applied successfully  (${pre_rev} → ${post_rev})."
+        log_success "Migrations applied successfully."
+        log_info "  Previous revision   : ${pre_rev}"
+        log_info "  New revision        : ${post_rev}"
+        [[ -n "$MIGRATION_BACKUP_FILE" ]] && \
+            log_info "  Backup              : ${MIGRATION_BACKUP_FILE}"
         MIGRATION_APPLIED=true
     elif [[ "$pre_rev" == "unknown" ]]; then
         log_success "Migrations applied (revision now: ${post_rev})."
+        [[ -n "$MIGRATION_BACKUP_FILE" ]] && \
+            log_info "  Backup              : ${MIGRATION_BACKUP_FILE}"
         MIGRATION_APPLIED=true
     else
         log_success "Database schema is up to date (${post_rev})."
     fi
 
     return 0
+}
+
+# _migrate_pre_backup <db_url> <pre_rev>
+# Creates a gzip-compressed pg_dump of the LOP database immediately before
+# migrations are applied.  Only called when there are pending migrations.
+#
+# Sets MIGRATION_BACKUP_FILE to the backup path on success; leaves it empty
+# on failure (backup failures are non-fatal — they emit a warning and continue).
+#
+# The backup is stored as:
+#   $LOP_BACKUP_DIR/pre_migration_<YYYYMMDD_HHMMSS>_<rev8>.sql.gz
+# and is chmod 600 (root-readable only, because it may contain data).
+_migrate_pre_backup() {
+    local db_url="$1" pre_rev="$2"
+
+    # Require pg_dump on PATH
+    if ! cmd_exists pg_dump; then
+        log_warn "pg_dump not found — skipping pre-migration backup."
+        log_warn "Install the postgresql-client package to enable automatic backups."
+        return 0
+    fi
+
+    ensure_dir "$LOP_BACKUP_DIR" "root:root" "750"
+
+    local ts rev_tag backup_file
+    ts=$(date +%Y%m%d_%H%M%S)
+    rev_tag="${pre_rev:0:8}"
+    [[ "$rev_tag" == "unknown" ]] && rev_tag="initial"
+    backup_file="${LOP_BACKUP_DIR}/pre_migration_${ts}_${rev_tag}.sql.gz"
+
+    log_step "Creating pre-migration database backup..."
+
+    # pg_dump accepts a connection URI (PostgreSQL 9.2+); credentials are
+    # extracted from the URL, avoiding PGPASSWORD in the environment.
+    # stderr goes to the log; stdout is piped through gzip into a temp file
+    # that is atomically renamed on success so a partial write is never visible.
+    local dump_rc=0
+    pg_dump "$db_url" 2>> "$LOG_FILE" \
+        | gzip > "${backup_file}.tmp" \
+        || dump_rc=$?
+
+    if (( dump_rc != 0 )) || [[ ! -s "${backup_file}.tmp" ]]; then
+        rm -f "${backup_file}.tmp" 2>/dev/null || true
+        log_warn "Pre-migration backup FAILED (pg_dump exit code: ${dump_rc})."
+        log_warn "The migration will proceed without a backup."
+        log_warn "Consider running 'sudo lop backup' manually before retrying."
+        {
+            printf "\n[WARN] Pre-migration pg_dump failed (exit=%s) for URL: %s\n" \
+                "$dump_rc" "${db_url%%:*}://...(masked)"
+        } >> "$LOG_FILE" 2>/dev/null || true
+        return 0   # Non-fatal
+    fi
+
+    mv "${backup_file}.tmp" "$backup_file"
+    chmod 600 "$backup_file"
+
+    local size
+    size=$(du -sh "$backup_file" 2>/dev/null | cut -f1 || echo "?")
+    MIGRATION_BACKUP_FILE="$backup_file"
+
+    log_success "Pre-migration backup created:"
+    log_info "  File    : ${backup_file}"
+    log_info "  Size    : ${size}"
+    log_info "  Schema  : ${pre_rev}"
+    log_info "  Restore : sudo lop restore ${backup_file}"
 }
 
 # _migrate_classify_error <output_string>
@@ -313,6 +397,11 @@ _migrate_classify_error() {
     done <<< "$out"
     log_error "──────────────────────────────────────────────────────────"
     log_error "Full log: ${LOG_FILE}"
+    if [[ -n "${MIGRATION_BACKUP_FILE:-}" ]]; then
+        log_error ""
+        log_error "Pre-migration backup: ${MIGRATION_BACKUP_FILE}"
+        log_error "Restore:  sudo lop restore ${MIGRATION_BACKUP_FILE}"
+    fi
 }
 
 # ── Checksum helpers ──────────────────────────────────────────────────────────

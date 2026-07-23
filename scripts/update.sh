@@ -467,8 +467,7 @@ apply_changes() {
     #   • this is the first update after an install that predates this feature
     run_migrations_verbose \
         || {
-            log_error "Initiating rollback due to migration failure."
-            do_rollback
+            abort_migration_failure
             exit 1
         }
     if [[ "$MIGRATION_APPLIED" == "true" ]]; then
@@ -648,6 +647,139 @@ do_rollback() {
             printf "  3. Restore backup: sudo ./restore.sh %s\n" "$BACKUP_PATH"
         fi
     fi
+}
+
+# ── Migration failure abort ───────────────────────────────────────────────────
+# abort_migration_failure
+# Called when run_migrations_verbose() returns non-zero.
+#
+# Safe-abort contract:
+#   • The application service is NEVER restarted with new code.
+#     (Migrations run before any service restart in apply_changes(), so
+#     the pre-update service is still running the old schema safely.)
+#   • Code files in $LOP_APP_DIR are rolled back to the pre-update commit
+#     so that a manual 'systemctl restart lop-backend' cannot accidentally
+#     start new code against the old (or partially-migrated) schema.
+#   • A best-effort schema downgrade is attempted if any revisions were
+#     partially applied, returning the DB to the pre-update state.
+#   • The pre-migration database backup (if taken) is clearly referenced
+#     so administrators know where to find their recovery point.
+abort_migration_failure() {
+    log_section "MIGRATION FAILURE — UPDATE ABORTED"
+
+    log_error "Database schema upgrade FAILED."
+    log_error "The application service has NOT been restarted."
+    log_error "The existing service is still running the previous version."
+    log_error ""
+
+    # ── Reference pre-migration backup ────────────────────────────────────────
+    if [[ -n "${MIGRATION_BACKUP_FILE:-}" ]] && [[ -f "${MIGRATION_BACKUP_FILE}" ]]; then
+        local bak_size
+        bak_size=$(du -sh "${MIGRATION_BACKUP_FILE}" 2>/dev/null | cut -f1 || echo "?")
+        log_info "Pre-migration database backup:"
+        log_info "  ${MIGRATION_BACKUP_FILE} (${bak_size})"
+        log_info "Restore with:  sudo lop restore ${MIGRATION_BACKUP_FILE}"
+        log_info ""
+    elif [[ -n "${BACKUP_PATH:-}" ]]; then
+        log_info "Pre-update full backup:"
+        log_info "  ${BACKUP_PATH}"
+        log_info "Restore with:  sudo lop restore ${BACKUP_PATH}"
+        log_info ""
+    fi
+
+    # ── Roll back code files (best-effort) ────────────────────────────────────
+    # Restores $LOP_APP_DIR to the pre-update commit so a manual service
+    # restart cannot start new application code against the old schema.
+    log_step "Rolling back code files to pre-update state (${PRE_UPDATE_HASH:0:8})..."
+    if [[ "$PRE_UPDATE_HASH" != "unknown" ]] \
+        && git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
+
+        git -C "$REPO_DIR" checkout "$PRE_UPDATE_HASH" -- . >> "$LOG_FILE" 2>&1 \
+            || log_warn "Code rollback in source checkout failed — files may be inconsistent."
+
+        rsync -a --delete \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='venv/' \
+            --exclude='lop/' \
+            --exclude='artifacts/' \
+            --exclude='/lib/' \
+            --exclude='node_modules/' \
+            --exclude='.local/' \
+            --exclude='.agents/' \
+            --exclude='.cache/' \
+            --exclude='.pythonlibs/' \
+            --exclude='.replit' \
+            --exclude='.replitignore' \
+            --exclude='.flaskenv' \
+            --exclude='.npmrc' \
+            --exclude='pnpm-lock.yaml' \
+            --exclude='pnpm-workspace.yaml' \
+            --exclude='package.json' \
+            --exclude='tsconfig.json' \
+            --exclude='tsconfig.base.json' \
+            --exclude='docker/' \
+            --exclude='Dockerfile' \
+            --exclude='docker-compose.yml' \
+            --exclude='tests/' \
+            --exclude='attached_assets/' \
+            --exclude='logs/' \
+            --exclude='*.docx' \
+            --exclude='*.xlsx' \
+            "$REPO_DIR/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
+            && log_info "Code files restored to ${PRE_UPDATE_HASH:0:8}." \
+            || log_warn "Code rsync rollback failed — deployed files may differ from pre-update state."
+    else
+        log_warn "Code rollback not available (archive/local install or hash unknown)."
+        log_warn "New code files remain in ${LOP_APP_DIR}."
+        log_warn "Do NOT restart the service until the migration issue is resolved."
+    fi
+
+    # ── Attempt schema downgrade (best-effort) ────────────────────────────────
+    # Only attempted if the migration partially applied revisions — if the
+    # migration failed before touching the schema, a downgrade is unnecessary
+    # and could introduce new errors.
+    if [[ "$PRE_UPDATE_ALEMBIC" != "unknown" ]]; then
+        local post_fail_rev
+        post_fail_rev=$(alembic_current 2>/dev/null || echo "unknown")
+        if [[ "$post_fail_rev" != "unknown" ]] \
+            && [[ "$post_fail_rev" != "$PRE_UPDATE_ALEMBIC" ]]; then
+            log_step "Schema changed during failed migration — attempting downgrade..."
+            log_info "  Current schema : ${post_fail_rev}"
+            log_info "  Target schema  : ${PRE_UPDATE_ALEMBIC}"
+            lop_flask db downgrade "$PRE_UPDATE_ALEMBIC" >> "$LOG_FILE" 2>&1 \
+                && log_success "Schema downgraded to ${PRE_UPDATE_ALEMBIC}." \
+                || {
+                    log_warn "Schema downgrade failed — database may be partially migrated."
+                    log_warn "The pre-migration backup is your safest recovery path:"
+                    if [[ -n "${MIGRATION_BACKUP_FILE:-}" ]]; then
+                        log_warn "  sudo lop restore ${MIGRATION_BACKUP_FILE}"
+                    fi
+                }
+        else
+            log_info "Schema unchanged — no downgrade needed."
+        fi
+    fi
+
+    # ── Recovery guide ────────────────────────────────────────────────────────
+    log_error ""
+    log_error "── What to do now ────────────────────────────────────────────────"
+    log_error "  1. Read the migration error above to identify the root cause."
+    log_error "  2. Fix the issue (DB connectivity, disk space, schema conflict)."
+    log_error "  3. Retry the update once the issue is resolved:"
+    log_error "       sudo lop update"
+    if [[ -n "${MIGRATION_BACKUP_FILE:-}" ]] && [[ -f "${MIGRATION_BACKUP_FILE}" ]]; then
+        log_error "  4. If the database is in a broken state, restore from the"
+        log_error "     pre-migration backup, then retry:"
+        log_error "       sudo lop restore ${MIGRATION_BACKUP_FILE}"
+    elif [[ -n "${BACKUP_PATH:-}" ]]; then
+        log_error "  4. If needed, restore from the pre-update backup:"
+        log_error "       sudo lop restore ${BACKUP_PATH}"
+    fi
+    log_error "──────────────────────────────────────────────────────────────────"
+    log_error "Full log: ${LOG_FILE}"
 }
 
 # ── Save post-update state ────────────────────────────────────────────────────

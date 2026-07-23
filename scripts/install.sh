@@ -288,7 +288,17 @@ EOF
 # ── Run database migrations ───────────────────────────────────────────────────
 run_migrations() {
     run_migrations_verbose \
-        || abort "Database migrations failed. See the output above and ${LOG_FILE} for details."
+        || {
+            # Thread the pre-migration backup path into the abort message so
+            # administrators know exactly where to find their recovery point.
+            local _extra=""
+            if [[ -n "${MIGRATION_BACKUP_FILE:-}" ]]; then
+                _extra="
+Pre-migration backup: ${MIGRATION_BACKUP_FILE}
+Restore with:  sudo lop restore ${MIGRATION_BACKUP_FILE}"
+            fi
+            abort "Database migrations failed. See the error output above and ${LOG_FILE} for details.${_extra}"
+        }
     track_change "Ran database migrations"
 }
 
