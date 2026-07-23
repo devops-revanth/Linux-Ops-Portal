@@ -187,8 +187,8 @@ health_check() {
         if curl -sf --max-time 5 "$url" &>/dev/null; then
             return 0
         fi
-        (( i++ ))
-        [[ $i -lt $retries ]] && sleep "$delay"
+        i=$(( i + 1 ))
+        if [[ $i -lt $retries ]]; then sleep "$delay"; fi
     done
     return 1
 }

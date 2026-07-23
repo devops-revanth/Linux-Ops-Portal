@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/lib/version.sh"
 SKIP_BACKUP=false
 parse_common_flags "$@"
 for arg in "${REMAINING_ARGS[@]:-}"; do
-    [[ "$arg" == "--skip-backup" ]] && SKIP_BACKUP=true
+    if [[ "$arg" == "--skip-backup" ]]; then SKIP_BACKUP=true; fi
 done
 
 # ── Pre-flight state ──────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ run_pre_update_backup() {
         log_warn "Backup failed. Continuing with update (use --skip-backup to suppress this warning)."
         BACKUP_PATH=""
     }
-    [[ -n "$BACKUP_PATH" ]] && log_success "Backup: ${BACKUP_PATH}"
+    if [[ -n "$BACKUP_PATH" ]]; then log_success "Backup: ${BACKUP_PATH}"; fi
 }
 
 # ── Pull latest code ──────────────────────────────────────────────────────────
@@ -146,8 +146,8 @@ To update without network access, use an archive:
             # Check for --source flag in REMAINING_ARGS
             local archive_path="" prev_arg=""
             for arg in "${REMAINING_ARGS[@]:-}"; do
-                [[ "$arg" == --source=* ]] && archive_path="${arg#--source=}"
-                [[ "$prev_arg" == "--source" ]] && archive_path="$arg"
+                if [[ "$arg" == --source=* ]]; then archive_path="${arg#--source=}"; fi
+                if [[ "$prev_arg" == "--source" ]]; then archive_path="$arg"; fi
                 prev_arg="$arg"
             done
 
@@ -360,8 +360,9 @@ do_rollback() {
         printf "Recovery steps:\n"
         printf "  1. Check logs:     sudo journalctl -u lop-backend -n 100\n"
         printf "  2. Check log file: %s\n" "$LOG_FILE"
-        [[ -n "$BACKUP_PATH" ]] && \
-        printf "  3. Restore backup: sudo ./restore.sh %s\n" "$BACKUP_PATH"
+        if [[ -n "$BACKUP_PATH" ]]; then
+            printf "  3. Restore backup: sudo ./restore.sh %s\n" "$BACKUP_PATH"
+        fi
     fi
 }
 
@@ -391,7 +392,7 @@ print_update_summary() {
     summary_line "Dependencies updated:" "$([[ $DEPS_UPGRADED == true ]] && echo yes || echo no)"
     summary_line "Migrations applied:"  "$([[ $MIGRATIONS_RAN  == true ]] && echo yes || echo no)"
     summary_line "Service restarted:"   "$([[ $RESTART_NEEDED  == true ]] && echo yes || echo no)"
-    [[ -n "$BACKUP_PATH" ]] && summary_line "Pre-update backup:" "$BACKUP_PATH"
+    if [[ -n "$BACKUP_PATH" ]]; then summary_line "Pre-update backup:" "$BACKUP_PATH"; fi
     printf "\n"
     summary_line "Log:" "$LOG_FILE"
     printf "\n"

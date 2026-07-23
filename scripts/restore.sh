@@ -25,7 +25,7 @@ for arg in "${REMAINING_ARGS[@]:-}"; do
         --config-only) CONFIG_ONLY=true ;;
         --db-only)     DB_ONLY=true ;;
         *.tar.gz|*.tgz) BACKUP_FILE="$arg" ;;
-        *)             [[ -f "$arg" ]] && BACKUP_FILE="$arg" ;;
+        *)             if [[ -f "$arg" ]]; then BACKUP_FILE="$arg"; fi ;;
     esac
 done
 

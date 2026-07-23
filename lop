@@ -95,7 +95,7 @@ show_version() {
     if [[ -f "$ver_file" ]]; then
         printf "\n${_B}Linux Operations Portal${_R}\n\n"
         while IFS='=' read -r key val; do
-            [[ -z "$key" ]] || [[ "$key" =~ ^# ]] || [[ "$key" =~ ^[[:space:]]*$ ]] && continue
+            if [[ -z "$key" ]] || [[ "$key" =~ ^# ]] || [[ "$key" =~ ^[[:space:]]*$ ]]; then continue; fi
             printf "  %-24s %s%s%s\n" "${key}:" "$_C" "$val" "$_R"
         done < "$ver_file"
 

@@ -132,7 +132,7 @@ systemd_disable_remove() {
     local svc="$1" unit_file="$2"
     systemd_stop "$svc"
     systemctl disable "$svc" >> "$LOG_FILE" 2>&1 || true
-    [[ -n "$unit_file" ]] && [[ -f "$unit_file" ]] && rm -f "$unit_file"
+    if [[ -n "$unit_file" ]] && [[ -f "$unit_file" ]]; then rm -f "$unit_file"; fi
     systemd_reload
     log_info "Removed service: ${svc}"
 }

@@ -38,8 +38,8 @@ FORCE_REINSTALL=false
 FORCE_REPAIR=false
 parse_common_flags "$@"
 for arg in "${REMAINING_ARGS[@]:-}"; do
-    [[ "$arg" == "--force"  ]] && FORCE_REINSTALL=true
-    [[ "$arg" == "--repair" ]] && FORCE_REPAIR=true
+    if [[ "$arg" == "--force"  ]]; then FORCE_REINSTALL=true; fi
+    if [[ "$arg" == "--repair" ]]; then FORCE_REPAIR=true; fi
 done
 
 # ── Source repo directory (parent of scripts/) ───────────────────────────────
@@ -78,10 +78,14 @@ detect_install_mode() {
         INSTALL_MODE="repair"
     fi
 
-    [[ "$FORCE_REINSTALL" == "true" ]] && INSTALL_MODE="fresh"
+    if [[ "$FORCE_REINSTALL" == "true" ]]; then
+        INSTALL_MODE="fresh"
+    fi
     # --repair forces repair mode even when the health check passes (e.g. to
     # re-apply dependencies or the service unit on a healthy installation).
-    [[ "$FORCE_REPAIR" == "true" ]] && INSTALL_MODE="repair"
+    if [[ "$FORCE_REPAIR" == "true" ]]; then
+        INSTALL_MODE="repair"
+    fi
 }
 
 # ── Configuration file generation ────────────────────────────────────────────

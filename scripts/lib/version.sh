@@ -117,7 +117,7 @@ checksum_changed() {
 checksums_save_all() {
     checksum_save "${LOP_APP_DIR}/requirements.txt"  "requirements"
     local pkg_json="${LOP_APP_DIR}/package.json"
-    [[ -f "$pkg_json" ]] && checksum_save "$pkg_json" "package_json"
+    if [[ -f "$pkg_json" ]]; then checksum_save "$pkg_json" "package_json"; fi
     # Save current alembic head
     ensure_dir "$LOP_CHECKSUMS_DIR" "root:root" "700"
     alembic_head > "${LOP_CHECKSUMS_DIR}/alembic_head.txt" 2>/dev/null || true
@@ -173,7 +173,7 @@ install_info_read() {
 # install_info_update <key> <value>
 install_info_update() {
     local key="$1" value="$2"
-    [[ -f "$LOP_INSTALL_INFO" ]] || return 1
+    [[ -f "$LOP_INSTALL_INFO" ]] || return 0
     if grep -q "^${key}=" "$LOP_INSTALL_INFO"; then
         sed -i "s|^${key}=.*|${key}=${value}|" "$LOP_INSTALL_INFO"
     else

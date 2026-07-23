@@ -38,8 +38,9 @@ main() {
     log_section "LOP Uninstall"
 
     local version="unknown"
-    [[ -f "$LOP_APP_DIR/VERSION" ]] && \
+    if [[ -f "$LOP_APP_DIR/VERSION" ]]; then
         version=$(grep '^APP_VERSION=' "$LOP_APP_DIR/VERSION" | cut -d= -f2)
+    fi
 
     log_warn "This will remove Linux Operations Portal version ${version}."
 
@@ -132,10 +133,16 @@ main() {
 
                 pg_execute "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${db_name}';" \
                     2>/dev/null || true
-                pg_execute "DROP DATABASE IF EXISTS ${db_name};"   2>/dev/null && \
+                if pg_execute "DROP DATABASE IF EXISTS ${db_name};" 2>/dev/null; then
                     log_success "Dropped database: ${db_name}"
-                pg_execute "DROP ROLE IF EXISTS ${db_user};"       2>/dev/null && \
+                else
+                    log_warn "Could not drop database '${db_name}' (may require manual cleanup)."
+                fi
+                if pg_execute "DROP ROLE IF EXISTS ${db_user};" 2>/dev/null; then
                     log_success "Dropped role: ${db_user}"
+                else
+                    log_warn "Could not drop role '${db_user}' (may require manual cleanup)."
+                fi
             else
                 log_warn "PostgreSQL not running — skipping database drop."
             fi
@@ -162,12 +169,18 @@ main() {
             confirm "Remove runtime data (${LOP_DATA_DIR})?" && remove_data=true || true
         fi
 
-        [[ "$remove_logs"    == "true" ]] && rm -rf "$LOP_LOG_DIR"    && \
+        if [[ "$remove_logs" == "true" ]]; then
+            rm -rf "$LOP_LOG_DIR"
             log_success "Removed logs: ${LOP_LOG_DIR}"
-        [[ "$remove_backups" == "true" ]] && rm -rf "$LOP_BACKUP_DIR" && \
+        fi
+        if [[ "$remove_backups" == "true" ]]; then
+            rm -rf "$LOP_BACKUP_DIR"
             log_success "Removed backups: ${LOP_BACKUP_DIR}"
-        [[ "$remove_data"    == "true" ]] && rm -rf "$LOP_DATA_DIR"   && \
+        fi
+        if [[ "$remove_data" == "true" ]]; then
+            rm -rf "$LOP_DATA_DIR"
             log_success "Removed runtime data: ${LOP_DATA_DIR}"
+        fi
     fi
 
     # ── 7. Remove lop system user ─────────────────────────────────────────────

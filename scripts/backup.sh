@@ -30,7 +30,7 @@ for arg in "${REMAINING_ARGS[@]:-}"; do
         --quiet)           QUIET=true ;;
         --retention=*)     RETENTION_DAYS="${arg#--retention=}" ;;
         --retention)       : ;;   # value is the next positional arg (captured below)
-        *)  [[ "$_prev_arg" == "--retention" ]] && RETENTION_DAYS="$arg" ;;
+        *)  if [[ "$_prev_arg" == "--retention" ]]; then RETENTION_DAYS="$arg"; fi ;;
     esac
     _prev_arg="$arg"
 done
@@ -94,7 +94,7 @@ main() {
     } > "$work_dir/version.txt"
 
     # ── 4. Install info ───────────────────────────────────────────────────────
-    [[ -f "$LOP_INSTALL_INFO" ]] && cp "$LOP_INSTALL_INFO" "$work_dir/install.info"
+    if [[ -f "$LOP_INSTALL_INFO" ]]; then cp "$LOP_INSTALL_INFO" "$work_dir/install.info"; fi
 
     # ── 5. Runtime data directory ─────────────────────────────────────────────
     # Contains install.info, checksums, and any filesystem state not in the DB.
@@ -120,11 +120,13 @@ main() {
     local deleted=0
     while IFS= read -r old_backup; do
         rm -f "$old_backup"
-        (( deleted++ ))
+        deleted=$(( deleted + 1 ))
     done < <(find "$LOP_BACKUP_DIR" -name 'lop_backup_*.tar.gz' \
                 -mtime "+${RETENTION_DAYS}" -type f 2>/dev/null || true)
 
-    (( deleted > 0 )) && _info "Pruned ${deleted} backup(s) older than ${RETENTION_DAYS} days."
+    if (( deleted > 0 )); then
+        _info "Pruned ${deleted} backup(s) older than ${RETENTION_DAYS} days."
+    fi
 
     # Print the path for callers (update.sh captures this)
     echo "$archive_path"
