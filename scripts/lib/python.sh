@@ -190,8 +190,121 @@ Check ${LOG_FILE} for details."
         log_success "Selected Python: ${SELECTED_PYTHON} (${SELECTED_PYTHON_VERSION})"
     fi
 
+    # Install the development headers that exactly match the selected interpreter.
+    # This must run after python_find_compatible() so the minor version is known.
+    # On Rocky/RHEL 9 the generic 'python3-devel' installs Python 3.9 headers;
+    # we need python3.11-devel (or python3.12-devel, etc.) to match the binary.
+    python_install_devel_headers
+
     # Write to runtime.env so update.sh and systemd can reference it
     _python_write_runtime_env
+}
+
+# ── Python development headers ────────────────────────────────────────────────
+
+# python_devel_package_name [version]
+# Returns the OS-specific package name for the Python C development headers
+# that exactly match the given (or currently selected) interpreter version.
+#
+#   python3.11.13 → "python3.11-devel"  (RHEL/Rocky/AlmaLinux)
+#   python3.12.4  → "python3.12-devel"  (RHEL/Rocky/AlmaLinux)
+#   python3.11.13 → "python3.11-dev"    (Ubuntu/Debian)
+#
+# The generic 'python3-devel' is NEVER returned — on Rocky Linux 9 it installs
+# Python 3.9 headers even when the selected interpreter is python3.11 or newer.
+python_devel_package_name() {
+    local version="${1:-${SELECTED_PYTHON_VERSION:-}}"
+    local minor
+    minor="${version#*.}"    # "3.11.13" → "11.13"
+    minor="${minor%%.*}"     # "11.13"   → "11"
+    if [[ -z "$minor" ]]; then
+        echo ""
+        return 1
+    fi
+    case "${OS_FAMILY:-}" in
+        rhel)   echo "python3.${minor}-devel" ;;
+        debian) echo "python3.${minor}-dev" ;;
+        *)      echo "" ;;
+    esac
+}
+
+# python_verify_headers
+# Confirms that Python.h exists for the selected interpreter.
+# Aborts with a clear, actionable message if the headers are missing so that
+# operators see a helpful error instead of a confusing compile failure inside pip.
+python_verify_headers() {
+    # Called defensively before pip — skip gracefully if not yet selected.
+    [[ -n "${SELECTED_PYTHON:-}" ]] || return 0
+
+    local include_dir
+    include_dir=$("$SELECTED_PYTHON" -c \
+        "from sysconfig import get_paths; print(get_paths()['include'])" \
+        2>/dev/null || echo "")
+
+    if [[ -z "$include_dir" ]]; then
+        abort "Cannot determine the Python include directory for ${SELECTED_PYTHON}.
+The interpreter may be incomplete or broken.
+Try: sudo $SELECTED_PYTHON -c \"from sysconfig import get_paths; print(get_paths()['include'])\""
+    fi
+
+    if [[ ! -f "${include_dir}/Python.h" ]]; then
+        local minor
+        minor="${SELECTED_PYTHON_VERSION#*.}"; minor="${minor%%.*}"
+        abort "Python.h not found: ${include_dir}/Python.h
+The development headers for ${SELECTED_PYTHON} (${SELECTED_PYTHON_VERSION}) are not installed.
+psycopg2 and other C extensions cannot be compiled without them.
+
+Install the matching headers and re-run:
+  RHEL/Rocky/AlmaLinux:  sudo dnf install python3.${minor}-devel
+  Ubuntu/Debian:          sudo apt-get install python3.${minor}-dev"
+    fi
+
+    log_info "Python headers verified: ${include_dir}/Python.h"
+}
+
+# python_install_devel_headers
+# Installs the development headers (Python.h) that exactly match the selected
+# interpreter. Must be called after python_select() / python_find_compatible()
+# so that SELECTED_PYTHON_VERSION is known.
+#
+# Why this is necessary
+# ─────────────────────
+# On Rocky Linux 9, 'python3-devel' (the generic package) installs headers for
+# Python 3.9 — the OS-default python3 — regardless of which python3.x binary
+# is actually selected.  When the installer picks python3.11, compiling
+# psycopg2 fails immediately with:
+#   fatal error: Python.h: No such file or directory
+# because /usr/include/python3.9 exists but /usr/include/python3.11 does not.
+# The fix is always installing the version-specific package:
+#   python3.11 → python3.11-devel
+#   python3.12 → python3.12-devel
+#   python3.13 → python3.13-devel
+python_install_devel_headers() {
+    [[ -n "${SELECTED_PYTHON:-}" ]] || \
+        abort "SELECTED_PYTHON is not set. Call python_select() first."
+
+    local devel_pkg
+    devel_pkg=$(python_devel_package_name)
+
+    if [[ -z "$devel_pkg" ]]; then
+        log_warn "Unsupported OS family '${OS_FAMILY:-unknown}' — cannot determine Python header package."
+        log_warn "Ensure Python.h is present for ${SELECTED_PYTHON} before running pip."
+        return 0
+    fi
+
+    log_info "Selected Python            : ${SELECTED_PYTHON_VERSION}"
+    log_step "Installing matching headers: ${devel_pkg}"
+
+    if pkg_installed "$devel_pkg"; then
+        log_success "Python headers already present: ${devel_pkg}"
+    else
+        pkg_install "$devel_pkg"
+        track_change "Installed Python development headers: ${devel_pkg}"
+    fi
+
+    # Always verify after install — catches silent failures and
+    # cases where the package installed but to a non-standard path.
+    python_verify_headers
 }
 
 _python_write_runtime_env() {
@@ -267,6 +380,13 @@ python_install_deps() {
     log_step "Installing Python dependencies..."
     local req_file="$LOP_APP_DIR/requirements.txt"
     [[ -f "$req_file" ]] || abort "requirements.txt not found at ${req_file}."
+
+    # Verify Python.h is present before attempting compilation.
+    # psycopg2 (and cryptography) compile C extensions and will fail immediately
+    # with "fatal error: Python.h: No such file or directory" if the devel headers
+    # for the selected interpreter are missing.  Checking here gives a clear,
+    # actionable error instead of a confusing compile traceback inside pip.
+    python_verify_headers
 
     local pip_args=(install --quiet -r "$req_file")
     [[ "$upgrade" == "--upgrade" ]] && pip_args+=(--upgrade)

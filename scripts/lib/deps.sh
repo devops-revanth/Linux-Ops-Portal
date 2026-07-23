@@ -151,9 +151,15 @@ check_build_deps() {
             pkg_installed libpq-devel   || pkgs_needed+=(libpq-devel)
             pkg_installed libffi-devel  || pkgs_needed+=(libffi-devel)
             pkg_installed openssl-devel || pkgs_needed+=(openssl-devel)
-            # python3-devel provides Python C headers needed when building
-            # any extension from source (e.g. cryptography without a wheel).
-            pkg_installed python3-devel || pkgs_needed+=(python3-devel)
+            # NOTE: Python development headers (Python.h) are NOT installed here.
+            # The generic 'python3-devel' on Rocky/RHEL 9 installs headers for
+            # the OS-default Python 3.9 — even when the selected interpreter is
+            # python3.11 or python3.12.  Installing the wrong headers causes
+            # psycopg2 and other C extensions to fail to compile with:
+            #   fatal error: Python.h: No such file or directory
+            # The version-specific package (e.g. python3.11-devel) is installed
+            # by python_install_devel_headers() in python.sh, which runs after
+            # python_select() has determined the exact interpreter version.
             if [[ ${#pkgs_needed[@]} -gt 0 ]]; then
                 log_warn "Missing build deps: ${pkgs_needed[*]} — installing..."
                 pkg_install "${pkgs_needed[@]}"
@@ -167,10 +173,13 @@ check_build_deps() {
             pkg_installed libpq-dev     || pkgs_needed+=(libpq-dev)
             pkg_installed libffi-dev    || pkgs_needed+=(libffi-dev)
             pkg_installed libssl-dev    || pkgs_needed+=(libssl-dev)
-            # python3-dev provides Python C headers for the default interpreter;
-            # version-specific headers (e.g. python3.12-dev) are installed
-            # automatically by python_install_best_available() via os.sh.
-            pkg_installed python3-dev   || pkgs_needed+=(python3-dev)
+            # NOTE: Python development headers (Python.h) are NOT installed here.
+            # The generic 'python3-dev' maps to the OS-default Python and will
+            # not match a non-default interpreter (e.g. python3.12 on Ubuntu 22.04
+            # where python3.10 is the default).  The version-specific package
+            # (e.g. python3.12-dev) is installed by python_install_devel_headers()
+            # in python.sh, which runs after python_select() has determined the
+            # exact interpreter version.
             if [[ ${#pkgs_needed[@]} -gt 0 ]]; then
                 log_warn "Missing build deps: ${pkgs_needed[*]} — installing..."
                 pkg_install "${pkgs_needed[@]}"
