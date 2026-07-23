@@ -13,6 +13,17 @@ paths = ["/"]
 [services.development]
 run = "cd /home/runner/workspace && python run.py"
 
+[services.production]
+
+[services.production.run]
+args = ["bash", "-c", "cd /home/runner/workspace && .pythonlibs/bin/gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --timeout 120 run:app"]
+
+[services.production.run.env]
+FLASK_ENV = "production"
+
+[services.production.health.startup]
+path = "/health"
+
 # ── Node.js API Server ────────────────────────────────────────────────────────
 [[services]]
 localPort = 8080
