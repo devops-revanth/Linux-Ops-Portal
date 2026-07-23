@@ -179,8 +179,9 @@ Log:     ${LOG_FILE}"
 # ── stop ──────────────────────────────────────────────────────────────────────
 cmd_stop() {
     log_section "Stopping LOP Services"
+    local pg_svc; pg_svc=$(_pg_service)
     log_info "PostgreSQL will NOT be stopped. Stop it explicitly if needed:"
-    log_info "  sudo systemctl stop \$(\$SCRIPT_DIR/scripts/service.sh _pg_name)"
+    log_info "  sudo systemctl stop ${pg_svc}"
 
     # Stop nginx first to drain connections before the backend stops
     local ng_state; ng_state=$(_svc_state "$LOP_NGINX_SERVICE")
