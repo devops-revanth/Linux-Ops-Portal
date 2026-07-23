@@ -350,11 +350,10 @@ def _register_error_handlers(app: Flask) -> None:
 
     def _is_xhr() -> bool:
         """True when the request was made via fetch/XHR and expects JSON back."""
+        best = request.accept_mimetypes.best_match(["application/json", "text/html"])
         return (
             request.headers.get("X-Requested-With") == "XMLHttpRequest"
-            or "application/json" in request.accept_mimetypes.best_match(
-                ["application/json", "text/html"]
-            )
+            or best == "application/json"
         )
 
     @app.errorhandler(401)
