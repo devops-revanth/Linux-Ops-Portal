@@ -462,7 +462,7 @@ python_runtime_report() {
     fi
 
     if cmd_exists gcc; then
-        compiler="$(command -v gcc) ($(gcc --version 2>/dev/null | head -1 | awk '{print $NF}'))"
+        compiler="$(command -v gcc) ($(gcc --version 2>/dev/null | awk 'NR==1{print $NF}'))"
     else
         compiler="not found"
     fi

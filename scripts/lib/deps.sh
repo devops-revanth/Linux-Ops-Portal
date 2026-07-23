@@ -13,7 +13,7 @@ _check_dep_version() {
     # Use sort -V if available (GNU coreutils)
     if command -v sort &>/dev/null; then
         local lowest
-        lowest=$(printf '%s\n%s' "$found" "$min" | sort -V | head -1)
+        lowest=$(printf '%s\n%s' "$found" "$min" | sort -V | awk 'NR==1{print}')
         [[ "$lowest" == "$min" ]]
     else
         # Fallback: compare first two components numerically
@@ -40,7 +40,7 @@ check_git() {
 check_curl() {
     if cmd_exists curl; then
         local ver
-        ver=$(curl --version 2>/dev/null | head -1 | awk '{print $2}')
+        ver=$(curl --version 2>/dev/null | awk 'NR==1{print $2}')
         log_success "curl: found ${ver}"
         return 0
     fi
@@ -121,7 +121,7 @@ check_pnpm() {
 check_rsync() {
     if cmd_exists rsync; then
         local ver
-        ver=$(rsync --version 2>/dev/null | head -1 | awk '{print $3}')
+        ver=$(rsync --version 2>/dev/null | awk 'NR==1{print $3}')
         log_success "rsync: found ${ver}"
         return 0
     fi

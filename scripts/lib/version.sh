@@ -66,7 +66,7 @@ alembic_current() {
     fi
     # Fallback: use Flask/Alembic CLI (requires venv and full app dependencies).
     lop_flask db current 2>/dev/null \
-        | grep -oP '[0-9a-f]{12}' | head -1 \
+        | grep -oP '[0-9a-f]{12}' | awk 'NR==1{print}' \
         || echo "unknown"
 }
 
@@ -74,7 +74,7 @@ alembic_current() {
 # Returns the latest revision available in the codebase.
 alembic_head() {
     lop_flask db heads 2>/dev/null \
-        | grep -oP '[0-9a-f]{12}' | head -1 \
+        | grep -oP '[0-9a-f]{12}' | awk 'NR==1{print}' \
         || echo "unknown"
 }
 

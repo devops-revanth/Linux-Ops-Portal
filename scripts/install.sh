@@ -17,6 +17,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LOG_FILE="/var/log/lop/install.log"
 
+# Trap ERR so that any command exiting non-zero under set -e prints the exact
+# source file, function, line number, and failing command before the script
+# exits.  Without this, set -e exits silently — impossible to debug.
+trap 'printf "\n[ABORT] Unexpected error in %s:%s():%s\n  command: %s\n  exit code: %s\n" \
+    "${BASH_SOURCE[0]}" "${FUNCNAME[0]:-main}" "${LINENO}" "${BASH_COMMAND}" "$?" >&2' ERR
+
 # Source libraries (order matters)
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"

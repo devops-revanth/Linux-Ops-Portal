@@ -17,18 +17,18 @@ _pg_probe_version_from_system() {
 
     # Binary in PATH (OS-default packages place postgres in /usr/bin)
     if cmd_exists postgres; then
-        raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | awk 'NR==1{print}')
     fi
 
     # psql when postgres binary is not in PATH
     if [[ -z "$raw" ]] && cmd_exists psql; then
-        raw=$(psql --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        raw=$(psql --version 2>/dev/null | grep -oP '\d+\.\d+' | awk 'NR==1{print}')
     fi
 
     # RPM database (RHEL/Rocky/AlmaLinux)
     if [[ -z "$raw" ]] && cmd_exists rpm; then
         local rpm_ver
-        rpm_ver=$(rpm -q postgresql-server 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        rpm_ver=$(rpm -q postgresql-server 2>/dev/null | grep -oP '\d+\.\d+' | awk 'NR==1{print}')
         [[ -n "$rpm_ver" ]] && raw="$rpm_ver"
     fi
 
@@ -126,7 +126,7 @@ pg_detect() {
     # ── Method 3: postgres binary in PATH ────────────────────────────────────
     if cmd_exists postgres; then
         local raw
-        raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | awk 'NR==1{print}')
         PG_FOUND_VERSION="${raw%%.*}"
         if [[ -n "$PG_FOUND_VERSION" ]] && \
            [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
@@ -142,7 +142,7 @@ pg_detect() {
     # ── Method 4: pg_ctl binary in PATH ──────────────────────────────────────
     if cmd_exists pg_ctl; then
         local raw
-        raw=$(pg_ctl --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        raw=$(pg_ctl --version 2>/dev/null | grep -oP '\d+\.\d+' | awk 'NR==1{print}')
         PG_FOUND_VERSION="${raw%%.*}"
         if [[ -n "$PG_FOUND_VERSION" ]] && \
            [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
@@ -257,7 +257,7 @@ Check: ${LOG_FILE}"
                     # Direct initdb invocation — search all known binary locations
                     local initdb_bin
                     initdb_bin=$(find /usr/pgsql-*/bin /usr/bin /usr/lib/postgresql/*/bin \
-                                     -name initdb 2>/dev/null | head -1)
+                                     -name initdb 2>/dev/null -print -quit)
                     [[ -n "$initdb_bin" ]] \
                         || abort "initdb not found. PostgreSQL installation may be incomplete.
 Check: ${LOG_FILE}"
