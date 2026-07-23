@@ -121,7 +121,25 @@ class AnsibleService:
         if self.host_key_checking:
             if os.path.isfile(known_hosts):
                 client.load_host_keys(known_hosts)
-                logger.debug("_connect: loaded %s", known_hosts)
+                # Diagnostic: show exactly what paramiko loaded so we can
+                # verify hashed entries are being parsed.  This answers
+                # "why does 'ssh -i' work but LOP says not found?" because
+                # hashed entries appear as '|1|...' keys, not the plain
+                # hostname — that is correct; paramiko resolves them via HMAC
+                # during connect() and we must not second-guess the result.
+                loaded_keys = client.get_host_keys()
+                entry_list  = list(loaded_keys.keys())
+                logger.debug(
+                    "_connect: loaded known_hosts\n"
+                    "  path          : %s\n"
+                    "  entries loaded: %d\n"
+                    "  entry keys    : %s\n"
+                    "  target host   : %s",
+                    known_hosts,
+                    len(entry_list),
+                    entry_list if len(entry_list) <= 20 else entry_list[:20] + ["…"],
+                    self.host,
+                )
             else:
                 logger.warning(
                     "_connect: known_hosts not found at %s — strict host key "
@@ -178,39 +196,11 @@ class AnsibleService:
                 self.host, self.port, exc_type, exc_msg,
             )
 
-            msg_lower = exc_msg.lower()
-
-            # ── Authentication failure ─────────────────────────────────────
-            if any(k in msg_lower for k in (
-                "authentication", "auth failed", "denied",
-                "no auth", "publickey", "password authentication",
-                "unable to authenticate",
-            )) or exc_type in ("AuthenticationException",):
-                raise AnsibleConnectionError(
-                    f"Authentication Failed: Could not authenticate to "
-                    f"{self.host}:{self.port} as '{self.username}'. "
-                    f"Check the username and SSH key/password.",
-                    status=_STATUS_AUTH_FAILED,
-                )
-
-            # ── Host key not present in known_hosts ───────────────────────
-            # paramiko raises SSHException("Server 'X' not found in
-            # known_hosts") when strict checking is on and the host has
-            # never been seen before.
-            if "not found in known_hosts" in msg_lower or "not in known" in msg_lower:
-                raise AnsibleConnectionError(
-                    f"Host Key Not Found: {self.host} is not in {known_hosts}. "
-                    f"Add the host key by running the following as the "
-                    f"'{self.username}' user:\n"
-                    f"  ssh-keyscan -H {self.host} >> {known_hosts}\n"
-                    f"Or disable Strict Host Key Checking in LOP settings.",
-                    status=_STATUS_HOST_KEY_MISMATCH,
-                )
-
-            # ── Host key changed (potential MITM) ─────────────────────────
-            # BadHostKeyException: host is in known_hosts but the key does
-            # not match — the host was rebuilt or a MITM is present.
-            if exc_type in ("BadHostKeyException",) or "host key" in msg_lower or "changed" in msg_lower:
+            # ── BadHostKeyException ────────────────────────────────────────
+            # Host IS in known_hosts but the key presented by the server
+            # does not match.  This is the only host-key classification LOP
+            # performs itself; everything else comes verbatim from paramiko.
+            if exc_type == "BadHostKeyException":
                 raise AnsibleConnectionError(
                     f"Host Key Mismatch: The host key for {self.host} does "
                     f"not match the entry in {known_hosts}. "
@@ -220,12 +210,18 @@ class AnsibleService:
                     status=_STATUS_HOST_KEY_MISMATCH,
                 )
 
+            # ── Authentication failure ─────────────────────────────────────
+            if exc_type == "AuthenticationException":
+                raise AnsibleConnectionError(
+                    f"Authentication Failed: Could not authenticate to "
+                    f"{self.host}:{self.port} as '{self.username}'. "
+                    f"Check the username and SSH key/password.",
+                    status=_STATUS_AUTH_FAILED,
+                )
+
             # ── Network / reachability failures ───────────────────────────
-            if any(k in msg_lower for k in (
-                "timeout", "timed out", "connection refused",
-                "no route", "network unreachable", "name or service",
-                "nodename nor servname", "getaddrinfo",
-            )) or exc_type in ("NoValidConnectionsError", "timeout"):
+            if exc_type in ("NoValidConnectionsError", "ConnectionRefusedError",
+                            "TimeoutError", "socket.timeout"):
                 raise AnsibleConnectionError(
                     f"Host Unreachable: Could not reach {self.host}:{self.port}. "
                     f"Check that the host is reachable and port {self.port} "
@@ -233,20 +229,12 @@ class AnsibleService:
                     status=_STATUS_TIMEOUT,
                 )
 
-            # ── SSH protocol / negotiation failures ───────────────────────
-            if exc_type in ("SSHException", "ProxyCommandFailure") or \
-                    any(k in msg_lower for k in (
-                        "ssh", "negotiat", "kex", "banner",
-                        "packet", "encrypt", "compress",
-                    )):
-                raise AnsibleConnectionError(
-                    f"SSH Negotiation Failed: {exc_type}: {exc_msg}",
-                    status=_STATUS_DISCONNECTED,
-                )
-
-            # ── Catch-all: surface the real exception so the cause is visible
+            # ── All other exceptions: surface verbatim ────────────────────
+            # Do NOT reclassify paramiko's own messages (e.g. SSHException
+            # "Server X not found in known_hosts") — paramiko is the sole
+            # authority on host key verification results.
             raise AnsibleConnectionError(
-                f"Connection Failed ({exc_type}): {exc_msg}",
+                f"{exc_type}: {exc_msg}",
                 status=_STATUS_DISCONNECTED,
             )
 
