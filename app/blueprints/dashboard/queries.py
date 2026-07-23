@@ -48,9 +48,9 @@ class DashboardStats:
     total_servers:        int = 0
     active_servers:       int = 0
     servers_with_updates: int = 0   # pending_updates > 0
-    compliant_servers:    int = 0   # pending_updates == 0
-    due_soon_servers:     int = 0   # updates pending, patched within window
-    overdue_servers:      int = 0   # updates pending, patched beyond window
+    compliant_servers:    int = 0   # patched within the compliance window
+    due_soon_servers:     int = 0   # patched within the due-soon buffer (beyond window)
+    overdue_servers:      int = 0   # patched beyond the due-soon threshold
     last_ansible_sync:    datetime | None = None
     environments:         list[EnvironmentCount] = field(default_factory=list)
     locations:            list[LocationCount]     = field(default_factory=list)
@@ -103,43 +103,50 @@ def get_dashboard_stats() -> DashboardStats:
             or 0
         )
 
-        # ── Compliance-based patch counts ─────────────────────────────
-        try:
-            from ...models.compliance_config import ComplianceConfig
-            cfg = ComplianceConfig.get()
-            window_days = cfg.compliance_window_days
-        except Exception:
-            window_days = 90
-
-        now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(days=window_days)
-
+        # ── Patch counts (patch status concept — independent of compliance) ──
         stats.servers_with_updates = (
             db.session.query(func.count(Patching.id))
             .filter(Patching.pending_updates > 0)
             .scalar() or 0
         )
+
+        # ── Compliance counts (date-only; mirrors Patching.compliance_status) ─
+        # Compliance is based solely on last_patch_date vs the configured
+        # thresholds.  pending_updates and patch_status play no part here.
+        try:
+            from ...models.compliance_config import ComplianceConfig
+            cfg = ComplianceConfig.get()
+            window_days   = cfg.compliance_window_days
+            due_soon_days = cfg.due_soon_days
+        except Exception:
+            window_days, due_soon_days = 90, 15
+
+        now = datetime.now(timezone.utc)
+        cutoff_compliant = now - timedelta(days=window_days)
+        cutoff_overdue   = now - timedelta(days=window_days + due_soon_days)
+
         stats.compliant_servers = (
             db.session.query(func.count(Patching.id))
-            .filter(Patching.pending_updates == 0)
+            .filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_compliant,
+            )
             .scalar() or 0
         )
         stats.due_soon_servers = (
             db.session.query(func.count(Patching.id))
             .filter(
-                Patching.pending_updates > 0,
-                Patching.last_patch_date >= cutoff,
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_overdue,
+                Patching.last_patch_date < cutoff_compliant,
             )
             .scalar() or 0
         )
         stats.overdue_servers = (
             db.session.query(func.count(Patching.id))
             .filter(
-                Patching.pending_updates > 0,
-                or_(
-                    Patching.last_patch_date < cutoff,
-                    Patching.last_patch_date == None,  # noqa: E711
-                ),
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date < cutoff_overdue,
             )
             .scalar() or 0
         )

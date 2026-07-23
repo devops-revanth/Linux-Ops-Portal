@@ -244,14 +244,14 @@ def infrastructure_summary():
 def patch_compliance():
     per_page = current_app.config.get("ITEMS_PER_PAGE", 25)
 
-    search       = request.args.get("q",            "").strip()
-    location_id  = request.args.get("location_id",  type=int)
-    env_id       = request.args.get("env_id",       type=int)
-    patch_status = request.args.get("patch_status", "").strip()
-    sort         = request.args.get("sort",  PATCH_DEFAULT_SORT)
-    order        = request.args.get("order", PATCH_DEFAULT_ORDER)
-    page         = request.args.get("page",  1, type=int)
-    export       = request.args.get("export", "").strip().lower()
+    search            = request.args.get("q",                 "").strip()
+    location_id       = request.args.get("location_id",       type=int)
+    env_id            = request.args.get("env_id",            type=int)
+    compliance_status = request.args.get("compliance_status", "").strip()
+    sort              = request.args.get("sort",  PATCH_DEFAULT_SORT)
+    order             = request.args.get("order", PATCH_DEFAULT_ORDER)
+    page              = request.args.get("page",  1, type=int)
+    export            = request.args.get("export", "").strip().lower()
 
     if order not in ("asc", "desc"):
         order = PATCH_DEFAULT_ORDER
@@ -260,15 +260,16 @@ def patch_compliance():
 
     filters = PatchComplianceFilters(
         search=search, location_id=location_id, env_id=env_id,
-        patch_status=patch_status, sort=sort, order=order,
+        compliance_status=compliance_status, sort=sort, order=order,
     )
 
     if export in ("csv", "xlsx"):
         servers = get_patch_compliance_export(filters)
         headers = [
             "Hostname", "Environment", "Location", "OS", "Current Kernel",
-            "Previous Kernel", "Patch Status", "Pending Updates",
-            "Last Patched", "Last Reboot", "Last Ansible Sync", "Owner",
+            "Previous Kernel", "Compliance Status", "Patch Status",
+            "Pending Updates", "Last Patched", "Last Reboot",
+            "Last Ansible Sync", "Owner",
         ]
         rows = []
         for s in servers:
@@ -278,12 +279,13 @@ def patch_compliance():
                 s.environment.name if s.environment else "",
                 s.location.name    if s.location    else "",
                 _fmt(s.operating_system),
-                _fmt(p.current_kernel   if p else None),
-                _fmt(p.previous_kernel  if p else None),
-                p.patch_status          if p else "unknown",
-                _fmt(p.pending_updates  if p else None),
-                _fmt(p.last_patch_date  if p else None),
-                _fmt(p.last_reboot_date if p else None),
+                _fmt(p.current_kernel    if p else None),
+                _fmt(p.previous_kernel   if p else None),
+                p.compliance_status      if p else "unknown",
+                p.patch_status           if p else "unknown",
+                _fmt(p.pending_updates   if p else None),
+                _fmt(p.last_patch_date   if p else None),
+                _fmt(p.last_reboot_date  if p else None),
                 _fmt(s.last_ansible_sync),
                 s.owner.name if s.owner else "",
             ])

@@ -27,10 +27,10 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{{ url_for('reports.patch_compliance', q=f.search, location_id=f.location_id,
-               env_id=f.env_id, patch_status=f.patch_status, sort=f.sort, order=f.order, export='csv') }}"
+               env_id=f.env_id, compliance_status=f.compliance_status, sort=f.sort, order=f.order, export='csv') }}"
          class="btn btn-sm btn-outline-secondary"><i class="bi bi-filetype-csv me-1"></i>Export CSV</a>
       <a href="{{ url_for('reports.patch_compliance', q=f.search, location_id=f.location_id,
-               env_id=f.env_id, patch_status=f.patch_status, sort=f.sort, order=f.order, export='xlsx') }}"
+               env_id=f.env_id, compliance_status=f.compliance_status, sort=f.sort, order=f.order, export='xlsx') }}"
          class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>Export Excel</a>
     </div>
   </div>
@@ -38,34 +38,34 @@
   {# ── Compliance summary cards ─────────────────────────────────────────── #}
   <div class="row g-3 mb-3">
     <div class="col-6 col-md-3">
-      <a href="{{ url_for('reports.patch_compliance', patch_status='up-to-date') }}"
+      <a href="{{ url_for('reports.patch_compliance', compliance_status='compliant') }}"
          class="card border-0 text-decoration-none" style="background:rgba(35,134,54,.12); border:1px solid rgba(35,134,54,.3) !important;">
         <div class="card-body py-3 text-center">
-          <div class="fw-bold fs-4 text-success">{{ report.count_up_to_date }}</div>
-          <div class="small text-success opacity-75">Up-to-date</div>
+          <div class="fw-bold fs-4 text-success">{{ report.count_compliant }}</div>
+          <div class="small text-success opacity-75">Compliant</div>
         </div>
       </a>
     </div>
     <div class="col-6 col-md-3">
-      <a href="{{ url_for('reports.patch_compliance', patch_status='pending') }}"
+      <a href="{{ url_for('reports.patch_compliance', compliance_status='due_soon') }}"
          class="card border-0 text-decoration-none" style="background:rgba(210,153,34,.12); border:1px solid rgba(210,153,34,.3) !important;">
         <div class="card-body py-3 text-center">
-          <div class="fw-bold fs-4" style="color:#d4a017;">{{ report.count_pending }}</div>
-          <div class="small opacity-75" style="color:#d4a017;">Pending</div>
+          <div class="fw-bold fs-4" style="color:#d4a017;">{{ report.count_due_soon }}</div>
+          <div class="small opacity-75" style="color:#d4a017;">Due Soon</div>
         </div>
       </a>
     </div>
     <div class="col-6 col-md-3">
-      <a href="{{ url_for('reports.patch_compliance', patch_status='failed') }}"
+      <a href="{{ url_for('reports.patch_compliance', compliance_status='overdue') }}"
          class="card border-0 text-decoration-none" style="background:rgba(248,81,73,.12); border:1px solid rgba(248,81,73,.3) !important;">
         <div class="card-body py-3 text-center">
-          <div class="fw-bold fs-4 text-danger">{{ report.count_failed }}</div>
-          <div class="small text-danger opacity-75">Failed</div>
+          <div class="fw-bold fs-4 text-danger">{{ report.count_overdue }}</div>
+          <div class="small text-danger opacity-75">Overdue</div>
         </div>
       </a>
     </div>
     <div class="col-6 col-md-3">
-      <a href="{{ url_for('reports.patch_compliance', patch_status='unknown') }}"
+      <a href="{{ url_for('reports.patch_compliance', compliance_status='unknown') }}"
          class="card border-0 text-decoration-none" style="background:rgba(139,148,158,.1); border:1px solid rgba(139,148,158,.3) !important;">
         <div class="card-body py-3 text-center">
           <div class="fw-bold fs-4 text-secondary">{{ report.count_unknown }}</div>
@@ -122,13 +122,13 @@
         </div>
 
         <div style="min-width:155px;">
-          <label class="form-label text-secondary small mb-1">Patch Status</label>
-          <select name="patch_status" class="form-select form-select-sm bg-transparent border-secondary text-light"
+          <label class="form-label text-secondary small mb-1">Compliance</label>
+          <select name="compliance_status" class="form-select form-select-sm bg-transparent border-secondary text-light"
                   onchange="this.form.submit()">
             <option value="">All statuses</option>
-            {% for ps in report.patch_statuses %}
-              <option value="{{ ps }}" {{ 'selected' if f.patch_status == ps }}>
-                {{ ps | replace('-',' ') | title }}
+            {% for cs in report.compliance_statuses %}
+              <option value="{{ cs }}" {{ 'selected' if f.compliance_status == cs }}>
+                {{ cs | replace('_',' ') | title }}
               </option>
             {% endfor %}
           </select>
@@ -136,7 +136,7 @@
 
         <div class="d-flex gap-2 align-self-end">
           <button type="submit" class="btn btn-sm btn-primary">Apply</button>
-          {% if f.search or f.location_id or f.env_id or f.patch_status %}
+          {% if f.search or f.location_id or f.env_id or f.compliance_status %}
             <a href="{{ url_for('reports.patch_compliance') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
           {% endif %}
         </div>
@@ -154,7 +154,7 @@
             {% macro sl(col, label) %}
               {% set next_order = 'desc' if (f.sort == col and f.order == 'asc') else 'asc' %}
               <a href="{{ url_for('reports.patch_compliance', q=f.search, location_id=f.location_id,
-                          env_id=f.env_id, patch_status=f.patch_status, sort=col, order=next_order, page=1) }}"
+                          env_id=f.env_id, compliance_status=f.compliance_status, sort=col, order=next_order, page=1) }}"
                  class="lop-sort-link {{ 'active' if f.sort == col }}">
                 {{ label }}{% if f.sort == col %}<i class="bi bi-arrow-{{ 'up' if f.order == 'asc' else 'down' }} lop-sort-icon"></i>{% else %}<i class="bi bi-arrow-down-up lop-sort-icon"></i>{% endif %}
               </a>
@@ -164,7 +164,7 @@
             <th class="d-none d-lg-table-cell">{{ sl('location',          'Location') }}</th>
             <th class="d-none d-md-table-cell">{{ sl('operating_system',  'OS') }}</th>
             <th class="d-none d-xl-table-cell">{{ sl('current_kernel',    'Current Kernel') }}</th>
-            <th>{{ sl('patch_status',      'Patch Status') }}</th>
+            <th>{{ sl('compliance',        'Compliance') }}</th>
             <th class="d-none d-md-table-cell">{{ sl('pending_updates',   'Pending') }}</th>
             <th class="d-none d-md-table-cell">{{ sl('last_patch_date',   'Last Patched') }}</th>
             <th class="d-none d-xl-table-cell">{{ sl('last_reboot_date',  'Last Reboot') }}</th>
@@ -176,7 +176,7 @@
           {% if report.servers %}
             {% for srv in report.servers %}
             {% set p = srv.patching %}
-            {% set ps = p.patch_status if p else 'unknown' %}
+            {% set cs = p.compliance_status if p else 'unknown' %}
             <tr>
               <td><a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching" class="lop-hostname-link"><i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}</a></td>
               <td>{% include "reports/_env_pill.html" %}</td>
@@ -184,13 +184,15 @@
               <td class="d-none d-md-table-cell">{% if srv.operating_system %}{{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td class="d-none d-xl-table-cell">{% if p and p.current_kernel %}<span class="lop-mono">{{ p.current_kernel }}</span>{% elif srv.kernel_version %}<span class="lop-mono">{{ srv.kernel_version }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>
-                <span class="lop-patch-badge lop-patch-{{ ps | replace('-','_') if ps != 'up-to-date' else 'up-to-date' }}
-                  lop-patch-{{ ps }}">
-                  {% if ps == 'up-to-date' %}<i class="bi bi-check-circle-fill"></i>Up-to-date
-                  {% elif ps == 'pending'   %}<i class="bi bi-exclamation-circle-fill"></i>Pending
-                  {% elif ps == 'failed'    %}<i class="bi bi-x-circle-fill"></i>Failed
-                  {% else                   %}<i class="bi bi-question-circle-fill"></i>Unknown{% endif %}
-                </span>
+                {% if cs == 'compliant' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-shield-check me-1"></i>Compliant</span>
+                {% elif cs == 'due_soon' %}
+                  <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-shield-exclamation me-1"></i>Due Soon</span>
+                {% elif cs == 'overdue' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-shield-x me-1"></i>Overdue</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="bi bi-shield me-1"></i>Unknown</span>
+                {% endif %}
               </td>
               <td class="d-none d-md-table-cell">
                 {% if p and p.pending_updates %}
@@ -210,7 +212,7 @@
       </table>
     </div>
     {% set endpoint = 'reports.patch_compliance' %}
-    {% set extra_params = {'patch_status': f.patch_status} %}
+    {% set extra_params = {'compliance_status': f.compliance_status} %}
     {% include "reports/_pagination.html" with context %}
   </div>
 

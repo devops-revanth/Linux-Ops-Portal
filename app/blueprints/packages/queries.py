@@ -85,11 +85,12 @@ def get_fleet_summary() -> PackageFleetSummary:
             .scalar() or 0
         )
 
-        # Compliance counts — same thresholds as Patching.compliance_status
+        # Compliance counts — date-only; mirrors Patching.compliance_status.
+        # pending_updates plays no part in compliance.
         try:
             from ...models.compliance_config import ComplianceConfig
             cfg = ComplianceConfig.get()
-            window_days  = cfg.compliance_window_days
+            window_days   = cfg.compliance_window_days
             due_soon_days = cfg.due_soon_days
         except Exception:
             window_days, due_soon_days = 90, 15
@@ -100,18 +101,18 @@ def get_fleet_summary() -> PackageFleetSummary:
 
         compliant_servers = (
             db.session.query(func.count(Patching.id))
-            .filter(Patching.pending_updates == 0)
+            .filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_compliant,
+            )
             .scalar() or 0
         )
 
         overdue_servers = (
             db.session.query(func.count(Patching.id))
             .filter(
-                Patching.pending_updates > 0,
-                or_(
-                    Patching.last_patch_date < cutoff_overdue,
-                    Patching.last_patch_date == None,  # noqa: E711
-                ),
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date < cutoff_overdue,
             )
             .scalar() or 0
         )

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import contains_eager
@@ -354,7 +355,7 @@ PATCH_SORTABLE: dict[str, object] = {
     "location":          Location.name,
     "operating_system":  Server.operating_system,
     "current_kernel":    Patching.current_kernel,
-    "patch_status":      Patching.patch_status,
+    "compliance":        Patching.last_patch_date,   # proxy: sort by date = sort by compliance
     "pending_updates":   Patching.pending_updates,
     "last_patch_date":   Patching.last_patch_date,
     "last_reboot_date":  Patching.last_reboot_date,
@@ -362,36 +363,36 @@ PATCH_SORTABLE: dict[str, object] = {
     "owner":             Owner.name,
 }
 
-PATCH_DEFAULT_SORT  = "patch_status"
+PATCH_DEFAULT_SORT  = "last_patch_date"
 PATCH_DEFAULT_ORDER = "asc"
-VALID_PATCH_STATUSES = ["up-to-date", "pending", "failed", "unknown"]
+VALID_COMPLIANCE_STATUSES = ["compliant", "due_soon", "overdue", "unknown"]
 
 
 @dataclass
 class PatchComplianceFilters:
-    search:       str        = ""
-    location_id:  int | None = None
-    env_id:       int | None = None
-    patch_status: str        = ""
-    sort:         str        = PATCH_DEFAULT_SORT
-    order:        str        = PATCH_DEFAULT_ORDER
+    search:            str        = ""
+    location_id:       int | None = None
+    env_id:            int | None = None
+    compliance_status: str        = ""
+    sort:              str        = PATCH_DEFAULT_SORT
+    order:             str        = PATCH_DEFAULT_ORDER
 
 
 @dataclass
 class PatchCompliancePage:
-    servers:          list                   = field(default_factory=list)
-    total:            int                    = 0
-    page:             int                    = 1
-    per_page:         int                    = 25
-    total_pages:      int                    = 1
-    filters:          PatchComplianceFilters = field(default_factory=PatchComplianceFilters)
-    locations:        list                   = field(default_factory=list)
-    environments:     list                   = field(default_factory=list)
-    patch_statuses:   list                   = field(default_factory=list)
-    count_up_to_date: int                    = 0
-    count_pending:    int                    = 0
-    count_failed:     int                    = 0
-    count_unknown:    int                    = 0
+    servers:               list                   = field(default_factory=list)
+    total:                 int                    = 0
+    page:                  int                    = 1
+    per_page:              int                    = 25
+    total_pages:           int                    = 1
+    filters:               PatchComplianceFilters = field(default_factory=PatchComplianceFilters)
+    locations:             list                   = field(default_factory=list)
+    environments:          list                   = field(default_factory=list)
+    compliance_statuses:   list                   = field(default_factory=list)
+    count_compliant:       int                    = 0
+    count_due_soon:        int                    = 0
+    count_overdue:         int                    = 0
+    count_unknown:         int                    = 0
 
 
 def _patch_compliance_query(filters: PatchComplianceFilters):
@@ -420,14 +421,43 @@ def _patch_compliance_query(filters: PatchComplianceFilters):
         q = q.filter(Server.location_id == filters.location_id)
     if filters.env_id:
         q = q.filter(Server.environment_id == filters.env_id)
-    if filters.patch_status:
-        if filters.patch_status == "unknown":
+
+    # Compliance filter — date-only logic mirrors Patching.compliance_status
+    if filters.compliance_status:
+        now = datetime.now(timezone.utc)
+        try:
+            from ...models.compliance_config import ComplianceConfig
+            cfg = ComplianceConfig.get()
+            window_days   = cfg.compliance_window_days
+            due_soon_days = cfg.due_soon_days
+        except Exception:
+            window_days, due_soon_days = 90, 15
+        cutoff_compliant = now - timedelta(days=window_days)
+        cutoff_overdue   = now - timedelta(days=window_days + due_soon_days)
+
+        if filters.compliance_status == "compliant":
             q = q.filter(
-                (Patching.id == None) |  # noqa: E711
-                (Patching.patch_status == "unknown")
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_compliant,
             )
-        else:
-            q = q.filter(Patching.patch_status == filters.patch_status)
+        elif filters.compliance_status == "due_soon":
+            q = q.filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_overdue,
+                Patching.last_patch_date < cutoff_compliant,
+            )
+        elif filters.compliance_status == "overdue":
+            q = q.filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date < cutoff_overdue,
+            )
+        elif filters.compliance_status == "unknown":
+            q = q.filter(
+                or_(
+                    Patching.id == None,              # noqa: E711
+                    Patching.last_patch_date == None, # noqa: E711
+                )
+            )
 
     sort_col = PATCH_SORTABLE.get(filters.sort, Server.hostname)
     order_fn = asc if filters.order == "asc" else desc
@@ -443,25 +473,58 @@ def get_patch_compliance_report(
         q = _patch_compliance_query(filters)
         result.servers, result.total, result.total_pages = _paginate(q, page, per_page)
         ref = _ref_data()
-        result.locations      = ref["locations"]
-        result.environments   = ref["environments"]
-        result.patch_statuses = VALID_PATCH_STATUSES
+        result.locations           = ref["locations"]
+        result.environments        = ref["environments"]
+        result.compliance_statuses = VALID_COMPLIANCE_STATUSES
 
-        status_rows = (
-            db.session.query(
-                Patching.patch_status,
-                func.count(Patching.id).label("cnt"),
+        # Compliance summary counts — date-only; mirrors Patching.compliance_status
+        now = datetime.now(timezone.utc)
+        try:
+            from ...models.compliance_config import ComplianceConfig
+            cfg = ComplianceConfig.get()
+            window_days   = cfg.compliance_window_days
+            due_soon_days = cfg.due_soon_days
+        except Exception:
+            window_days, due_soon_days = 90, 15
+        cutoff_compliant = now - timedelta(days=window_days)
+        cutoff_overdue   = now - timedelta(days=window_days + due_soon_days)
+
+        result.count_compliant = (
+            db.session.query(func.count(Patching.id))
+            .filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_compliant,
             )
-            .group_by(Patching.patch_status)
-            .all()
+            .scalar() or 0
         )
-        status_map = {r.patch_status: r.cnt for r in status_rows}
-        total_servers  = db.session.query(func.count(Server.id)).scalar() or 0
-        patched_count  = sum(status_map.values())
-        result.count_up_to_date = status_map.get("up-to-date", 0)
-        result.count_pending    = status_map.get("pending",    0)
-        result.count_failed     = status_map.get("failed",     0)
-        result.count_unknown    = (total_servers - patched_count) + status_map.get("unknown", 0)
+        result.count_due_soon = (
+            db.session.query(func.count(Patching.id))
+            .filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date >= cutoff_overdue,
+                Patching.last_patch_date < cutoff_compliant,
+            )
+            .scalar() or 0
+        )
+        result.count_overdue = (
+            db.session.query(func.count(Patching.id))
+            .filter(
+                Patching.last_patch_date != None,         # noqa: E711
+                Patching.last_patch_date < cutoff_overdue,
+            )
+            .scalar() or 0
+        )
+        result.count_unknown = (
+            db.session.query(func.count(Server.id))
+            .outerjoin(Patching, Patching.server_id == Server.id)
+            .filter(
+                or_(
+                    Patching.id == None,              # noqa: E711
+                    Patching.last_patch_date == None, # noqa: E711
+                )
+            )
+            .scalar() or 0
+        )
     except Exception:
         logger.exception("Failed to query patch compliance report")
     return result

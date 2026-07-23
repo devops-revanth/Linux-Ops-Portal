@@ -54,38 +54,44 @@ class Patching(db.Model):
     @property
     def compliance_status(self) -> str:
         """
-        Derive compliance from pending_updates and last_patch_date.
+        Derive compliance from last_patch_date and the configured thresholds.
 
-        Thresholds are read from ComplianceConfig (DB singleton, cached per request
-        via flask.g).  Falls back to 90-day / 15-day defaults if outside a request
-        context or if the table does not yet exist.
+        Compliance is determined solely by when the server was last patched
+        relative to the organisation's policy windows.  It is intentionally
+        independent of pending_updates, patch_status, and reboot_required —
+        those fields belong to the separate Patch Status concept.
+
+        Thresholds are read from ComplianceConfig (DB singleton, cached per
+        request via flask.g).  Falls back to 90-day / 15-day defaults when
+        called outside a request context or before the table exists.
+
+        Policy (example: window=90 days, due_soon=15 days):
+
+            days since last patch  │ status
+            ───────────────────────┼──────────
+            NULL                   │ unknown
+            0 – 90                 │ compliant
+            91 – 105               │ due_soon
+            > 105                  │ overdue
 
         Returns:
-            'compliant'  — no pending updates
-            'due_soon'   — updates pending but within compliance window,
-                           OR never patched (newly discovered server)
-            'overdue'    — updates pending and last patch exceeds window
-            'unknown'    — pending_updates is None (data not collected)
+            'unknown'   — last_patch_date is NULL (never patched / no data)
+            'compliant' — patched within the compliance window
+            'due_soon'  — patched beyond the window but within the due-soon buffer
+            'overdue'   — patched beyond the window + due-soon buffer
         """
-        window_days, due_soon_days = _get_compliance_thresholds()
-
-        if self.pending_updates is None:
+        if self.last_patch_date is None:
             return "unknown"
 
-        if self.pending_updates == 0:
-            return "compliant"
-
-        # Has pending updates — never patched counts as due_soon, not overdue,
-        # so newly discovered servers are not immediately flagged as non-compliant.
-        if self.last_patch_date is None:
-            return "due_soon"
-
+        window_days, due_soon_days = _get_compliance_thresholds()
         now = datetime.now(timezone.utc)
         days_since = (now - self.last_patch_date).days
-        if days_since > window_days:
-            return "overdue"
 
-        return "due_soon"
+        if days_since <= window_days:
+            return "compliant"
+        if days_since <= window_days + due_soon_days:
+            return "due_soon"
+        return "overdue"
 
     def __repr__(self) -> str:
         return f"<Patching server_id={self.server_id} status={self.patch_status}>"

@@ -1,6 +1,6 @@
 {# Active filter pills — used across report templates.
    Requires: f (filters object), report (page object with .locations and .environments) #}
-{% if f.search or f.location_id or f.env_id or (f.status is defined and f.status) or (f.patch_status is defined and f.patch_status) or (f.owner_id is defined and f.owner_id) or (f.kernel is defined and f.kernel) %}
+{% if f.search or f.location_id or f.env_id or (f.status is defined and f.status) or (f.patch_status is defined and f.patch_status) or (f.compliance_status is defined and f.compliance_status) or (f.owner_id is defined and f.owner_id) or (f.kernel is defined and f.kernel) %}
 <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
   <small class="text-secondary me-1">Active filters:</small>
   {% if f.search %}
@@ -31,6 +31,15 @@
       {% elif f.patch_status == 'failed'    %}bg-danger-subtle  text-danger  border border-danger-subtle
       {% else                               %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
       patch: {{ f.patch_status | replace('-',' ') | title }}
+    </span>
+  {% endif %}
+  {% if f.compliance_status is defined and f.compliance_status %}
+    <span class="badge
+      {% if f.compliance_status == 'compliant' %}bg-success-subtle text-success border border-success-subtle
+      {% elif f.compliance_status == 'due_soon' %}bg-warning-subtle text-warning border border-warning-subtle
+      {% elif f.compliance_status == 'overdue'  %}bg-danger-subtle  text-danger  border border-danger-subtle
+      {% else                                   %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}">
+      compliance: {{ f.compliance_status | replace('_',' ') | title }}
     </span>
   {% endif %}
   {% if f.kernel is defined and f.kernel %}
