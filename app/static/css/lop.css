@@ -336,10 +336,34 @@ html, body {
   flex-shrink: 0;
 }
 
-/* ── Responsive: collapse sidebar on small screens ──────── */
+/* ── Responsive: sidebar as slide-in overlay on small screens ── */
 @media (max-width: 767.98px) {
   .lop-sidebar {
-    display: none !important;
+    position: fixed;
+    top: var(--lop-navbar-height);
+    left: 0;
+    bottom: 0;
+    z-index: 1025;
+    width: var(--lop-sidebar-width);
+    transform: translateX(-110%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.5);
+  }
+  .lop-sidebar.lop-sidebar-open {
+    transform: translateX(0);
+  }
+  .lop-sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: var(--lop-navbar-height);
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 1024;
+    cursor: pointer;
+  }
+  .lop-sidebar-backdrop.lop-sidebar-open {
+    display: block;
   }
   .lop-breadcrumb {
     padding-left: 1rem;

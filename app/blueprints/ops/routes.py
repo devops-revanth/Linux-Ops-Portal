@@ -783,7 +783,8 @@ def api_hosts():
     loc_id  = request.args.get("location_id", type=int)
     search  = request.args.get("q", "").strip()
 
-    q = Server.query.filter(Server.status != "decommissioned")
+    from sqlalchemy.orm import joinedload
+    q = Server.query.options(joinedload(Server.environment)).filter(Server.status != "decommissioned")
     if env_id:
         q = q.filter(Server.environment_id == env_id)
     if loc_id:

@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass, field
 
 from sqlalchemy import asc, desc, func, or_
+from sqlalchemy.orm import contains_eager
 
 from ...extensions import db
 from ...models.environment import Environment
@@ -29,12 +30,17 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────── #
 
 def _base_server_query():
-    """Return a query joining all related tables to Server."""
+    """Return a query joining all related tables to Server with eager loading."""
     return (
         db.session.query(Server)
         .outerjoin(Environment, Server.environment_id == Environment.id)
         .outerjoin(Location,    Server.location_id    == Location.id)
         .outerjoin(Owner,       Server.owner_id       == Owner.id)
+        .options(
+            contains_eager(Server.environment),
+            contains_eager(Server.location),
+            contains_eager(Server.owner),
+        )
     )
 
 
@@ -395,6 +401,12 @@ def _patch_compliance_query(filters: PatchComplianceFilters):
         .outerjoin(Environment, Server.environment_id == Environment.id)
         .outerjoin(Location,    Server.location_id    == Location.id)
         .outerjoin(Owner,       Server.owner_id       == Owner.id)
+        .options(
+            contains_eager(Server.patching),
+            contains_eager(Server.environment),
+            contains_eager(Server.location),
+            contains_eager(Server.owner),
+        )
     )
 
     if filters.search:
@@ -513,6 +525,12 @@ def _sync_report_query(filters: SyncReportFilters):
         .outerjoin(Environment, Server.environment_id == Environment.id)
         .outerjoin(Location,    Server.location_id    == Location.id)
         .outerjoin(Owner,       Server.owner_id       == Owner.id)
+        .options(
+            contains_eager(Server.patching),
+            contains_eager(Server.environment),
+            contains_eager(Server.location),
+            contains_eager(Server.owner),
+        )
     )
 
     if filters.search:

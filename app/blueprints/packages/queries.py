@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import asc, desc, func, or_
+from sqlalchemy.orm import contains_eager
 
 from ...extensions import db
 from ...models.environment import Environment
@@ -145,6 +146,10 @@ def get_fleet_page(
             .outerjoin(Patching,    Patching.server_id    == Server.id)
             .outerjoin(Environment, Server.environment_id == Environment.id)
             .outerjoin(Location,    Server.location_id    == Location.id)
+            .options(
+                contains_eager(Server.environment),
+                contains_eager(Server.location),
+            )
         )
 
         # Search: hostname, FQDN, or IP

@@ -38,6 +38,16 @@
         <span class="d-none d-md-inline text-secondary small">Linux Operations Portal</span>
       </a>
 
+      <!-- Mobile sidebar toggle (visible only on small screens) -->
+      {% if current_user.is_authenticated %}
+      <button id="sidebarToggle"
+              class="btn btn-sm btn-outline-secondary d-md-none me-1"
+              type="button"
+              aria-label="Toggle sidebar">
+        <i class="bi bi-list fs-5"></i>
+      </button>
+      {% endif %}
+
       <button
         class="navbar-toggler"
         type="button"

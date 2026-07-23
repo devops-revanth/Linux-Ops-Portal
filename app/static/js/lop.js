@@ -147,3 +147,39 @@
     console.info("[LOP] Portal initialised.");
   });
 })();
+
+/* ── Mobile sidebar toggle ─────────────────────────────── */
+(function () {
+  'use strict';
+  document.addEventListener('DOMContentLoaded', function () {
+    var toggle   = document.getElementById('sidebarToggle');
+    var sidebar  = document.getElementById('sidebar');
+    if (!toggle || !sidebar) return;
+
+    // Create backdrop element
+    var backdrop = document.createElement('div');
+    backdrop.className = 'lop-sidebar-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openSidebar() {
+      sidebar.classList.add('lop-sidebar-open');
+      backdrop.classList.add('lop-sidebar-open');
+    }
+    function closeSidebar() {
+      sidebar.classList.remove('lop-sidebar-open');
+      backdrop.classList.remove('lop-sidebar-open');
+    }
+
+    toggle.addEventListener('click', function () {
+      sidebar.classList.contains('lop-sidebar-open') ? closeSidebar() : openSidebar();
+    });
+
+    // Tap backdrop to close
+    backdrop.addEventListener('click', closeSidebar);
+
+    // Close on nav-link click (navigating away)
+    sidebar.querySelectorAll('a.nav-link').forEach(function (link) {
+      link.addEventListener('click', closeSidebar);
+    });
+  });
+})();

@@ -149,13 +149,19 @@ def get_search_page(
 # ── Query builders ────────────────────────────────────────────────────────── #
 
 def _base_q():
-    """Base query joining optional metadata tables."""
+    """Base query joining optional metadata tables with eager loading to prevent N+1."""
     return (
         db.session.query(Server)
         .outerjoin(Patching,    Patching.server_id    == Server.id)
         .outerjoin(Environment, Server.environment_id == Environment.id)
         .outerjoin(Location,    Server.location_id    == Location.id)
         .outerjoin(Owner,       Server.owner_id       == Owner.id)
+        .options(
+            contains_eager(Server.patching),
+            contains_eager(Server.environment),
+            contains_eager(Server.location),
+            contains_eager(Server.owner),
+        )
         .distinct()
     )
 

@@ -98,18 +98,22 @@ def health():
             disk_total_gb = round((stat.f_blocks * stat.f_frsize) / (1024 ** 3), 1)
             disk_free_gb  = round((stat.f_bavail * stat.f_frsize) / (1024 ** 3), 1)
             disk_used_pct = round((1 - stat.f_bavail / max(stat.f_blocks, 1)) * 100, 1)
-            disk_status = "ok"
-            if disk_free_gb < 1:
-                disk_status = "critical"
-                overall = "degraded"
-            elif disk_used_pct > 85:
-                disk_status = "warning"
-            checks["disk"] = {
-                "status": disk_status,
-                "total_gb": disk_total_gb,
-                "free_gb": disk_free_gb,
-                "used_pct": disk_used_pct,
-            }
+            if disk_total_gb < 0.1:
+                # Values round to zero — container or virtual FS; skip degrading overall.
+                checks["disk"] = {"status": "unavailable"}
+            else:
+                disk_status = "ok"
+                if disk_free_gb < 1:
+                    disk_status = "critical"
+                    overall = "degraded"
+                elif disk_used_pct > 85:
+                    disk_status = "warning"
+                checks["disk"] = {
+                    "status": disk_status,
+                    "total_gb": disk_total_gb,
+                    "free_gb": disk_free_gb,
+                    "used_pct": disk_used_pct,
+                }
     except Exception:
         checks["disk"] = {"status": "unavailable"}
 
