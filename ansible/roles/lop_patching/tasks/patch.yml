@@ -59,7 +59,7 @@
 
 - name: Apply specific package updates (RHEL family — packages mode)
   ansible.builtin.dnf:
-    name: "{{ patch_packages }}"
+    name: "{{ patch_packages | default([]) }}"
     state: latest
   register: dnf_result_packages
   when:
@@ -79,8 +79,8 @@
 - name: Apply all available updates (Debian family — all mode)
   ansible.builtin.apt:
     upgrade: dist
-    autoremove: "{{ patch_apt_autoremove }}"
-    autoclean: "{{ patch_apt_autoclean }}"
+    autoremove: "{{ patch_apt_autoremove | default(false) }}"
+    autoclean: "{{ patch_apt_autoclean | default(false) }}"
   register: apt_result_all
   when:
     - ansible_os_family == "Debian"
@@ -88,7 +88,7 @@
 
 - name: Apply specific package updates (Debian family — packages mode)
   ansible.builtin.apt:
-    name: "{{ patch_packages }}"
+    name: "{{ patch_packages | default([]) }}"
     state: latest
     update_cache: false
   register: apt_result_packages

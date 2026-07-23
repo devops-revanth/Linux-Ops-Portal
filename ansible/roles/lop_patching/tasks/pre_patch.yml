@@ -83,6 +83,6 @@
       - " OS            : {{ ansible_distribution }} {{ ansible_distribution_version }}"
       - " Kernel        : {{ ansible_kernel }}"
       - " Updates Found : {{ lop_pre_patch_update_count }}"
-      - " Patch Mode    : {{ patch_mode }}"
+      - " Patch Mode    : {{ patch_mode | default('all') }}"
       - " Started At    : {{ lop_patch_started_at }}"
       - "================================================"
