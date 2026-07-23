@@ -62,8 +62,9 @@ class Patching(db.Model):
 
         Returns:
             'compliant'  — no pending updates
-            'due_soon'   — updates pending, patched within compliance window
-            'overdue'    — updates pending, patch overdue or never done
+            'due_soon'   — updates pending but within compliance window,
+                           OR never patched (newly discovered server)
+            'overdue'    — updates pending and last patch exceeds window
             'unknown'    — pending_updates is None (data not collected)
         """
         window_days, due_soon_days = _get_compliance_thresholds()
@@ -74,14 +75,17 @@ class Patching(db.Model):
         if self.pending_updates == 0:
             return "compliant"
 
-        # Has pending updates — check how long since last patch
-        if self.last_patch_date:
-            now = datetime.now(timezone.utc)
-            days_since = (now - self.last_patch_date).days
-            if days_since <= window_days:
-                return "due_soon"
+        # Has pending updates — never patched counts as due_soon, not overdue,
+        # so newly discovered servers are not immediately flagged as non-compliant.
+        if self.last_patch_date is None:
+            return "due_soon"
 
-        return "overdue"
+        now = datetime.now(timezone.utc)
+        days_since = (now - self.last_patch_date).days
+        if days_since > window_days:
+            return "overdue"
+
+        return "due_soon"
 
     def __repr__(self) -> str:
         return f"<Patching server_id={self.server_id} status={self.patch_status}>"
