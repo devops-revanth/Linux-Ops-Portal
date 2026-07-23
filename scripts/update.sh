@@ -17,6 +17,7 @@ source "$SCRIPT_DIR/lib/python.sh"
 source "$SCRIPT_DIR/lib/deps.sh"
 source "$SCRIPT_DIR/lib/postgres.sh"
 source "$SCRIPT_DIR/lib/systemd.sh"
+source "$SCRIPT_DIR/lib/nginx.sh"
 source "$SCRIPT_DIR/lib/version.sh"
 
 # ── Flags ─────────────────────────────────────────────────────────────────────
@@ -358,6 +359,14 @@ apply_changes() {
                 exit 1
             }
         log_success "Service restarted."
+
+        # Reload nginx in case the vhost config was updated
+        if systemctl is-active --quiet nginx 2>/dev/null; then
+            nginx_write_vhost
+            nginx -t >> "$LOG_FILE" 2>&1 \
+                && systemctl reload nginx >> "$LOG_FILE" 2>&1 \
+                || log_warn "nginx reload failed (non-fatal) — traffic still routes through existing config."
+        fi
     else
         log_info "No code or dependency changes — service restart not required."
     fi
@@ -366,7 +375,9 @@ apply_changes() {
 # ── Post-update health check ──────────────────────────────────────────────────
 post_update_health_check() {
     log_step "Verifying update (waiting up to 60s)..."
-    if health_check "http://localhost:5000/health" 12 5; then
+    # Primary check via nginx on port 80; fall back to Gunicorn direct if nginx
+    # is not yet running (e.g. first update before nginx_setup was added).
+    if nginx_verify 2>/dev/null || health_check "http://localhost:5000/health" 12 5; then
         log_success "Health check passed."
         return 0
     else

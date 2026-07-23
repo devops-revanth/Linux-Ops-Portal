@@ -36,6 +36,8 @@ source "$SCRIPT_DIR/lib/deps.sh"
 source "$SCRIPT_DIR/lib/postgres.sh"
 # shellcheck source=lib/systemd.sh
 source "$SCRIPT_DIR/lib/systemd.sh"
+# shellcheck source=lib/nginx.sh
+source "$SCRIPT_DIR/lib/nginx.sh"
 # shellcheck source=lib/version.sh
 source "$SCRIPT_DIR/lib/version.sh"
 
@@ -336,12 +338,8 @@ do_fresh_install() {
     # 5. Copy application
     copy_application
 
-    # Firewalld: if the system uses firewalld, port 5000 must be opened manually.
-    # We do not run firewall-cmd automatically to avoid unexpected policy changes.
-    if cmd_exists firewall-cmd && firewall-cmd --state &>/dev/null 2>&1; then
-        log_warn "firewalld is active. Open port 5000 manually if external access is needed:"
-        log_warn "  sudo firewall-cmd --permanent --add-port=5000/tcp && sudo firewall-cmd --reload"
-    fi
+    # firewalld port management is handled by nginx_setup() below.
+    # Gunicorn is not exposed directly; nginx proxies on port 80.
 
     # Restore SELinux file contexts after copying (non-fatal; only active on enforcing systems)
     if cmd_exists restorecon; then
@@ -372,22 +370,31 @@ do_fresh_install() {
     # 11. Systemd service
     systemd_setup_lop
 
-    # 12. Health check
+    # 12. nginx reverse proxy (installs nginx, writes vhost, enables port 80)
+    nginx_setup
+
+    # 13. Health check — via nginx on port 80 (not Gunicorn directly)
     log_step "Verifying installation health (waiting up to 60s)..."
-    if health_check "http://localhost:5000/health" 12 5; then
+    if nginx_verify; then
         log_success "Health check passed."
     else
-        log_warn "Health check failed. Check: sudo journalctl -u lop-backend -n 50"
-        log_warn "Installation may still be functional — check ${LOG_FILE}."
+        log_warn "nginx proxy check failed. Check: sudo journalctl -u nginx -n 30"
+        log_warn "Gunicorn direct check..."
+        if health_check "http://localhost:5000/health" 6 5; then
+            log_success "Gunicorn is healthy — nginx may need a moment to start."
+        else
+            log_warn "Gunicorn health check also failed. Check: sudo journalctl -u lop-backend -n 50"
+            log_warn "Installation may still be functional — check ${LOG_FILE}."
+        fi
     fi
 
-    # 13. Install CLI symlink
+    # 15. Install CLI symlink
     install_cli_symlink
 
-    # 14. Credentials file
+    # 16. Credentials file
     write_credentials_file
 
-    # 15. Install metadata
+    # 17. Install metadata
     install_info_write "fresh"
 
     print_summary
@@ -427,12 +434,20 @@ do_repair() {
     log_step "Repairing systemd service..."
     systemd_setup_lop
 
-    # Health check
+    # Re-apply nginx config (idempotent)
+    nginx_setup
+
+    # Health check via nginx
     log_step "Verifying health..."
-    if health_check "http://localhost:5000/health" 12 5; then
+    if nginx_verify; then
         log_success "Repair complete — LOP is healthy."
     else
-        log_warn "Health check failed after repair. Check: sudo journalctl -u lop-backend -n 50"
+        log_warn "nginx check failed after repair. Check: sudo journalctl -u nginx -n 30"
+        if health_check "http://localhost:5000/health" 6 5; then
+            log_success "Gunicorn is healthy — nginx issue only."
+        else
+            log_warn "Health check failed. Check: sudo journalctl -u lop-backend -n 50"
+        fi
     fi
 
     install_info_update "install_mode" "repair"

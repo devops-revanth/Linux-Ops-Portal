@@ -2079,18 +2079,65 @@
 function copyToken(inputId, btn) {
   const input = document.getElementById(inputId);
   if (!input) return;
-  navigator.clipboard.writeText(input.value).then(() => {
-    const icon = btn.querySelector('i');
+  const value = input.value;
+  const icon  = btn.querySelector('i');
+
+  // Find or create the inline notification span next to the button.
+  // The button sits inside an input-group, so we append to the group.
+  const group = btn.closest('.input-group') || btn.parentElement;
+  let note = group.querySelector('.lop-copy-note');
+  if (!note) {
+    note = document.createElement('span');
+    note.className = 'lop-copy-note input-group-text border-0 bg-transparent small fw-semibold';
+    group.appendChild(note);
+  }
+  let noteTimer = null;
+
+  function showSuccess() {
     icon.classList.replace('bi-clipboard', 'bi-clipboard-check');
     btn.classList.replace('btn-outline-success', 'btn-success');
-    setTimeout(() => {
+    note.textContent = '✓ Copied';
+    note.style.color = 'var(--bs-success, #198754)';
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => {
       icon.classList.replace('bi-clipboard-check', 'bi-clipboard');
       btn.classList.replace('btn-success', 'btn-outline-success');
+      note.textContent = '';
     }, 2000);
-  }).catch(() => {
-    input.select();
-    document.execCommand('copy');
-  });
+  }
+
+  function showError() {
+    note.textContent = '✗ Copy failed — select manually';
+    note.style.color = 'var(--bs-danger, #dc3545)';
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => { note.textContent = ''; }, 3000);
+  }
+
+  // Fallback for non-secure contexts (HTTP) where navigator.clipboard is
+  // unavailable, and for browsers that block the Clipboard API.
+  function fallbackCopy() {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) { showSuccess(); } else { showError(); }
+    } catch (_) {
+      showError();
+    }
+  }
+
+  // Clipboard API requires a secure context (HTTPS or localhost).
+  // Check for existence before calling to avoid uncaught TypeErrors over HTTP.
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(value).then(showSuccess).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 }
 
 // Directory Services defaults by type
