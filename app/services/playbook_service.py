@@ -77,22 +77,72 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
 
     summary = {"found": 0, "new": 0, "updated": 0, "errors": []}
 
+    pb_dir     = (cfg.playbook_dir or "/etc/ansible/playbooks").rstrip("/")
+    ssh_target = f"{cfg.username or '?'}@{cfg.control_node or '?'}:{cfg.port or 22}"
+
+    logger.info(
+        "Playbook discovery starting:\n"
+        "  Playbook Directory : %s\n"
+        "  SSH Target         : %s",
+        pb_dir, ssh_target,
+    )
+
+    # ── SSH connection ──────────────────────────────────────────────────────
     try:
         svc    = AnsibleService.from_config(cfg)
         client = svc._connect()
     except Exception as exc:
-        summary["errors"].append(_sanitize_error(exc))
+        err = _sanitize_error(exc)
+        logger.error(
+            "Playbook discovery: SSH connection failed — %s: %s",
+            type(exc).__name__, exc,
+        )
+        summary["errors"].append(err)
         return summary
 
     try:
-        pb_dir = cfg.playbook_dir or "/etc/ansible/playbooks"
-        # Find all yaml files, get relative paths + modification times
+        # ── Find command ────────────────────────────────────────────────────
+        # Recursive, no depth limit.  Excludes non-playbook trees.
+        # -printf '%P\t%T@\n' gives path-relative-to-start-point TAB mtime.
         cmd = (
-            f"find {_q(pb_dir)} -type f \\( -name '*.yml' -o -name '*.yaml' \\) "
-            f"-printf '%P\\t%T@\\n' 2>/dev/null | sort"
+            f"find {_q(pb_dir)}"
+            f" -type f"
+            f" \\( -name '*.yml' -o -name '*.yaml' \\)"
+            f" ! -path '*/roles/*'"
+            f" ! -path '*/collections/*'"
+            f" ! -path '*/.git/*'"
+            f" ! -path '*/__pycache__/*'"
+            f" -printf '%P\\t%T@\\n'"
+            f" 2>/dev/null | sort"
         )
-        stdout, _, _ = AnsibleService._exec(client, cmd, timeout=30)
+        logger.debug("Playbook discovery: command: %s", cmd)
 
+        stdout, stderr, rc = AnsibleService._exec(client, cmd, timeout=60)
+
+        logger.info(
+            "Playbook discovery find result:\n"
+            "  Command    : %s\n"
+            "  Exit code  : %d\n"
+            "  Stderr     : %s\n"
+            "  Lines out  : %d\n"
+            "  Stdout     : %s",
+            cmd, rc,
+            stderr.strip()[:400] if stderr.strip() else "(none)",
+            len(stdout.splitlines()),
+            stdout[:800] if stdout else "(empty)",
+        )
+
+        if not stdout.strip():
+            msg = (
+                f"No playbooks found under {pb_dir}. "
+                f"Verify the directory exists on the control node and contains "
+                f"*.yml / *.yaml files."
+            )
+            logger.warning("Playbook discovery: %s", msg)
+            summary["errors"].append(msg)
+            return summary
+
+        # ── Parse find output and upsert each playbook ──────────────────────
         now = datetime.now(timezone.utc)
         for line in stdout.splitlines():
             if "\t" not in line:
@@ -104,55 +154,62 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
             summary["found"] += 1
 
             try:
-                mtime_f   = float(mtime_str.strip())
-                last_mod  = datetime.fromtimestamp(mtime_f, tz=timezone.utc)
-            except ValueError:
+                last_mod = datetime.fromtimestamp(float(mtime_str.strip()), tz=timezone.utc)
+            except (ValueError, OSError):
                 last_mod = None
 
-            # Read first 50 lines for metadata
-            abs_path = pb_dir.rstrip("/") + "/" + rel_path
-            head_cmd = f"head -50 {_q(abs_path)} 2>/dev/null"
-            head_out, _, _ = AnsibleService._exec(client, head_cmd, timeout=10)
+            # Read first 50 lines for metadata (one SSH exec per file)
+            abs_path = pb_dir + "/" + rel_path
+            head_out, _, _ = AnsibleService._exec(
+                client, f"head -50 {_q(abs_path)} 2>/dev/null", timeout=10
+            )
             meta = parse_metadata(head_out, rel_path)
 
             with app.app_context():
                 existing = Playbook.query.filter_by(relative_path=rel_path).first()
                 if existing:
-                    existing.name             = meta["name"]
-                    existing.description      = meta["description"]
-                    existing.category         = meta["category"]
-                    existing.tags             = meta["tags"]
-                    existing.requires_become  = meta["requires_become"]
+                    existing.name               = meta["name"]
+                    existing.description        = meta["description"]
+                    existing.category           = meta["category"]
+                    existing.tags               = meta["tags"]
+                    existing.requires_become    = meta["requires_become"]
                     existing.requires_variables = meta["requires_variables"]
-                    existing.last_modified    = last_mod
-                    existing.metadata_source  = meta["source"]
-                    existing.discovered_at    = now
+                    existing.last_modified      = last_mod
+                    existing.metadata_source    = meta["source"]
+                    existing.discovered_at      = now
                     summary["updated"] += 1
                 else:
                     pb = Playbook(
-                        name              = meta["name"],
-                        description       = meta["description"],
-                        relative_path     = rel_path,
-                        category          = meta["category"],
-                        tags              = meta["tags"],
-                        requires_become   = meta["requires_become"],
-                        requires_variables= meta["requires_variables"],
-                        last_modified     = last_mod,
-                        is_enabled        = True,
-                        is_internal       = rel_path.startswith(".") or "/_" in rel_path,
-                        metadata_source   = meta["source"],
-                        discovered_at     = now,
+                        name               = meta["name"],
+                        description        = meta["description"],
+                        relative_path      = rel_path,
+                        category           = meta["category"],
+                        tags               = meta["tags"],
+                        requires_become    = meta["requires_become"],
+                        requires_variables = meta["requires_variables"],
+                        last_modified      = last_mod,
+                        is_enabled         = True,
+                        is_internal        = rel_path.startswith(".") or "/_" in rel_path,
+                        metadata_source    = meta["source"],
+                        discovered_at      = now,
                     )
                     db.session.add(pb)
                     summary["new"] += 1
                 db.session.commit()
 
+        logger.info(
+            "Playbook discovery complete: found=%d new=%d updated=%d errors=%d",
+            summary["found"], summary["new"], summary["updated"], len(summary["errors"]),
+        )
+
     except Exception as exc:
-        logger.exception("Error during playbook discovery")
+        logger.exception("Playbook discovery: unexpected error — %s", exc)
         summary["errors"].append(_sanitize_error(exc))
     finally:
-        try: client.close()
-        except Exception: pass
+        try:
+            client.close()
+        except Exception:
+            pass
 
     return summary
 

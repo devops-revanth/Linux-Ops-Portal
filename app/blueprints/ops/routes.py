@@ -179,8 +179,19 @@ def catalog_discover():
     def _run():
         try:
             from ...services.playbook_service import discover_playbooks
-            discover_playbooks(cfg, app)
-        except Exception as exc:
+            summary = discover_playbooks(cfg, app)
+            if summary.get("errors"):
+                logger.error(
+                    "Catalog discovery finished with errors: %s", summary["errors"]
+                )
+            else:
+                logger.info(
+                    "Catalog discovery finished: found=%d new=%d updated=%d",
+                    summary.get("found", 0),
+                    summary.get("new", 0),
+                    summary.get("updated", 0),
+                )
+        except Exception:
             logger.exception("Catalog discovery failed")
         finally:
             _discover_lock.release()
