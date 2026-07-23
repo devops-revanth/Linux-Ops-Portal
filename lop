@@ -64,7 +64,7 @@ ${_B}Usage:${_R}  lop <command> [options]
 ${_B}Lifecycle:${_R}
   ${_C}install${_R}       [--yes] [--force]            Install or repair LOP
   ${_C}repair${_R}        [--yes]                      Re-apply dependencies and service unit
-  ${_C}update${_R}        [--yes] [--skip-backup]      Update to latest version
+  ${_C}update${_R}        [--yes] [--skip-backup] [--source <path>]  Update to latest version
   ${_C}uninstall${_R}     [--yes] [--preserve-data]    Remove LOP
 
 ${_B}Service management:${_R}
@@ -198,81 +198,174 @@ case "$COMMAND" in
         exec "$SCRIPTS_DIR/install.sh" --repair "$@"
         ;;
     update|upgrade)
-        # ── Resolve the source checkout from install metadata ─────────────────
-        # 'lop update' must exec update.sh from the Git source checkout so that
-        # REPO_DIR inside the script resolves to the directory with .git — NOT
-        # to /opt/lop, which is the deployed copy and has no .git.
+        # ── Resolve the source checkout, then exec update.sh from it ──────────
         #
-        # The install.info file written by install.sh records:
-        #   install_source=git | archive | local
-        #   install_source_dir=/path/to/source/checkout
+        # update.sh derives REPO_DIR from its own path via BASH_SOURCE[0].
+        # /opt/lop is the deployed copy (no .git); update.sh must run from the
+        # original Git source checkout.  This block handles three cases:
         #
-        # We read those two fields here, validate them, and cd into the source
-        # checkout before exec'ing update.sh so the script sees the correct
-        # REPO_DIR from its own ${BASH_SOURCE[0]} resolution.
+        #   1. --source <path>  — explicit path supplied by the operator
+        #   2. install.info has a recorded install_source_dir — use it
+        #   3. install_source_dir missing/invalid — auto-discover common locations
+        #
+        # After discovery the path is saved back to install.info so future
+        # invocations do not need to search again.
+
         _lop_install_info="/var/lib/lop/install.info"
 
-        # Read one key from install.info; || true makes it safe under pipefail.
+        # ── Parse --source flag out of "$@" ───────────────────────────────────
+        # Everything else is collected in _lop_pass and forwarded to update.sh.
+        _lop_explicit_src=""
+        _lop_pass=()
+        _lop_skip_next=0
+        for _lop_a in "$@"; do
+            if [[ $_lop_skip_next -eq 1 ]]; then
+                _lop_explicit_src="$_lop_a"
+                _lop_skip_next=0
+            elif [[ "$_lop_a" == "--source" ]]; then
+                _lop_skip_next=1
+            elif [[ "$_lop_a" == --source=* ]]; then
+                _lop_explicit_src="${_lop_a#--source=}"
+            else
+                _lop_pass+=("$_lop_a")
+            fi
+        done
+
+        # ── Helpers ───────────────────────────────────────────────────────────
+
+        # Read one key from install.info safely (|| true guards against pipefail).
         _lop_read_key() {
             grep "^${1}=" "$_lop_install_info" 2>/dev/null \
                 | cut -d= -f2- | tr -d '[:space:]' || true
         }
 
-        if [[ -f "$_lop_install_info" ]]; then
+        # A valid LOP source checkout must have both .git/ and scripts/update.sh.
+        _lop_valid_checkout() {
+            [[ -d "${1}/.git" ]] && [[ -f "${1}/scripts/update.sh" ]]
+        }
+
+        # Upsert install_source_dir in install.info so the next run is instant.
+        _lop_save_src_dir() {
+            [[ -f "$_lop_install_info" ]] || return 0
+            if grep -q "^install_source_dir=" "$_lop_install_info" 2>/dev/null; then
+                sed -i "s|^install_source_dir=.*|install_source_dir=${1}|" \
+                    "$_lop_install_info"
+            else
+                printf "install_source_dir=%s\n" "${1}" >> "$_lop_install_info"
+            fi
+        }
+
+        # Search well-known locations (and CWD) for a valid source checkout.
+        # Prints one real path per line; deduplicates via realpath.
+        _lop_discover() {
+            local _seen=() _real _dup _d
+            for _d in \
+                /opt/Linux-Ops-Portal \
+                /usr/local/src/Linux-Ops-Portal \
+                /srv/Linux-Ops-Portal \
+                "$PWD"
+            do
+                _lop_valid_checkout "$_d" || continue
+                _real="$(realpath "$_d" 2>/dev/null || echo "$_d")"
+                _dup=0
+                for _s in "${_seen[@]+"${_seen[@]}"}"; do
+                    [[ "$_real" == "$_s" ]] && { _dup=1; break; }
+                done
+                [[ $_dup -eq 0 ]] && { _seen+=("$_real"); printf '%s\n' "$_real"; }
+            done
+        }
+
+        # ── Resolve the source checkout ───────────────────────────────────────
+        _lop_src_dir=""
+
+        if [[ -n "$_lop_explicit_src" ]]; then
+            # ── 1. Operator supplied --source <path> ──────────────────────────
+            if ! _lop_valid_checkout "$_lop_explicit_src"; then
+                printf "\n[ERROR] Not a valid LOP source checkout:\n\n    %s\n\n" \
+                    "$_lop_explicit_src" >&2
+                printf "A valid checkout must contain .git/ and scripts/update.sh\n\n" >&2
+                exit 1
+            fi
+            _lop_src_dir="$(realpath "$_lop_explicit_src" 2>/dev/null \
+                            || echo "$_lop_explicit_src")"
+            printf "[INFO] Using specified source checkout:\n       %s\n" "$_lop_src_dir"
+            _lop_save_src_dir "$_lop_src_dir"
+            printf "[INFO] Installation metadata updated.\n"
+
+        elif [[ -f "$_lop_install_info" ]]; then
+            # ── 2. Read install.info ───────────────────────────────────────────
             _lop_src_type=$(_lop_read_key "install_source")
-            _lop_src_dir=$(_lop_read_key  "install_source_dir")
 
-            case "${_lop_src_type}" in
+            if [[ "$_lop_src_type" == "archive" ]]; then
+                printf "\nArchive installations cannot be updated via 'lop update'.\n\n" >&2
+                printf "Download the latest release archive and run:\n\n" >&2
+                printf "    sudo ./install.sh\n\n" >&2
+                exit 1
+            fi
 
-                git)
-                    # ── Validate source checkout ──────────────────────────────
-                    if [[ -z "$_lop_src_dir" ]] || [[ "$_lop_src_dir" == "unknown" ]]; then
-                        printf "\n[ERROR] Source checkout path is not recorded in install metadata.\n\n" >&2
-                        printf "This installation may predate source-path tracking.\n" >&2
-                        printf "Please reinstall LOP:\n\n    sudo lop install\n\n" >&2
-                        exit 1
-                    fi
+            _lop_recorded=$(_lop_read_key "install_source_dir")
 
-                    if [[ ! -d "$_lop_src_dir" ]]; then
-                        printf "\nSource checkout not found:\n\n    %s\n\n" "$_lop_src_dir" >&2
-                        printf "This installation was installed from Git.\n\n" >&2
-                        printf "Please restore the source checkout or reinstall LOP:\n\n" >&2
-                        printf "    sudo lop install\n\n" >&2
-                        exit 1
-                    fi
+            if [[ -n "$_lop_recorded" ]] && [[ "$_lop_recorded" != "unknown" ]] \
+               && _lop_valid_checkout "$_lop_recorded"; then
+                # Recorded path is present and valid — use it directly.
+                _lop_src_dir="$_lop_recorded"
 
-                    if [[ ! -d "$_lop_src_dir/.git" ]]; then
-                        printf "\nSource path exists but is not a Git repository:\n\n    %s\n\n" \
-                            "$_lop_src_dir" >&2
-                        printf "Please restore the source checkout or reinstall LOP:\n\n" >&2
-                        printf "    sudo lop install\n\n" >&2
-                        exit 1
-                    fi
+            else
+                # Path is missing, "unknown", or stale — auto-discover.
+                # This is the normal path for installations created before
+                # install_source_dir tracking was introduced.
+                if [[ -n "$_lop_recorded" ]] && [[ "$_lop_recorded" != "unknown" ]]; then
+                    printf "[WARN] Recorded source checkout is no longer valid:\n" >&2
+                    printf "       %s\n" "$_lop_recorded" >&2
+                fi
+                printf "       Searching common locations for the source checkout...\n"
 
-                    # ── Run update.sh from the source checkout ────────────────
-                    # cd first so BASH_SOURCE[0] resolves correctly inside the
-                    # script and REPO_DIR = SOURCE_PATH (has .git).
-                    cd "$_lop_src_dir"
-                    exec ./scripts/update.sh "$@"
-                    ;;
+                mapfile -t _lop_found < <(_lop_discover)
 
-                archive)
-                    printf "\nArchive installations cannot be updated via 'lop update'.\n\n" >&2
-                    printf "Download the latest release archive and run:\n\n" >&2
-                    printf "    sudo ./install.sh\n\n" >&2
+                if [[ ${#_lop_found[@]} -eq 0 ]]; then
+                    printf "\n[ERROR] No valid Git source checkout could be located.\n\n" >&2
+                    printf "Specify one with:\n\n" >&2
+                    printf "    sudo lop update --source /path/to/Linux-Ops-Portal\n\n" >&2
+                    printf "Or reinstall if the original source checkout has been removed:\n\n" >&2
+                    printf "    sudo lop install\n\n" >&2
                     exit 1
-                    ;;
 
-                *)
-                    # Local / unknown install type — run from SCRIPTS_DIR.
-                    # Covers developer checkouts that were never installed.
-                    exec "$SCRIPTS_DIR/update.sh" "$@"
-                    ;;
-            esac
+                elif [[ ${#_lop_found[@]} -eq 1 ]]; then
+                    _lop_src_dir="${_lop_found[0]}"
+                    printf "[INFO] Source checkout discovered:\n       %s\n" "$_lop_src_dir"
+                    _lop_save_src_dir "$_lop_src_dir"
+                    printf "[INFO] Installation metadata updated.\n"
+
+                else
+                    printf "\n[INFO] Multiple valid source checkouts found:\n\n" >&2
+                    _lop_n=1
+                    for _lop_d in "${_lop_found[@]}"; do
+                        printf "    %d.  %s\n" "$_lop_n" "$_lop_d" >&2
+                        _lop_n=$((_lop_n + 1))
+                    done
+                    printf "\nSpecify which one to use:\n\n" >&2
+                    printf "    sudo lop update --source /path/to/Linux-Ops-Portal\n\n" >&2
+                    exit 1
+                fi
+            fi
+
         else
-            # No install metadata — run from SCRIPTS_DIR (developer / direct usage).
-            exec "$SCRIPTS_DIR/update.sh" "$@"
+            # ── 3. No install.info — developer / direct-run path ──────────────
+            # Try auto-discovery before falling back to SCRIPTS_DIR.  This lets
+            # a developer run 'lop update' from any directory as long as exactly
+            # one checkout is present in the well-known locations.
+            mapfile -t _lop_found < <(_lop_discover)
+            if [[ ${#_lop_found[@]} -eq 1 ]]; then
+                _lop_src_dir="${_lop_found[0]}"
+            else
+                exec "$SCRIPTS_DIR/update.sh" \
+                    "${_lop_pass[@]+"${_lop_pass[@]}"}"
+            fi
         fi
+
+        # ── Execute update.sh from the resolved source checkout ───────────────
+        cd "$_lop_src_dir"
+        exec ./scripts/update.sh "${_lop_pass[@]+"${_lop_pass[@]}"}"
         ;;
     uninstall|remove)
         exec "$SCRIPTS_DIR/uninstall.sh" "$@"
