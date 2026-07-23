@@ -480,6 +480,166 @@ Log:   ${LOG_FILE}"
     log_success "PostgreSQL service is running."
 }
 
+# pg_locate_hba_conf
+# Finds pg_hba.conf and stores its path in PG_HBA_CONF.
+# Primary: SHOW hba_file via the postgres system user (requires PG to be
+# running, but we always call this after pg_ensure_service so it is).
+# Fallback: well-known paths based on OS layout and PG_FOUND_VERSION.
+# Returns 0 on success, 1 if the file cannot be found.
+pg_locate_hba_conf() {
+    # Re-use an already-validated path
+    if [[ -n "${PG_HBA_CONF:-}" ]] && [[ -f "$PG_HBA_CONF" ]]; then
+        return 0
+    fi
+
+    # Ask PostgreSQL directly — works regardless of custom PGDATA
+    local _hba
+    _hba=$(su -s /bin/bash postgres -c "psql -tAc 'SHOW hba_file;'" 2>/dev/null \
+           | tr -d '[:space:]') || true
+    if [[ -n "$_hba" ]] && [[ -f "$_hba" ]]; then
+        PG_HBA_CONF="$_hba"
+        return 0
+    fi
+
+    # Fallback: well-known paths
+    local _ver="${PG_FOUND_VERSION:-16}"
+    local _candidates=(
+        "/var/lib/pgsql/data/pg_hba.conf"                  # RHEL AppStream (no version suffix)
+        "/var/lib/pgsql/${_ver}/data/pg_hba.conf"          # RHEL PGDG versioned
+        "/etc/postgresql/${_ver}/main/pg_hba.conf"          # Debian/Ubuntu
+        "/var/lib/postgresql/${_ver}/main/pg_hba.conf"      # Debian alt
+    )
+    for _f in "${_candidates[@]}"; do
+        if [[ -f "$_f" ]]; then
+            PG_HBA_CONF="$_f"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# pg_configure_hba <dbname> <dbuser>
+# Ensures pg_hba.conf allows scram-sha-256 password authentication for
+# <dbuser> connecting to <dbname> over TCP (127.0.0.1/::1) and the UNIX
+# socket.  Entries are inserted BEFORE the first generic connection rule so
+# they take precedence over the default ident/peer rules.
+# Reloads PostgreSQL after any change so the rules take immediate effect.
+#
+# Idempotent: calling this function a second time for the same user/db is safe.
+pg_configure_hba() {
+    local db_name="$1" db_user="$2"
+
+    log_step "Configuring pg_hba.conf for password authentication..."
+
+    if ! pg_locate_hba_conf; then
+        abort "Cannot locate pg_hba.conf — PostgreSQL may not be running or PGDATA is non-standard.
+Check: sudo systemctl status ${PG_FOUND_SERVICE:-postgresql}
+Log:   ${LOG_FILE}"
+    fi
+    log_info "pg_hba.conf: ${PG_HBA_CONF}"
+
+    # Use scram-sha-256 for PG 14+ (our minimum version); md5 for older builds.
+    local auth_method="scram-sha-256"
+    if (( ${PG_FOUND_VERSION:-16} < 14 )); then
+        auth_method="md5"
+    fi
+
+    # Idempotency: if a non-ident/non-peer entry for this user+db already exists
+    # and uses the correct method, nothing to do.
+    if grep -qE \
+        "^(host|local)[[:space:]]+${db_name}[[:space:]]+${db_user}[[:space:]].+${auth_method}" \
+        "$PG_HBA_CONF" 2>/dev/null; then
+        log_info "pg_hba.conf already has ${auth_method} entry for ${db_user}@${db_name} — no change."
+        return 0
+    fi
+
+    # Remove any old LOP-managed block so we can re-insert cleanly
+    if grep -q "# LOP: password authentication for application user" "$PG_HBA_CONF" 2>/dev/null; then
+        sed -i '/# LOP: password authentication for application user/,/^$/d' "$PG_HBA_CONF"
+    fi
+
+    # Back up before any modification
+    local bak="${PG_HBA_CONF}.lop.$(date +%Y%m%d_%H%M%S)"
+    cp -p "$PG_HBA_CONF" "$bak"
+    log_info "pg_hba.conf backup: ${bak}"
+
+    # Insert our entries BEFORE the first generic connection rule so they
+    # match before the catch-all ident/peer rules.
+    local tmpfile
+    tmpfile=$(mktemp)
+    awk -v db="$db_name" -v u="$db_user" -v m="$auth_method" '
+        !inserted && /^(local|host|hostssl|hostnossl)[[:space:]]/ {
+            printf "# LOP: password authentication for application user (added by installer)\n"
+            printf "host    %-15s %-15s 127.0.0.1/32  %s\n", db, u, m
+            printf "host    %-15s %-15s ::1/128       %s\n", db, u, m
+            printf "local   %-15s %-15s               %s\n", db, u, m
+            printf "\n"
+            inserted = 1
+        }
+        { print }
+    ' "$PG_HBA_CONF" > "$tmpfile" \
+        && mv "$tmpfile" "$PG_HBA_CONF" \
+        || { rm -f "$tmpfile"; abort "Failed to write updated pg_hba.conf. Check ${LOG_FILE}."; }
+
+    chown postgres:postgres "$PG_HBA_CONF"
+    chmod 600 "$PG_HBA_CONF"
+
+    # Reload so the new rules take effect immediately
+    local svc="${PG_FOUND_SERVICE:-${PG_SERVICE}}"
+    systemctl reload "$svc" >> "$LOG_FILE" 2>&1 \
+        || systemctl restart "$svc" >> "$LOG_FILE" 2>&1 \
+        || abort "Failed to reload PostgreSQL after updating pg_hba.conf.
+Check: sudo systemctl status ${svc}
+Log:   ${LOG_FILE}"
+    sleep 1
+
+    log_success "pg_hba.conf updated — ${auth_method} for ${db_user}@${db_name}."
+}
+
+# pg_verify_app_connection <dbname> <dbuser> <dbpass>
+# Verifies that the application user can authenticate to PostgreSQL via TCP
+# using a password — exactly as Flask/psycopg2 will do at runtime.
+# Aborts with a clear, actionable error if the connection fails so the
+# installer never reaches Alembic migrations with broken credentials.
+pg_verify_app_connection() {
+    local db_name="$1" db_user="$2" db_pass="$3"
+
+    log_step "Verifying application credentials (${db_user}@${db_name} via TCP)..."
+
+    local retries=5
+    for (( i=1; i<=retries; i++ )); do
+        if PGPASSWORD="$db_pass" \
+           psql -h 127.0.0.1 -p 5432 -U "$db_user" -d "$db_name" \
+               -c '\q' >> "$LOG_FILE" 2>&1; then
+            log_success "Application credentials verified — ${db_user} can connect to ${db_name}."
+            return 0
+        fi
+        [[ $i -lt $retries ]] && { log_info "  Attempt ${i}/${retries} failed — retrying in 2s..."; sleep 2; }
+    done
+
+    # Capture the real error for the abort message
+    local pg_error
+    pg_error=$(PGPASSWORD="$db_pass" \
+        psql -h 127.0.0.1 -p 5432 -U "$db_user" -d "$db_name" \
+             -c '\q' 2>&1 || true)
+
+    abort "Application authentication failed.
+User '${db_user}' cannot connect to '${db_name}' using a password over TCP.
+
+PostgreSQL error:
+  ${pg_error}
+
+pg_hba.conf: ${PG_HBA_CONF}
+DATABASE_URL: postgresql://${db_user}:<pass>@localhost:5432/${db_name}
+
+To diagnose manually:
+  sudo -u postgres psql -c '\\du'
+  sudo cat ${PG_HBA_CONF}
+
+Log: ${LOG_FILE}"
+}
+
 # pg_escape_literal <string>
 # Returns the value with every single-quote doubled for safe SQL string literal
 # embedding, per the SQL standard (ISO 9075, §5.3).  Always wrap the result in
@@ -565,13 +725,23 @@ pg_create_db() {
 }
 
 # pg_setup <dbname> <dbuser> <dbpass>
-# Full orchestration: install → init → start → handle existing DB → create user/db.
+# Full orchestration: install → init → start → hba → create user/db → verify.
+#
+# pg_configure_hba is called BEFORE creating the user so that auth rules are
+# already active when pg_verify_app_connection runs at the end.
+# pg_verify_app_connection is ALWAYS the last step — the installer will not
+# proceed to Alembic migrations unless the application can connect via TCP
+# with the exact credentials that Flask/psycopg2 will use at runtime.
 pg_setup() {
     local db_name="$1" db_user="$2" db_pass="$3"
 
     pg_ensure_installed
     pg_init_cluster
     pg_ensure_service
+
+    # Configure pg_hba.conf before any user/DB work so the rules are in place
+    # when we verify the connection at the end of this function.
+    pg_configure_hba "$db_name" "$db_user"
 
     # ── Handle existing database ──────────────────────────────────────────────
     if pg_db_exists "$db_name"; then
@@ -583,39 +753,44 @@ pg_setup() {
 
         if [[ "$YES_ALL" == "true" ]]; then
             log_info "Auto-selected: Reuse existing database (--yes mode)."
-            # Just ensure user exists and has access
             pg_create_user "$db_user" "$db_pass"
             pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
-            return 0
+        else
+            local choice
+            printf "%sChoice [R/N/A]:%s " "$CLR_YELLOW" "$CLR_RESET"
+            read -r choice
+            case "${choice^^}" in
+                R)
+                    log_info "Reusing existing database '${db_name}'."
+                    pg_create_user "$db_user" "$db_pass"
+                    pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
+                    ;;
+                N)
+                    printf "%sEnter new database name:%s " "$CLR_YELLOW" "$CLR_RESET"
+                    read -r db_name
+                    [[ -n "$db_name" ]] || abort "Database name cannot be empty."
+                    sed -i "s|lop_db|${db_name}|g" "$LOP_CONF_FILE" 2>/dev/null || true
+                    log_info "Using new database name: '${db_name}'"
+                    # Re-configure hba for the new db name and create it fresh
+                    pg_configure_hba "$db_name" "$db_user"
+                    pg_create_user "$db_user" "$db_pass"
+                    pg_create_db "$db_name" "$db_user"
+                    pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
+                    ;;
+                *)
+                    abort "Installation aborted by user."
+                    ;;
+            esac
         fi
-
-        local choice
-        printf "%sChoice [R/N/A]:%s " "$CLR_YELLOW" "$CLR_RESET"
-        read -r choice
-        case "${choice^^}" in
-            R)
-                log_info "Reusing existing database '${db_name}'."
-                pg_create_user "$db_user" "$db_pass"
-                pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
-                return 0
-                ;;
-            N)
-                printf "%sEnter new database name:%s " "$CLR_YELLOW" "$CLR_RESET"
-                read -r db_name
-                [[ -n "$db_name" ]] || abort "Database name cannot be empty."
-                # Update the config with the new name
-                sed -i "s|lop_db|${db_name}|g" "$LOP_CONF_FILE" 2>/dev/null || true
-                log_info "Using new database name: '${db_name}'"
-                ;;
-            *)
-                abort "Installation aborted by user."
-                ;;
-        esac
+    else
+        pg_create_user "$db_user" "$db_pass"
+        pg_create_db "$db_name" "$db_user"
+        pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
     fi
 
-    pg_create_user "$db_user" "$db_pass"
-    pg_create_db "$db_name" "$db_user"
-    pg_execute "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};" || true
+    # Verify the application can connect using the exact credentials Flask will
+    # use (TCP + password).  This MUST succeed before Alembic migrations run.
+    pg_verify_app_connection "$db_name" "$db_user" "$db_pass"
     log_success "Database setup complete: ${db_name}@localhost"
 }
 
