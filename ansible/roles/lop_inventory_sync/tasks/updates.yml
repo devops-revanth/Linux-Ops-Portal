@@ -185,30 +185,56 @@
 #   available_version — version string of the available update
 #   repository        — source repository
 #
-# Uses dnf repoquery (RHEL) or the apt list output (Debian) rather than
-# parsing the raw check-update strings, giving clean structured data.
+# RHEL: re-runs dnf check-update piped directly through Python.
+#   The metadata is already refreshed from the earlier check-update task,
+#   so this call is fast and uses the local cache.  We avoid dnf repoquery
+#   --upgrades here because it can return empty results when the cache is
+#   stale or a broken dependency prevents the best-candidate resolution.
+#
+# Debian: parsed from the apt list --upgradable output.
 ###############################################################################
 
 # ── RHEL family ───────────────────────────────────────────────────────────
+#
+# dnf check-update exits 100 when updates exist (not an error).
+# We suppress its non-zero exit using "|| true" inside the subshell so the
+# pipe to python3 always succeeds.
+#
+# dnf check-update output format (one package per line):
+#   name.arch    version-release    repository
 
-- name: Get structured available updates (RHEL family)
+- name: Parse structured available packages (RHEL family)
   ansible.builtin.shell: |
-    dnf repoquery --upgrades --quiet \
-      --queryformat '%{name}\t%{version}-%{release}\t%{arch}\t%{reponame}\n' \
-      2>/dev/null | python3 -c "
-    import sys, json
+    { dnf check-update -q 2>/dev/null || true; } | python3 -c "
+    import sys, json, re
     packages = []
     for line in sys.stdin:
-        p = line.strip().split('\t')
-        if len(p) >= 1 and p[0]:
-            packages.append({
-                'name': p[0],
-                'available_version': p[1] if len(p) > 1 else '',
-                'arch': p[2] if len(p) > 2 else '',
-                'repository': p[3] if len(p) > 3 else ''
-            })
+        line = line.rstrip()
+        if not line or not re.match(r'^[A-Za-z0-9]', line):
+            continue
+        if line.startswith('Last metadata'):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name_arch = parts[0]
+        version   = parts[1]
+        repo      = parts[2] if len(parts) > 2 else ''
+        dot = name_arch.rfind('.')
+        if dot > 0:
+            name = name_arch[:dot]
+            arch = name_arch[dot+1:]
+        else:
+            name = name_arch
+            arch = ''
+        packages.append({
+            'name':              name,
+            'available_version': version,
+            'arch':              arch,
+            'repository':        repo,
+        })
     print(json.dumps(packages))
-    " || echo '[]'
+    "
   args:
     executable: /bin/bash
   register: dnf_structured_raw

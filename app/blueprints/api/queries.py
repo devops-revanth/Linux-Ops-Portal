@@ -583,8 +583,18 @@ def upsert_server(data: dict) -> UpsertResult:
             _safe_str(data.get("kernel_version"), max_len=150)
             or _safe_str(data.get("current_kernel"), max_len=150)
         )
-        patching.last_patch_date = _parse_datetime(data.get("last_patch_date"))
-        patching.last_reboot_date = _parse_datetime(data.get("last_reboot"))
+        # last_patch_date: only write when the payload carries a real date.
+        # payload.yml sends last_patch_date="" (blank) during inventory sync so
+        # we must NOT overwrite a date that was set by POST /api/v1/patching.
+        _lpd = _parse_datetime(data.get("last_patch_date"))
+        if _lpd is not None:
+            patching.last_patch_date = _lpd
+
+        # last_reboot_date: same guard — blank string means "not provided"
+        _lrd = _parse_datetime(data.get("last_reboot"))
+        if _lrd is not None:
+            patching.last_reboot_date = _lrd
+
         patching.pending_updates = _parse_int(data.get("pending_updates")) or 0
 
         # reboot_required: only update when explicitly provided in payload
