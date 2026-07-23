@@ -253,33 +253,60 @@ def _configure_logging(app: Flask) -> None:
     """
     Set up structured logging.
 
-    - Console handler: always active.
-    - Rotating file handler: active in non-testing environments.
+    - Console (stderr) handler: always active.  With gunicorn --capture-output
+      and StandardError=journal every line reaches journald automatically.
+    - Rotating file handler: active in non-testing environments when a writable
+      log directory is available.  A failure to open the log file is non-fatal:
+      the application continues with stderr-only logging and emits a warning so
+      the operator can diagnose the issue via ``journalctl -u lop-backend``.
+
+    Log directory resolution order (never writes inside the app tree, which is
+    mounted read-only by ProtectSystem=strict in the systemd unit):
+
+      1. $LOP_LOG_DIR/app/lop.log   — set in /etc/lop/lop.env by the installer
+      2. /var/log/lop/app/lop.log   — canonical runtime default
     """
+    import sys
+
     log_level = getattr(logging, app.config.get("LOG_LEVEL", "INFO"), logging.INFO)
     fmt = logging.Formatter(
         app.config["LOG_FORMAT"],
         datefmt=app.config["LOG_DATE_FORMAT"],
     )
 
-    # Console
-    console_handler = logging.StreamHandler()
+    # Console (stderr) handler — always active.
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(fmt)
     console_handler.setLevel(log_level)
 
-    # File (skip during tests to avoid creating log files)
     handlers: list[logging.Handler] = [console_handler]
+
+    # File handler — skip during tests; non-fatal if the path is not writable.
     if not app.config.get("TESTING"):
-        log_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            os.path.join(log_dir, "lop.log"),
-            maxBytes=5 * 1024 * 1024,  # 5 MB
-            backupCount=5,
-        )
-        file_handler.setFormatter(fmt)
-        file_handler.setLevel(log_level)
-        handlers.append(file_handler)
+        base_log_dir = os.environ.get("LOP_LOG_DIR", "/var/log/lop")
+        log_dir = os.path.join(base_log_dir, "app")
+        log_path = os.path.join(log_dir, "lop.log")
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            file_handler = RotatingFileHandler(
+                log_path,
+                maxBytes=5 * 1024 * 1024,  # 5 MB
+                backupCount=5,
+            )
+            file_handler.setFormatter(fmt)
+            file_handler.setLevel(log_level)
+            handlers.append(file_handler)
+        except OSError as exc:
+            # Non-fatal: warn on stderr (journald), then continue with
+            # console-only logging so the web application still starts.
+            print(
+                f"WARNING: LOP cannot open log file {log_path!r}: {exc}\n"
+                f"Continuing with stderr/journald logging only.\n"
+                f"To fix: ensure {log_dir} is writable by the 'lop' user, "
+                f"or set LOP_LOG_DIR in /etc/lop/lop.env.",
+                file=sys.stderr,
+                flush=True,
+            )
 
     logging.basicConfig(level=log_level, handlers=handlers)
     app.logger.setLevel(log_level)
