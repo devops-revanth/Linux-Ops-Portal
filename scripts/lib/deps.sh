@@ -135,22 +135,37 @@ check_rsync() {
 # ── Required system packages for building Python C extensions ────────────────
 #
 # Notes on integration-specific dependencies:
-#   • pyVmomi  — pure Python; no system packages required beyond those below.
-#   • paramiko — pure Python; depends on the 'cryptography' package which
-#                requires libffi and openssl headers (already included below).
-#                LOP uses paramiko to SSH to an EXISTING Ansible control node.
-#                LOP does NOT install Ansible itself.
+#   • pyVmomi    — pure Python; no system packages required beyond those below.
+#   • paramiko   — pure Python; depends on the 'cryptography' package.
+#   • cryptography — requires Rust (cargo + rustc) to compile from source when
+#                    a pre-built wheel is unavailable; also needs libffi + openssl.
+#                    LOP uses paramiko to SSH to an EXISTING Ansible control node.
+#                    LOP does NOT install Ansible itself.
+#   • psycopg2   — C extension; requires libpq-devel (PostgreSQL client headers).
 #   • APScheduler — pure Python; no system packages required.
+#
+# The full set of native tools installed here guarantees any LOP Python package
+# that needs to compile from source will succeed without manual intervention.
 #
 check_build_deps() {
     log_step "Checking build dependencies..."
     case "$OS_FAMILY" in
         rhel)
             local pkgs_needed=()
+            # C/C++ compiler toolchain
             pkg_installed gcc           || pkgs_needed+=(gcc)
+            pkg_installed gcc-c++       || pkgs_needed+=(gcc-c++)
+            pkg_installed make          || pkgs_needed+=(make)
+            pkg_installed cmake         || pkgs_needed+=(cmake)
+            pkg_installed pkg-config    || pkgs_needed+=(pkg-config)
+            # Library headers needed by C extensions
             pkg_installed libpq-devel   || pkgs_needed+=(libpq-devel)
             pkg_installed libffi-devel  || pkgs_needed+=(libffi-devel)
             pkg_installed openssl-devel || pkgs_needed+=(openssl-devel)
+            # Rust toolchain — required by the 'cryptography' package (v40+)
+            # when no pre-built wheel is available for this Python version.
+            pkg_installed cargo         || pkgs_needed+=(cargo)
+            pkg_installed rust          || pkgs_needed+=(rust)
             # NOTE: Python development headers (Python.h) are NOT installed here.
             # The generic 'python3-devel' on Rocky/RHEL 9 installs headers for
             # the OS-default Python 3.9 — even when the selected interpreter is
@@ -169,10 +184,20 @@ check_build_deps() {
             ;;
         debian)
             local pkgs_needed=()
+            # C/C++ compiler toolchain
             pkg_installed gcc           || pkgs_needed+=(gcc)
+            pkg_installed g++           || pkgs_needed+=(g++)
+            pkg_installed make          || pkgs_needed+=(make)
+            pkg_installed cmake         || pkgs_needed+=(cmake)
+            pkg_installed pkg-config    || pkgs_needed+=(pkg-config)
+            # Library headers needed by C extensions
             pkg_installed libpq-dev     || pkgs_needed+=(libpq-dev)
             pkg_installed libffi-dev    || pkgs_needed+=(libffi-dev)
             pkg_installed libssl-dev    || pkgs_needed+=(libssl-dev)
+            # Rust toolchain — required by the 'cryptography' package (v40+)
+            # when no pre-built wheel is available for this Python version.
+            pkg_installed cargo         || pkgs_needed+=(cargo)
+            pkg_installed rustc         || pkgs_needed+=(rustc)
             # NOTE: Python development headers (Python.h) are NOT installed here.
             # The generic 'python3-dev' maps to the OS-default Python and will
             # not match a non-default interpreter (e.g. python3.12 on Ubuntu 22.04

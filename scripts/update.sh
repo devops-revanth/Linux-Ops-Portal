@@ -232,9 +232,21 @@ apply_changes() {
         RESTART_NEEDED=true
     fi
 
+    # Ensure the development headers match the currently selected interpreter.
+    # This handles the case where Python was upgraded on the system (e.g.
+    # 3.11 → 3.12) and the old devel headers no longer match.  The function
+    # is idempotent — it skips the install if the package is already present.
+    python_install_devel_headers
+
     # ── Dependencies ─────────────────────────────────────────────────────────
     if checksum_changed "$LOP_APP_DIR/requirements.txt" "requirements"; then
         log_step "requirements.txt changed — updating Python dependencies..."
+
+        # Verify the full native build toolchain is present before recompiling.
+        # A system update or a new requirement (e.g. cryptography needing cargo)
+        # may have introduced new native dependencies since the last install.
+        check_build_deps
+
         # Check if venv needs rebuild (Python changed)
         python_create_venv
         python_install_deps

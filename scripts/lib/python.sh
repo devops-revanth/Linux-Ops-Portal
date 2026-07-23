@@ -370,6 +370,120 @@ Check that python3-venv / python3.x-venv is installed."
     fi
 }
 
+# python_bootstrap_toolchain
+# Upgrades pip, setuptools, and wheel to current versions inside the venv.
+# Must be called after python_create_venv().
+#
+# Rationale: fresh venvs ship with the pip version bundled into the Python
+# installation, which may be years out of date.  An old pip cannot resolve
+# newer wheel metadata formats (PEP 658 / 643) and may not recognise
+# manylinux wheel tags for the current glibc.  Upgrading before installing
+# requirements.txt prevents silent fallbacks to source compilation.
+python_bootstrap_toolchain() {
+    local pip="$LOP_VENV_DIR/bin/pip"
+    [[ -x "$pip" ]] || abort "pip not found at ${pip}. Virtual environment may be broken."
+
+    log_step "Bootstrapping pip toolchain..."
+
+    # Verify pip responds at all before attempting an upgrade
+    if ! "$pip" --version >> "$LOG_FILE" 2>&1; then
+        abort "pip is not functional in the virtual environment at ${LOP_VENV_DIR}.
+Try removing the venv and re-running: sudo $0 --repair"
+    fi
+
+    if ! "$pip" install --quiet --upgrade pip setuptools wheel >> "$LOG_FILE" 2>&1; then
+        abort "Failed to upgrade pip/setuptools/wheel.
+This is usually a network issue or a broken PyPI mirror.
+Check ${LOG_FILE} for details."
+    fi
+
+    local pip_ver setuptools_ver wheel_ver
+    pip_ver=$("$pip" show pip 2>/dev/null | awk '/^Version:/{print $2}')
+    setuptools_ver=$("$pip" show setuptools 2>/dev/null | awk '/^Version:/{print $2}')
+    wheel_ver=$("$pip" show wheel 2>/dev/null | awk '/^Version:/{print $2}')
+
+    log_success "pip         ${pip_ver}"
+    log_success "setuptools  ${setuptools_ver}"
+    log_success "wheel       ${wheel_ver}"
+}
+
+# python_verify_imports
+# Imports every critical LOP module to confirm all C extensions compiled
+# successfully.  Stops immediately if any import fails, naming the package.
+python_verify_imports() {
+    local venv_python="$LOP_VENV_DIR/bin/python"
+    [[ -x "$venv_python" ]] || abort "Venv Python not found at ${venv_python}."
+
+    log_step "Verifying Python module imports..."
+
+    local modules=(flask sqlalchemy alembic psycopg2 ldap3 cryptography pyVmomi paramiko apscheduler)
+    local failed=()
+
+    for mod in "${modules[@]}"; do
+        if "$venv_python" -c "import ${mod}" >> "$LOG_FILE" 2>&1; then
+            log_success "${mod}"
+        else
+            log_error "FAILED to import: ${mod}"
+            failed+=("$mod")
+        fi
+    done
+
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        abort "Python module import verification failed.
+The following packages did not import successfully:
+$(printf '  • %s\n' "${failed[@]}")
+
+This usually means a C extension failed to compile (check ${LOG_FILE} for the
+pip build output), or a native library is missing (libpq, libffi, openssl,
+cargo/rustc for the cryptography package).
+Re-run after resolving the above: sudo $0"
+    fi
+
+    log_success "All Python modules verified."
+}
+
+# python_runtime_report
+# Prints a complete runtime verification table after a successful install.
+python_runtime_report() {
+    local venv_python="$LOP_VENV_DIR/bin/python"
+    local pip="$LOP_VENV_DIR/bin/pip"
+
+    local py_ver pip_ver include_dir header_status compiler pg_lib
+    py_ver=$("$venv_python" --version 2>/dev/null || echo "unknown")
+    pip_ver=$("$pip" --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+    include_dir=$("$venv_python" -c \
+        "from sysconfig import get_paths; print(get_paths()['include'])" \
+        2>/dev/null || echo "unknown")
+
+    if [[ -f "${include_dir}/Python.h" ]]; then
+        header_status="present (${include_dir}/Python.h)"
+    else
+        header_status="MISSING — ${include_dir}/Python.h not found"
+    fi
+
+    if cmd_exists gcc; then
+        compiler="$(command -v gcc) ($(gcc --version 2>/dev/null | head -1 | awk '{print $NF}'))"
+    else
+        compiler="not found"
+    fi
+
+    pg_lib="not found"
+    if cmd_exists pg_config; then
+        pg_lib="$(pg_config --libdir 2>/dev/null || echo 'pg_config present')"
+    elif [[ -d /usr/lib64/pgsql ]] || [[ -d /usr/lib/postgresql ]]; then
+        pg_lib="found via filesystem"
+    fi
+
+    log_section "Runtime Verification"
+    summary_line "Virtual Environment:" "$LOP_VENV_DIR"
+    summary_line "Python Version:"      "$py_ver"
+    summary_line "pip Version:"         "$pip_ver"
+    summary_line "Header Location:"     "$include_dir"
+    summary_line "Python.h:"            "$header_status"
+    summary_line "Compiler:"            "$compiler"
+    summary_line "PostgreSQL libs:"     "$pg_lib"
+}
+
 # python_install_deps [--upgrade]
 # Installs or upgrades pip dependencies from requirements.txt.
 python_install_deps() {
@@ -388,6 +502,11 @@ python_install_deps() {
     # actionable error instead of a confusing compile traceback inside pip.
     python_verify_headers
 
+    # Upgrade pip/setuptools/wheel to the latest versions in the venv before
+    # processing requirements.txt — an outdated pip may fall back to source
+    # compilation when a pre-built wheel is available.
+    python_bootstrap_toolchain
+
     local pip_args=(install --quiet -r "$req_file")
     [[ "$upgrade" == "--upgrade" ]] && pip_args+=(--upgrade)
 
@@ -403,4 +522,11 @@ configure pip to use it, then re-run: sudo $0"
         fi
     fi
     log_success "Python dependencies installed."
+
+    # Verify every critical module can actually be imported.
+    # This catches silent compile failures that pip reports as success.
+    python_verify_imports
+
+    # Print the full runtime verification table.
+    python_runtime_report
 }
