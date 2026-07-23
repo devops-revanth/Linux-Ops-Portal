@@ -1,0 +1,147 @@
+---
+# =============================================================================
+# LOP Inventory Sync
+# Task: payload.yml
+#
+# Build the JSON inventory payload for Linux Operations Portal.
+#
+# All values are sourced from lop_facts (set by gather.yml and
+# parse_hostname.yml).  No facts are gathered here.
+# =============================================================================
+
+- name: Build inventory payload
+  ansible.builtin.set_fact:
+    inventory_payload:
+
+      # -----------------------------------------------------------------------
+      # Identity (Required by LOP API)
+      # -----------------------------------------------------------------------
+      hostname: "{{ lop_facts.hostname }}"
+      fqdn: "{{ lop_facts.fqdn }}"
+      ip_address: "{{ lop_facts.default_ipv4.address | default('') }}"
+
+      # -----------------------------------------------------------------------
+      # Core server fields expected by the LOP Flask backend
+      # -----------------------------------------------------------------------
+      operating_system: "{{ lop_facts.distribution }}"
+      os_version: "{{ lop_facts.distribution_version }}"
+      kernel_version: "{{ lop_facts.kernel }}"
+      architecture: "{{ lop_facts.architecture }}"
+
+      cpu_count: "{{ lop_facts.cpu_count | int }}"
+      cpu_model: "{{ lop_facts.cpu_model }}"
+
+      ram_gb: "{{ (lop_facts.memory_mb | float / 1024) | round(2) }}"
+
+      location: "{{ lop_facts.site_code | default('') }}"
+      environment: "{{ lop_facts.naming_environment | default('') }}"
+      owner: "{{ portal_owner | default('') }}"
+
+      status: "active"
+
+      # patch_status is the legacy update-count field kept for backward compat.
+      # Compliance is determined date-side in the portal; do not rely on this
+      # field for compliance calculations.
+      patch_status: >-
+        {{
+          'pending'
+          if (lop_facts.updates.total | int > 0)
+          else 'current'
+        }}
+
+      current_kernel: "{{ lop_facts.kernel }}"
+      pending_updates: "{{ lop_facts.updates.total | int }}"
+      reboot_required: "{{ lop_facts.updates.kernel | bool }}"
+
+      last_patch_date: ""
+      last_reboot: ""
+      last_inventory_sync: "{{ ansible_date_time.iso8601 }}"
+
+      # -----------------------------------------------------------------------
+      # Extended inventory (parsed and forwarded for future portal features)
+      # -----------------------------------------------------------------------
+
+      distribution: "{{ lop_facts.distribution }}"
+      distribution_version: "{{ lop_facts.distribution_version }}"
+      distribution_major_version: "{{ lop_facts.distribution_major_version }}"
+
+      kernel: "{{ lop_facts.kernel }}"
+
+      cpu:
+        model: "{{ lop_facts.cpu_model }}"
+        sockets: "{{ lop_facts.cpu_sockets | int }}"
+        cores_per_socket: "{{ lop_facts.cpu_cores | int }}"
+        logical_cpus: "{{ lop_facts.cpu_count | int }}"
+        threads_per_core: "{{ lop_facts.cpu_threads_per_core | int }}"
+
+      ram:
+        total_mb: "{{ lop_facts.memory_mb | int }}"
+        total_gb: "{{ (lop_facts.memory_mb | float / 1024) | round(2) }}"
+        swap_mb: "{{ lop_facts.swap_mb | int }}"
+
+      hardware:
+        manufacturer: "{{ lop_facts.vendor }}"
+        product_name: "{{ lop_facts.product_name }}"
+        serial_number: "{{ lop_facts.serial_number }}"
+        uuid: "{{ lop_facts.product_uuid }}"
+        bios_version: "{{ lop_facts.bios_version }}"
+        bios_date: "{{ lop_facts.bios_date }}"
+
+      network:
+        default_ipv4: "{{ lop_facts.default_ipv4 }}"
+        default_ipv6: "{{ lop_facts.default_ipv6 }}"
+        interfaces: "{{ lop_facts.interfaces }}"
+        dns: "{{ lop_facts.dns }}"
+
+      virtualization:
+        type: "{{ lop_facts.virtualization_type }}"
+        role: "{{ lop_facts.virtualization_role }}"
+
+      selinux:
+        status: "{{ lop_facts.selinux.status }}"
+        mode: "{{ lop_facts.selinux.mode }}"
+
+      updates:
+        total: "{{ lop_facts.updates.total | int }}"
+        security: "{{ lop_facts.updates.security | int }}"
+        bugfix: "{{ lop_facts.updates.bugfix | int }}"
+        enhancement: "{{ lop_facts.updates.enhancement | int }}"
+        kernel_update: "{{ lop_facts.updates.kernel | bool }}"
+        packages: "{{ lop_facts.updates.packages }}"
+
+      uptime_seconds: "{{ lop_facts.uptime | int }}"
+      timezone: "{{ lop_facts.timezone }}"
+      boot_time_epoch: "{{ lop_facts.boot_time_epoch | int }}"
+
+      # Hostname convention fields
+      site_code: "{{ lop_facts.site_code | default('') }}"
+      site_name: "{{ lop_facts.site_name | default('') }}"
+      application_code: "{{ lop_facts.application_code | default('') }}"
+      naming_os_code: "{{ lop_facts.naming_os_code | default('') }}"
+      naming_os: "{{ lop_facts.naming_os | default('') }}"
+      naming_environment_code: "{{ lop_facts.naming_environment_code | default('') }}"
+      naming_environment: "{{ lop_facts.naming_environment | default('') }}"
+      server_sequence: "{{ lop_facts.server_sequence | default('') }}"
+
+      # Collection metadata
+      ansible_version: "{{ ansible_version.full }}"
+      collection_version: "{{ lop_role_version }}"
+      collected_at: "{{ ansible_date_time.iso8601 }}"
+
+- name: Display payload summary
+  ansible.builtin.debug:
+    msg:
+      Hostname:     "{{ inventory_payload.hostname }}"
+      FQDN:         "{{ inventory_payload.fqdn }}"
+      IP:           "{{ inventory_payload.ip_address }}"
+      OS:           "{{ inventory_payload.operating_system }} {{ inventory_payload.os_version }}"
+      Kernel:       "{{ inventory_payload.kernel_version }}"
+      CPU:          "{{ inventory_payload.cpu_model }}"
+      CPU_Count:    "{{ inventory_payload.cpu_count }}"
+      RAM_GB:       "{{ inventory_payload.ram_gb }}"
+      Updates:      "{{ inventory_payload.pending_updates }}"
+      Security:     "{{ inventory_payload.updates.security }}"
+      Kernel_Upd:   "{{ inventory_payload.reboot_required }}"
+      Location:     "{{ inventory_payload.location }}"
+      Environment:  "{{ inventory_payload.environment }}"
+      Site:         "{{ inventory_payload.site_name }}"

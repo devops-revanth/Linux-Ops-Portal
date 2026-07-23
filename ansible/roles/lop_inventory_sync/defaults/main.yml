@@ -1,0 +1,55 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_inventory_sync Role
+# Default Variables
+#
+# These are the lowest-priority values.  Override any of them in:
+#   group_vars/all.yml     (environment-wide)
+#   host_vars/<host>.yml   (per-host)
+#   -e key=value           (command-line)
+###############################################################################
+
+# ── API connection ─────────────────────────────────────────────────────────
+
+# Full inventory endpoint URL.
+# Example: http://lop.example.com/api/v1/inventory
+portal_url: ""
+
+# Bearer token generated in LOP Settings → API Settings.
+# Store this in Ansible Vault — never commit a plain-text token.
+portal_api_token: ""
+
+# Set to false only when connecting to a portal with a self-signed certificate
+# and you accept the risk.
+portal_validate_certs: true
+
+# HTTP request timeout in seconds.
+portal_timeout: 30
+
+# ── Retry behaviour ────────────────────────────────────────────────────────
+
+# Number of times to retry a failed API call before giving up.
+portal_retry_count: 3
+
+# Seconds to wait between retry attempts.
+portal_retry_delay: 5
+
+# ── Collection toggles ─────────────────────────────────────────────────────
+
+# Set any of these to false to skip that collection step entirely.
+portal_sync_enabled: true
+portal_send_packages: true
+portal_send_services: true
+portal_send_updates: true
+portal_send_repositories: true
+
+# ── Owner field ────────────────────────────────────────────────────────────
+
+# Team or person responsible for the server.
+# Can be overridden per-host in inventory or host_vars.
+portal_owner: ""
+
+# ── Debug output ───────────────────────────────────────────────────────────
+
+# Set to true to enable verbose debug messages throughout the role.
+portal_debug: false

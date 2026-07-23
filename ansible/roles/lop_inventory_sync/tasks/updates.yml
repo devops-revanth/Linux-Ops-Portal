@@ -1,0 +1,200 @@
+---
+# =============================================================================
+# LOP Inventory Sync
+# Task: updates.yml
+#
+# Purpose:
+#   Collect available package updates for supported Linux distributions.
+#
+# Supported:
+#   - RHEL / Rocky Linux / AlmaLinux / Oracle Linux / CentOS Stream
+#   - Ubuntu / Debian
+#
+# This task NEVER installs updates.
+# =============================================================================
+
+# ── Initialise update facts (safe defaults) ────────────────────────────────
+
+- name: Initialize update facts
+  ansible.builtin.set_fact:
+    lop_updates:
+      total: 0
+      security: 0
+      bugfix: 0
+      enhancement: 0
+      kernel: false
+      packages: []
+
+###############################################################################
+# RHEL Family  (dnf)
+###############################################################################
+
+- name: Check available updates (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf check-update
+  register: dnf_updates
+  # dnf check-update exits 100 when updates are available — not an error
+  changed_when: false
+  failed_when: dnf_updates.rc not in [0, 100]
+  when: ansible_os_family == "RedHat"
+
+- name: Parse available packages (RHEL family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'total': dnf_updates.stdout_lines
+                   | select('match', '^[A-Za-z0-9]')
+                   | reject('match', '^Last metadata')
+                   | list | length,
+          'packages': dnf_updates.stdout_lines
+                      | select('match', '^[A-Za-z0-9]')
+                      | reject('match', '^Last metadata')
+                      | list
+        })
+      }}
+  when: ansible_os_family == "RedHat"
+
+- name: Collect security advisories (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf updateinfo list security
+  register: security_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Count security updates (RHEL family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'security': security_updates.stdout_lines
+                      | select('search', '/Sec\.')
+                      | list | length
+        })
+      }}
+  when: ansible_os_family == "RedHat"
+
+- name: Collect bugfix advisories (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf updateinfo list bugfix
+  register: bugfix_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Count bugfix updates (RHEL family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'bugfix': bugfix_updates.stdout_lines
+                    | select('search', '/Bug\.')
+                    | list | length
+        })
+      }}
+  when: ansible_os_family == "RedHat"
+
+- name: Collect enhancement advisories (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf updateinfo list enhancement
+  register: enhancement_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Count enhancement updates (RHEL family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'enhancement': enhancement_updates.stdout_lines
+                         | select('search', '/Enh\.')
+                         | list | length
+        })
+      }}
+  when: ansible_os_family == "RedHat"
+
+- name: Detect kernel update available (RHEL family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'kernel': (
+            lop_updates.packages
+            | select('match', '^(' + (kernel_package_patterns | join('|')) + ')')
+            | list | length
+          ) > 0
+        })
+      }}
+  when: ansible_os_family == "RedHat"
+
+###############################################################################
+# Debian Family  (apt)
+###############################################################################
+
+- name: Refresh apt cache (Debian family)
+  ansible.builtin.command:
+    cmd: apt-get update -qq
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: List upgradable packages (Debian family)
+  ansible.builtin.command:
+    # LANG=C ensures consistent output regardless of system locale
+    cmd: env LANG=C apt list --upgradable
+  register: apt_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Parse Debian updates
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'total': apt_updates.stdout_lines[1:] | length,
+          'packages': apt_updates.stdout_lines[1:],
+          'kernel': apt_updates.stdout is search('linux-image')
+        })
+      }}
+  when: ansible_os_family == "Debian"
+
+- name: Count security updates (Debian family)
+  ansible.builtin.set_fact:
+    lop_updates: >-
+      {{
+        lop_updates | combine({
+          'security': apt_updates.stdout_lines[1:]
+                      | select('search', '-security')
+                      | list | length
+        })
+      }}
+  when: ansible_os_family == "Debian"
+
+###############################################################################
+# Merge into LOP facts
+###############################################################################
+
+- name: Merge update information into LOP facts
+  ansible.builtin.set_fact:
+    lop_facts: >-
+      {{
+        lop_facts | combine({
+          'updates': lop_updates
+        }, recursive=True)
+      }}
+
+###############################################################################
+# Summary
+###############################################################################
+
+- name: Display update summary
+  ansible.builtin.debug:
+    msg:
+      - "Total Updates     : {{ lop_updates.total }}"
+      - "Security Updates  : {{ lop_updates.security }}"
+      - "Bugfix Updates    : {{ lop_updates.bugfix }}"
+      - "Enhancements      : {{ lop_updates.enhancement }}"
+      - "Kernel Update     : {{ lop_updates.kernel }}"

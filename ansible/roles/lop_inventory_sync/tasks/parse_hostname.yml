@@ -1,0 +1,97 @@
+---
+# =============================================================================
+# LOP Inventory Sync
+# Task: parse_hostname.yml
+#
+# Enterprise hostname convention:
+#
+#   usegnbxlt001
+#   ════╤════╤═╤╤═══
+#        │    │ ││
+#        │    │ │└── Sequence  (001)
+#        │    │ └─── Environment code  (T = Test)
+#        │    └───── OS code  (L = Rocky Linux)
+#        └────────── Application code  (NBX)
+#   Site code (USEG = US Elk Grove)
+#
+# Minimum hostname length: 10 characters
+#   [0:4]  = site_code
+#   [4:7]  = application_code
+#   [7]    = os_code
+#   [8]    = environment_code
+#   [9:]   = sequence
+# =============================================================================
+
+- name: Convert hostname to uppercase
+  ansible.builtin.set_fact:
+    hostname_upper: "{{ ansible_hostname | upper }}"
+
+# ── Parse if hostname meets minimum length ─────────────────────────────────
+
+- name: Parse hostname components
+  ansible.builtin.set_fact:
+    parsed_site: "{{ hostname_upper[0:4] }}"
+    parsed_application: "{{ hostname_upper[4:7] }}"
+    parsed_os_code: "{{ hostname_upper[7] }}"
+    parsed_environment_code: "{{ hostname_upper[8] }}"
+    parsed_sequence: "{{ hostname_upper[9:] }}"
+  when: hostname_upper | length >= hostname_minimum_length
+
+- name: Resolve hostname component mappings
+  ansible.builtin.set_fact:
+    parsed_site_name: "{{ site_map[parsed_site] | default(unknown_value) }}"
+    parsed_os_name: "{{ os_map[parsed_os_code] | default(unknown_value) }}"
+    parsed_environment: "{{ environment_map[parsed_environment_code] | default(unknown_value) }}"
+  when: hostname_upper | length >= hostname_minimum_length
+
+# ── Set unknown values when hostname is too short ─────────────────────────
+
+- name: Set unknown values for non-standard hostname
+  ansible.builtin.set_fact:
+    parsed_site: "{{ unknown_value }}"
+    parsed_site_name: "{{ unknown_value }}"
+    parsed_application: "{{ unknown_value }}"
+    parsed_os_code: "{{ unknown_value }}"
+    parsed_os_name: "{{ unknown_value }}"
+    parsed_environment_code: "{{ unknown_value }}"
+    parsed_environment: "{{ unknown_value }}"
+    parsed_sequence: "{{ unknown_value }}"
+  when: hostname_upper | length < hostname_minimum_length
+
+# ── Merge parsed values into lop_facts ────────────────────────────────────
+
+- name: Merge parsed hostname into LOP facts
+  ansible.builtin.set_fact:
+    lop_facts: >-
+      {{
+        lop_facts | combine({
+          'hostname': ansible_hostname,
+          'fqdn': ansible_fqdn,
+          'site_code': parsed_site,
+          'site_name': parsed_site_name,
+          'application_code': parsed_application,
+          'naming_os_code': parsed_os_code,
+          'naming_os': parsed_os_name,
+          'naming_environment_code': parsed_environment_code,
+          'naming_environment': parsed_environment,
+          'server_sequence': parsed_sequence
+        }, recursive=True)
+      }}
+
+# ── Debug output (only when portal_debug is true) ─────────────────────────
+
+- name: Display parsed hostname information
+  ansible.builtin.debug:
+    msg:
+      - "Hostname            : {{ ansible_hostname }}"
+      - "FQDN                : {{ ansible_fqdn }}"
+      - "Site Code           : {{ parsed_site }}"
+      - "Site Name           : {{ parsed_site_name }}"
+      - "Application Code    : {{ parsed_application }}"
+      - "Naming OS Code      : {{ parsed_os_code }}"
+      - "Naming OS           : {{ parsed_os_name }}"
+      - "Environment Code    : {{ parsed_environment_code }}"
+      - "Naming Environment  : {{ parsed_environment }}"
+      - "Sequence            : {{ parsed_sequence }}"
+      - "Actual OS           : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+  when: portal_debug | default(false)

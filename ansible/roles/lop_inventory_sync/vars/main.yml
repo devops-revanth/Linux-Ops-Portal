@@ -1,0 +1,131 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_inventory_sync Role
+# Static Role Variables
+#
+# NOTE:
+#   This file contains STATIC mappings only.
+#   These values should not need to change between environments.
+#
+#   Runtime configuration (URL, token, toggles) belongs in:
+#     group_vars/all.yml
+#
+#   Overridable defaults (retry counts, timeouts) belong in:
+#     defaults/main.yml
+###############################################################################
+
+###############################################################################
+# Role Version
+###############################################################################
+
+lop_role_version: "1.0.0"
+
+###############################################################################
+# Supported Linux Distributions
+###############################################################################
+
+supported_distributions:
+  - RedHat
+  - Rocky
+  - AlmaLinux
+  - OracleLinux
+  - CentOS
+  - CentOS Stream
+  - Ubuntu
+  - Debian
+
+###############################################################################
+# Hostname Convention
+#
+# Enterprise hostname format (minimum 10 characters):
+#
+#   usegnbxlt001
+#   ════╤════╤═╤╤═══
+#        │    │ ││
+#        │    │ │└── Sequence  [9:]
+#        │    │ └─── Environment code  [8]
+#        │    └───── OS code  [7]
+#        └────────── Application code  [4:7]
+#   Site code  [0:4]
+###############################################################################
+
+hostname_minimum_length: 10
+
+###############################################################################
+# Operating System Codes  (position [7] of hostname)
+###############################################################################
+
+os_map:
+  L: Rocky Linux
+  R: Red Hat Enterprise Linux
+  A: AlmaLinux
+  O: Oracle Linux
+  U: Ubuntu
+  D: Debian
+
+###############################################################################
+# Environment Codes  (position [8] of hostname)
+###############################################################################
+
+environment_map:
+  P: Production
+  I: Pre Production
+  T: Test
+  D: Development
+  K: Development
+  N: Development
+  X: Development
+  S: Stage
+  E: Demo
+
+###############################################################################
+# Site Codes  (positions [0:4] of hostname)
+#
+# Add additional locations as required.
+###############################################################################
+
+site_map:
+  USEG: US Elk Grove
+  DEFR: Germany Frankfurt
+  UKDL: United Kingdom Docklands
+
+###############################################################################
+# Kernel Package Patterns
+# Used to detect whether a kernel update is available in the update list.
+###############################################################################
+
+kernel_package_patterns:
+  - kernel
+  - kernel-core
+  - kernel-uek
+  - linux-image
+
+###############################################################################
+# Supported Virtualization Platforms
+###############################################################################
+
+virtualization_platforms:
+  - vmware
+  - kvm
+  - hyperv
+  - xen
+  - virtualbox
+  - ovirt
+
+###############################################################################
+# SELinux States
+###############################################################################
+
+selinux_states:
+  - enforcing
+  - permissive
+  - disabled
+
+###############################################################################
+# API Success Codes
+###############################################################################
+
+portal_success_codes:
+  - 200
+  - 201
+  - 202

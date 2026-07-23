@@ -1,0 +1,43 @@
+---
+# =============================================================================
+# Linux Operations Portal — Inventory Sync Playbook
+# =============================================================================
+#
+# Gathers facts from all target Linux servers and pushes them to the LOP
+# REST API via POST /api/v1/inventory.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini lop_inventory_sync.yml
+#
+# With vault:
+#   ansible-playbook -i inventory.ini lop_inventory_sync.yml --ask-vault-pass
+#
+# Override variables at runtime:
+#   ansible-playbook -i inventory.ini lop_inventory_sync.yml \
+#     -e portal_url=http://lop.example.com/api/v1/inventory \
+#     -e portal_api_token=<token>
+#
+# Limit to a single host or group:
+#   ansible-playbook -i inventory.ini lop_inventory_sync.yml \
+#     --limit production
+#
+# Required variables (set in group_vars/all.yml or pass with -e):
+#   portal_url       : Full inventory endpoint URL
+#   portal_api_token : Bearer token from LOP Settings → API Settings
+#
+# Optional variables (all have defaults in roles/lop_inventory_sync/defaults/):
+#   portal_validate_certs : true | false
+#   portal_timeout        : HTTP timeout in seconds (default 30)
+#   portal_retry_count    : Retry attempts on failure (default 3)
+#   portal_retry_delay    : Seconds between retries (default 5)
+#   portal_owner          : Owner name forwarded to the portal
+#   portal_debug          : true | false — verbose debug output
+# =============================================================================
+
+- name: Linux Operations Portal — Inventory Sync
+  hosts: all
+  gather_facts: true
+  become: true
+
+  roles:
+    - lop_inventory_sync

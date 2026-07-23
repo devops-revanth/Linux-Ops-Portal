@@ -1,14 +1,50 @@
 ---
-# ============================================================
+# =============================================================================
 # Linux Operations Portal — Global Variables
-# ============================================================
+# =============================================================================
+#
 # Copy this file to group_vars/all.yml and fill in your values.
-# NEVER commit a real token to version control.
-# ============================================================
+#
+# SECURITY:
+#   - NEVER commit a real token to version control.
+#   - Use Ansible Vault to encrypt this file in production:
+#       ansible-vault encrypt group_vars/all.yml
+# =============================================================================
 
-# Base URL of the Linux Operations Portal
-lop_api_url: "http://localhost:5000"
+# ── API Connection ─────────────────────────────────────────────────────────
 
-# Bearer token — generate this in LOP Settings → API Settings
+# Full inventory endpoint URL (include the /api/v1/inventory path).
+portal_url: "http://lop.example.com/api/v1/inventory"
+
+# Bearer token — generate this in LOP Settings → API Settings.
 # Treat it like a password; store it in Ansible Vault in production.
-lop_api_token: "REPLACE_WITH_TOKEN_FROM_LOP_SETTINGS"
+portal_api_token: "REPLACE_WITH_TOKEN_FROM_LOP_SETTINGS"
+
+# Set to false only when the portal uses a self-signed certificate.
+portal_validate_certs: false
+
+# HTTP request timeout in seconds.
+portal_timeout: 30
+
+# ── Retry Behaviour ────────────────────────────────────────────────────────
+
+portal_retry_count: 3
+portal_retry_delay: 5
+
+# ── Collection Toggles ─────────────────────────────────────────────────────
+
+portal_sync_enabled: true
+portal_send_packages: true
+portal_send_services: true
+portal_send_updates: true
+portal_send_repositories: true
+
+# ── Debug Output ───────────────────────────────────────────────────────────
+
+# Set to true to enable verbose debug messages (hostname parsing, payload, etc.)
+portal_debug: false
+
+# ── Ansible Connection ─────────────────────────────────────────────────────
+
+ansible_user: ansible
+ansible_become: true

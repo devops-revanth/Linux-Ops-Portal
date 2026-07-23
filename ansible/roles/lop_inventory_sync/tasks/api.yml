@@ -1,0 +1,114 @@
+---
+# =============================================================================
+# LOP Inventory Sync
+# Task: api.yml
+#
+# Purpose:
+#   Send the inventory payload to the Linux Operations Portal REST API.
+#
+# This task:
+#   ✓ Sends JSON payload via POST
+#   ✓ Uses Bearer Token authentication
+#   ✓ Supports HTTP and HTTPS
+#   ✓ Supports SSL validation toggle (portal_validate_certs)
+#   ✓ Retries on transient failures (configurable count and delay)
+#   ✓ Validates the API response
+#
+# This task NEVER:
+#   - Gathers facts
+#   - Parses hostnames
+#   - Builds payload
+# =============================================================================
+
+###############################################################################
+# Validate configuration before attempting any API call
+###############################################################################
+
+- name: Validate portal configuration
+  ansible.builtin.assert:
+    that:
+      - portal_url is defined
+      - portal_url | length > 0
+      - portal_api_token is defined
+      - portal_api_token | length > 0
+    fail_msg: >-
+      Linux Operations Portal configuration is incomplete.
+      Ensure portal_url and portal_api_token are set in group_vars/all.yml
+      or passed with -e on the command line.
+
+###############################################################################
+# Send payload
+###############################################################################
+
+- name: Send inventory to Linux Operations Portal
+  ansible.builtin.uri:
+
+    url: "{{ portal_url }}"
+
+    method: POST
+
+    body_format: json
+
+    body: "{{ inventory_payload }}"
+
+    headers:
+      Authorization: "Bearer {{ portal_api_token }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+    validate_certs: "{{ portal_validate_certs | default(true) }}"
+
+    timeout: "{{ portal_timeout | default(30) | int }}"
+
+    return_content: true
+
+    status_code:
+      - 200
+      - 201
+      - 202
+
+  register: portal_response
+
+  retries: "{{ portal_retry_count | default(3) | int }}"
+
+  delay: "{{ portal_retry_delay | default(5) | int }}"
+
+  # Guard against connection errors where status may not be defined
+  until: >-
+    portal_response.status is defined
+    and portal_response.status in [200, 201, 202]
+
+###############################################################################
+# Validate API response body
+###############################################################################
+
+- name: Validate portal response
+  ansible.builtin.assert:
+    that:
+      - portal_response.json is defined
+      - portal_response.json.status == "success"
+    fail_msg: >-
+      Inventory synchronization failed for {{ inventory_payload.hostname }}:
+      {{
+        portal_response.json.message
+        | default('Unexpected response — check portal logs.')
+      }}
+
+###############################################################################
+# Display summary
+###############################################################################
+
+- name: Display synchronization summary
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - " Linux Operations Portal — Inventory Sync"
+      - "============================================================"
+      - " Host        : {{ inventory_payload.hostname }}"
+      - " IP          : {{ inventory_payload.ip_address }}"
+      - " Portal      : {{ portal_url }}"
+      - " Status      : SUCCESS"
+      - " Action      : {{ portal_response.json.action | default('N/A') }}"
+      - " Record ID   : {{ portal_response.json.server_id | default('N/A') }}"
+      - " Message     : {{ portal_response.json.message | default('Inventory synchronized successfully.') }}"
+      - "============================================================"

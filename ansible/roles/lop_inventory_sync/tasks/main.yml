@@ -1,0 +1,10 @@
+---
+# =============================================================================
+# LOP Inventory Sync — Role Entry Point
+# =============================================================================
+
+- import_tasks: gather.yml
+- import_tasks: parse_hostname.yml
+- import_tasks: updates.yml
+- import_tasks: payload.yml
+- import_tasks: api.yml

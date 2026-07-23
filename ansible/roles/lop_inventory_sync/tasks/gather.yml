@@ -1,0 +1,92 @@
+---
+# =============================================================================
+# LOP Inventory Sync
+# Task: gather.yml
+#
+# Purpose:
+#   Collect all raw Ansible facts required by LOP.
+#
+# This file DOES NOT:
+#   - Parse hostname
+#   - Build payload
+#   - Call the API
+#
+# It ONLY gathers facts.
+# =============================================================================
+
+- name: Gather complete system facts
+  ansible.builtin.setup:
+    gather_subset:
+      - all
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Store LOP raw facts
+  ansible.builtin.set_fact:
+
+    lop_facts:
+
+      hostname: "{{ ansible_hostname | default('') }}"
+      fqdn: "{{ ansible_fqdn | default('') }}"
+
+      distribution: "{{ ansible_distribution | default('') }}"
+      distribution_version: "{{ ansible_distribution_version | default('') }}"
+      distribution_major_version: "{{ ansible_distribution_major_version | default('') }}"
+
+      kernel: "{{ ansible_kernel | default('') }}"
+      architecture: "{{ ansible_architecture | default('') }}"
+
+      # ansible_processor is a flat list: [socket_idx, vendor_id, model_name, ...]
+      # The model name is the last non-empty element.
+      cpu_model: >-
+        {{
+          ansible_processor
+          | select('string')
+          | reject('equalto', '')
+          | reject('match', '^[0-9]+$')
+          | list
+          | last
+          | default('')
+        }}
+      cpu_count: "{{ ansible_processor_vcpus | default(0) | int }}"
+      cpu_cores: "{{ ansible_processor_cores | default(0) | int }}"
+      cpu_threads_per_core: "{{ ansible_processor_threads_per_core | default(0) | int }}"
+      cpu_sockets: "{{ ansible_processor_count | default(0) | int }}"
+      memory_mb: "{{ ansible_memtotal_mb | default(0) | int }}"
+      swap_mb: "{{ ansible_swaptotal_mb | default(0) | int }}"
+      uptime: "{{ ansible_uptime_seconds | default(0) | int }}"
+
+      timezone: "{{ ansible_date_time.tz | default('') }}"
+
+      boot_time_epoch: >-
+        {{
+          (ansible_date_time.epoch | int)
+          - (ansible_uptime_seconds | default(0) | int)
+        }}
+
+      default_ipv4: "{{ ansible_default_ipv4 | default({}) }}"
+      default_ipv6: "{{ ansible_default_ipv6 | default({}) }}"
+
+      interfaces: "{{ ansible_interfaces | default([]) }}"
+
+      dns: "{{ ansible_dns | default({}) }}"
+
+      virtualization_type: "{{ ansible_virtualization_type | default('') }}"
+      virtualization_role: "{{ ansible_virtualization_role | default('') }}"
+
+      vendor: "{{ ansible_system_vendor | default('') }}"
+      product_name: "{{ ansible_product_name | default('') }}"
+      serial_number: "{{ ansible_product_serial | default('') }}"
+
+      bios_version: "{{ ansible_bios_version | default('') }}"
+      bios_date: "{{ ansible_bios_date | default('') }}"
+      product_uuid: "{{ ansible_product_uuid | default('') }}"
+
+      selinux:
+        status: "{{ ansible_selinux.status | default('disabled') }}"
+        mode: "{{ ansible_selinux.mode | default('disabled') }}"

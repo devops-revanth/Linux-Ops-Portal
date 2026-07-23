@@ -1,0 +1,30 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_inventory_sync Role Metadata
+###############################################################################
+
+galaxy_info:
+  role_name: lop_inventory_sync
+  author: Linux Operations Portal
+  description: >
+    Gathers system facts from Linux servers and pushes them to the
+    Linux Operations Portal REST API for centralised inventory management.
+  license: MIT
+  min_ansible_version: "2.12"
+
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+
+dependencies: []
