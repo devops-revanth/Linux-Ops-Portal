@@ -463,31 +463,65 @@ apply_changes() {
             }
         log_success "Service restarted."
 
-        # Reload nginx in case the vhost config was updated
-        if systemctl is-active --quiet nginx 2>/dev/null; then
-            nginx_write_vhost
-            nginx -t >> "$LOG_FILE" 2>&1 \
-                && systemctl reload nginx >> "$LOG_FILE" 2>&1 \
-                || log_warn "nginx reload failed (non-fatal) — traffic still routes through existing config."
-        fi
     else
         log_info "No code or dependency changes — service restart not required."
+    fi
+    # nginx is handled unconditionally in setup_nginx(), called after apply_changes().
+}
+
+# ── nginx setup (always run, idempotent) ─────────────────────────────────────
+# nginx_setup() is called unconditionally on every update so that nginx is
+# installed and running regardless of whether it was present before.
+# nginx_verify() is only called AFTER setup — never before.
+setup_nginx() {
+    # nginx_setup() orchestrates: install → SELinux boolean → firewall rule →
+    # write vhost → nginx -t → systemctl enable → start/reload.
+    # It aborts if the configuration test fails or the service cannot start,
+    # so errors are never silently swallowed.
+    nginx_setup
+
+    # After nginx_setup() returns, confirm nginx is actually serving traffic.
+    # If nginx_verify() fails, capture full diagnostics into the log and to
+    # stdout so the operator can act without hunting for log files.
+    if ! nginx_verify; then
+        log_warn "nginx is not responding after setup — capturing diagnostics:"
+        {
+            printf "\n=== systemctl status nginx ===\n"
+            systemctl status nginx --no-pager 2>&1 || true
+            printf "\n=== journalctl -u nginx (last 50 lines) ===\n"
+            journalctl -u nginx -n 50 --no-pager 2>&1 || true
+        } | tee -a "$LOG_FILE"
+        log_warn "nginx diagnostics written to ${LOG_FILE}."
+        # Do not abort — the application may still be reachable via Gunicorn
+        # on port 5000.  The health check below will make the final call.
     fi
 }
 
 # ── Post-update health check ──────────────────────────────────────────────────
+# nginx_verify() is safe to call here because setup_nginx() has already run.
 post_update_health_check() {
-    log_step "Verifying update (waiting up to 60s)..."
-    # Primary check via nginx on port 80; fall back to Gunicorn direct if nginx
-    # is not yet running (e.g. first update before nginx_setup was added).
-    if nginx_verify 2>/dev/null || health_check "http://localhost:5000/health" 12 5; then
-        log_success "Health check passed."
+    log_step "Verifying application health via nginx (http://localhost/)..."
+    if nginx_verify; then
+        log_success "Health check passed — nginx is proxying correctly."
         return 0
-    else
-        log_error "Health check failed after update — initiating rollback."
-        do_rollback
-        exit 1
     fi
+
+    # nginx_verify failed (or timed out).  Diagnostics were already captured
+    # in setup_nginx().  Fall back to a direct Gunicorn check so a nginx-only
+    # problem does not trigger a full rollback of application code.
+    log_warn "nginx health check failed — falling back to direct Gunicorn check..."
+    if health_check "http://localhost:5000/health" 6 5; then
+        log_warn "Gunicorn is running but nginx is not proxying traffic."
+        log_warn "The application is accessible on port 5000 only."
+        log_warn "Investigate nginx: sudo systemctl status nginx"
+        log_warn "                   sudo journalctl -u nginx -n 50"
+        # Return success: the app itself is healthy; nginx is a proxy issue.
+        return 0
+    fi
+
+    log_error "Both nginx and Gunicorn health checks failed — initiating rollback."
+    do_rollback
+    exit 1
 }
 
 # ── Rollback ──────────────────────────────────────────────────────────────────
@@ -635,6 +669,7 @@ main() {
     run_pre_update_backup
     pull_latest_code
     apply_changes
+    setup_nginx           # install + configure + start nginx (always, idempotent)
     post_update_health_check
     save_update_state
     print_update_summary
