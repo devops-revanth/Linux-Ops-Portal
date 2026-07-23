@@ -1,0 +1,53 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_patching Role
+# Default Variables
+#
+# Override any of these in:
+#   group_vars/all.yml           (environment-wide)
+#   group_vars/<group>.yml       (per group)
+#   host_vars/<host>.yml         (per host)
+#   -e key=value                 (command line)
+###############################################################################
+
+# ── API connection ─────────────────────────────────────────────────────────
+# Inherited from lop_inventory_sync defaults; repeated here so the patching
+# role can run independently without the inventory role.
+
+portal_url: ""
+portal_api_token: ""
+portal_validate_certs: true
+portal_timeout: 30
+portal_retry_count: 3
+portal_retry_delay: 5
+
+# ── Patch mode ─────────────────────────────────────────────────────────────
+
+# all        — apply all available updates  (recommended for scheduled maintenance)
+# security   — apply security updates only
+# packages   — apply a specific list of packages (set patch_packages below)
+patch_mode: "all"
+
+# Specific packages to install when patch_mode is 'packages'.
+# Example: patch_packages: ["bash", "openssl", "kernel"]
+patch_packages: []
+
+# ── Reboot behaviour ───────────────────────────────────────────────────────
+
+# Set to true to automatically reboot if a kernel update requires it.
+# When false, the server is flagged for manual reboot in the portal.
+patch_reboot_if_required: false
+
+# Seconds to wait for the server to come back online after a reboot.
+patch_reboot_timeout: 600
+
+# ── Apt-specific options ───────────────────────────────────────────────────
+
+patch_apt_autoremove: false
+patch_apt_autoclean: false
+
+# ── Supported OS families ──────────────────────────────────────────────────
+
+patch_supported_os_families:
+  - RedHat
+  - Debian

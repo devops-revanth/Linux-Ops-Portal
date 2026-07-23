@@ -1,0 +1,15 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_patching Role
+# Static Role Variables
+#
+# These values should not change between environments.
+# Runtime configuration belongs in defaults/main.yml or group_vars/all.yml.
+###############################################################################
+
+lop_patching_role_version: "1.0.0"
+
+# Actions recorded in installed_packages.action that represent a new install
+# vs. an update.  Used for display categorisation in the portal.
+patch_action_install: "Install"
+patch_action_upgrade: "Upgrade"

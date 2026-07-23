@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# Linux Operations Portal — Patching Playbook
+# =============================================================================
+#
+# Applies package updates to all target servers and reports the result back
+# to the LOP REST API so that:
+#   - Last Patched date is recorded
+#   - Installed packages appear in the Recently Installed tab
+#   - Available Updates count reflects remaining updates
+#   - Compliance status recalculates automatically
+#
+# Workflow executed per host:
+#   1. pre_patch    — snapshot current update count, verify OS support
+#   2. patch        — apply updates (dnf / apt)
+#   3. post_patch   — collect installed packages, check reboot requirement
+#   4. report       — POST to /api/v1/patching, then re-sync inventory
+#
+# Usage:
+#   # Patch all servers (all available updates)
+#   ansible-playbook -i inventory.ini lop_patching.yml
+#
+#   # Patch security updates only
+#   ansible-playbook -i inventory.ini lop_patching.yml \
+#     -e patch_mode=security
+#
+#   # Patch specific packages
+#   ansible-playbook -i inventory.ini lop_patching.yml \
+#     -e patch_mode=packages \
+#     -e '{"patch_packages": ["bash", "openssl"]}'
+#
+#   # Patch and reboot if kernel update requires it
+#   ansible-playbook -i inventory.ini lop_patching.yml \
+#     -e patch_reboot_if_required=true
+#
+#   # Limit to a single host or group
+#   ansible-playbook -i inventory.ini lop_patching.yml \
+#     --limit production
+#
+#   # With vault for the API token
+#   ansible-playbook -i inventory.ini lop_patching.yml \
+#     --ask-vault-pass
+#
+# Required variables (set in group_vars/all.yml or pass with -e):
+#   portal_url       : Full inventory endpoint URL (e.g. http://lop.example.com/api/v1/inventory)
+#   portal_api_token : Bearer token from LOP Settings → API Settings
+#
+# Optional variables (all have defaults in roles/lop_patching/defaults/main.yml):
+#   patch_mode              : all | security | packages  (default: all)
+#   patch_packages          : list of package names     (default: [])
+#   patch_reboot_if_required: true | false               (default: false)
+#   patch_reboot_timeout    : seconds                    (default: 600)
+# =============================================================================
+
+- name: Linux Operations Portal — Patch Servers
+  hosts: all
+  gather_facts: true
+  become: true
+  serial: "{{ patch_serial | default(0) }}"
+
+  roles:
+    - lop_patching

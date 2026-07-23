@@ -25,6 +25,7 @@ from ...extensions import db
 from ...models.environment import Environment
 from ...models.location import Location
 from ...models.owner import Owner
+from ...models.package import Package, ServerPackage
 from ...models.patching import Patching
 from ...models.server import Server
 
@@ -235,6 +236,262 @@ def validate_inventory_payload(data: dict) -> str | None:
     return None
 
 
+# ── Package helpers ───────────────────────────────────────────────────── #
+
+def _upsert_available_updates(
+    server_id: int,
+    packages: list,
+    collected_at: datetime,
+) -> None:
+    """
+    Sync the available-update package list for a server.
+
+    Steps:
+      1. Clear all existing update_available=True flags for this server
+         (removes stale entries from the previous inventory scan).
+      2. For each structured package dict, upsert a Package master record
+         and a ServerPackage row with update_available=True.
+
+    Safe to call with an empty list — clearing flags with no new rows
+    correctly reflects a fully up-to-date server.
+
+    Expected package dict keys (all optional except 'name'):
+      name              — package name (required; row is skipped if absent)
+      arch              — CPU architecture string
+      available_version — version string of the available update
+      repository        — source repository name
+      update_type       — security | bugfix | enhancement
+    """
+    # Step 1: clear stale update flags
+    (
+        db.session.query(ServerPackage)
+        .filter_by(server_id=server_id, update_available=True)
+        .update(
+            {"update_available": False, "available_version": None},
+            synchronize_session="fetch",
+        )
+    )
+
+    if not packages:
+        return
+
+    # Step 2: upsert each available-update package
+    for pkg_data in packages:
+        if not isinstance(pkg_data, dict):
+            continue
+
+        name = _safe_str(pkg_data.get("name"))
+        if not name:
+            continue
+
+        available_version = _safe_str(pkg_data.get("available_version"), max_len=100)
+        repository = _safe_str(pkg_data.get("repository"), max_len=150)
+        update_type = _safe_str(pkg_data.get("update_type"), max_len=50)
+
+        # Upsert Package master record
+        pkg = Package.query.filter_by(name=name).first()
+        if pkg is None:
+            pkg = Package(name=name, display_name=name)
+            db.session.add(pkg)
+            db.session.flush()  # get pkg.id
+
+        # Upsert ServerPackage
+        sp = ServerPackage.query.filter_by(
+            server_id=server_id, package_id=pkg.id
+        ).first()
+        if sp is None:
+            sp = ServerPackage(server_id=server_id, package_id=pkg.id)
+            db.session.add(sp)
+
+        sp.update_available = True
+        sp.available_version = available_version
+        sp.update_type = update_type
+        sp.repository = repository
+        sp.collected_at = collected_at
+
+
+def _record_installed_packages(
+    server_id: int,
+    packages: list,
+    installed_at: datetime,
+) -> None:
+    """
+    Record packages installed or upgraded by a patch run.
+
+    Sets update_available=False (the update has been applied) and stamps
+    collected_at with the patch timestamp so they sort to the top of the
+    "Recently Installed" tab.
+
+    Expected package dict keys (all optional except 'name'):
+      name        — package name (required; row is skipped if absent)
+      arch        — CPU architecture string
+      version     — installed version after patching
+      action      — Install | Upgrade | Upgraded | etc.
+      repository  — source repository name
+    """
+    for pkg_data in packages:
+        if not isinstance(pkg_data, dict):
+            continue
+
+        name = _safe_str(pkg_data.get("name"))
+        if not name:
+            continue
+
+        version = _safe_str(pkg_data.get("version"), max_len=100)
+        action = _safe_str(pkg_data.get("action"), max_len=50)
+        repository = _safe_str(pkg_data.get("repository"), max_len=150)
+
+        # Upsert Package master record
+        pkg = Package.query.filter_by(name=name).first()
+        if pkg is None:
+            pkg = Package(name=name, display_name=name)
+            db.session.add(pkg)
+            db.session.flush()
+
+        # Upsert ServerPackage — update_available=False (installed)
+        sp = ServerPackage.query.filter_by(
+            server_id=server_id, package_id=pkg.id
+        ).first()
+        if sp is None:
+            sp = ServerPackage(server_id=server_id, package_id=pkg.id)
+            db.session.add(sp)
+
+        sp.version = version
+        sp.update_available = False
+        sp.available_version = None
+        sp.update_type = action      # "Upgraded" / "Installed" etc.
+        sp.repository = repository
+        sp.collected_at = installed_at   # fresh timestamp → top of recently-installed
+
+
+# ── Validate patching payload ─────────────────────────────────────────── #
+
+def validate_patching_payload(data: dict) -> str | None:
+    """
+    Return an error string if the patch-completion payload is invalid.
+
+    Required fields:
+      hostname       — string, non-empty
+      last_patch_date — ISO-8601 string
+
+    Optional fields:
+      installed_packages — list of dicts
+      pending_updates    — integer
+      reboot_required    — boolean
+    """
+    hostname = data.get("hostname")
+    if not isinstance(hostname, str) or not hostname.strip():
+        return "Missing required field: hostname"
+    if len(hostname.strip()) > 255:
+        return "hostname exceeds maximum length of 255 characters"
+
+    lpd = data.get("last_patch_date")
+    if not lpd:
+        return "Missing required field: last_patch_date"
+    if not isinstance(lpd, str):
+        return "last_patch_date must be an ISO-8601 string"
+
+    pkgs = data.get("installed_packages")
+    if pkgs is not None and not isinstance(pkgs, list):
+        return "installed_packages must be a list"
+
+    pu = data.get("pending_updates")
+    if pu is not None and not isinstance(pu, (int, float)):
+        return "pending_updates must be a number"
+
+    rr = data.get("reboot_required")
+    if rr is not None and not isinstance(rr, bool):
+        return "reboot_required must be a boolean"
+
+    return None
+
+
+# ── Record patch completion ────────────────────────────────────────────── #
+
+def record_patch_completion(data: dict) -> UpsertResult:
+    """
+    Update a server's patching record after a patch run completes.
+
+    - Sets last_patch_date (required).
+    - Updates pending_updates and reboot_required when provided.
+    - Clears all update_available flags (updates have been applied).
+    - Writes installed_packages as ServerPackage rows with update_available=False.
+
+    Assumes validate_patching_payload() has already been called.
+    """
+    hostname = data["hostname"].strip()
+    result = UpsertResult(hostname=hostname, action="patched")
+
+    try:
+        now = datetime.now(timezone.utc)
+
+        server = Server.query.filter_by(hostname=hostname).first()
+        if server is None:
+            result.success = False
+            result.error = f"Server '{hostname}' not found — run inventory sync first"
+            return result
+
+        # ── Upsert patching record ─────────────────────────────────────
+        patching = Patching.query.filter_by(server_id=server.id).first()
+        if patching is None:
+            patching = Patching(server_id=server.id)
+            db.session.add(patching)
+
+        patch_dt = _parse_datetime(data.get("last_patch_date")) or now
+        patching.last_patch_date = patch_dt
+
+        pu = _parse_int(data.get("pending_updates"))
+        if pu is not None:
+            patching.pending_updates = pu
+
+        if "reboot_required" in data:
+            rr = data["reboot_required"]
+            patching.reboot_required = bool(rr) if rr is not None else None
+
+        # Reflect updated patch status
+        if patching.pending_updates == 0:
+            patching.patch_status = "up-to-date"
+        else:
+            patching.patch_status = "pending"
+
+        patching.updated_at = now
+
+        db.session.flush()
+
+        # ── Clear stale available-update flags ─────────────────────────
+        # All flagged updates have been applied; next inventory sync will
+        # re-populate any that remain.
+        (
+            db.session.query(ServerPackage)
+            .filter_by(server_id=server.id, update_available=True)
+            .update(
+                {"update_available": False, "available_version": None},
+                synchronize_session="fetch",
+            )
+        )
+
+        # ── Record installed packages ──────────────────────────────────
+        installed = data.get("installed_packages")
+        if isinstance(installed, list) and installed:
+            _record_installed_packages(server.id, installed, patch_dt)
+
+        db.session.commit()
+        logger.info(
+            "Patch completion recorded — hostname=%s last_patch_date=%s installed=%d",
+            hostname,
+            patch_dt.isoformat(),
+            len(installed) if isinstance(installed, list) else 0,
+        )
+
+    except Exception:
+        db.session.rollback()
+        logger.exception("record_patch_completion failed for hostname=%s", hostname)
+        result.success = False
+        result.error = "Database error — patch completion update failed"
+
+    return result
+
+
 # ── Upsert ────────────────────────────────────────────────────────────── #
 
 def upsert_server(data: dict) -> UpsertResult:
@@ -337,10 +594,25 @@ def upsert_server(data: dict) -> UpsertResult:
 
         patching.updated_at = now
 
+        db.session.flush()
+
+        # ── Sync available-update package list ─────────────────────────
+        # The payload's updates.available_packages is a list of structured
+        # dicts produced by the lop_inventory_sync role's updates.yml task.
+        # If present, we replace the server's available-update rows with the
+        # fresh list.  If absent (old-style payload), we skip to preserve any
+        # existing package data.
+        updates_block = data.get("updates")
+        if isinstance(updates_block, dict):
+            available_packages = updates_block.get("available_packages")
+            if isinstance(available_packages, list):
+                _upsert_available_updates(server.id, available_packages, now)
+
         db.session.commit()
         logger.info(
-            "Inventory upsert — action=%s hostname=%s ip=%s",
+            "Inventory upsert — action=%s hostname=%s ip=%s pending_updates=%s",
             result.action, hostname, server.ip_address,
+            patching.pending_updates,
         )
 
     except Exception:

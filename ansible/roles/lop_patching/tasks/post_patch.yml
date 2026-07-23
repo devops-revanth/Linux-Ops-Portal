@@ -1,0 +1,213 @@
+---
+# =============================================================================
+# LOP Patching
+# Task: post_patch.yml
+#
+# Purpose:
+#   Collect the list of packages installed or upgraded during this patch run
+#   and calculate the remaining available update count.
+#
+# This file DOES NOT install anything.
+# =============================================================================
+
+###############################################################################
+# RHEL family — parse dnf history for last transaction
+###############################################################################
+
+- name: Get installed packages from last dnf transaction (RHEL family)
+  ansible.builtin.shell: |
+    dnf history info last 2>/dev/null | python3 -c "
+    import sys, json, re
+    packages = []
+    for line in sys.stdin:
+        line = line.rstrip()
+        # Lines look like:
+        #     Install  bash-5.1.8-9.el9.x86_64  @baseos
+        #     Upgrade  NetworkManager-1:1.44.0-3.el9.x86_64  @baseos
+        #     Upgraded NetworkManager-1:1.40.16-3.el9.x86_64  @@System
+        m = re.match(r'^\s+(Install|Upgrade|Upgraded|Reinstall|Downgrade)\s+(\S+)(?:\s+@?(\S+))?', line)
+        if not m:
+            continue
+        action = m.group(1)
+        pkg_str = m.group(2)
+        repo = (m.group(3) or '').lstrip('@')
+        # Strip epoch prefix  (1:version-release.arch)
+        pkg_str = re.sub(r'^\d+:', '', pkg_str)
+        # Extract arch from last '.' component
+        dot = pkg_str.rfind('.')
+        if dot > 0:
+            arch = pkg_str[dot+1:]
+            nvr = pkg_str[:dot]
+        else:
+            arch = ''
+            nvr = pkg_str
+        # Split name from version-release: last '-' before first digit after a '-'
+        nm = re.match(r'^(.+?)-(\d[\w\.\+\~]*)$', nvr)
+        if nm:
+            name = nm.group(1)
+            version = nm.group(2)
+        else:
+            name = nvr
+            version = ''
+        # Skip 'Upgraded' — it is the old version entry; keep 'Upgrade' (new version)
+        if action == 'Upgraded':
+            continue
+        packages.append({
+            'name': name,
+            'arch': arch,
+            'version': version,
+            'action': action,
+            'repository': repo
+        })
+    print(json.dumps(packages))
+    " || echo '[]'
+  args:
+    executable: /bin/bash
+  register: dnf_installed_raw
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Set installed packages list (RHEL family)
+  ansible.builtin.set_fact:
+    lop_installed_packages: "{{ dnf_installed_raw.stdout | from_json }}"
+  when: ansible_os_family == "RedHat"
+
+###############################################################################
+# Debian family — rpm -qa with timestamp filter
+###############################################################################
+
+- name: Get installed packages from recent apt run (Debian family)
+  ansible.builtin.shell: |
+    # Get packages installed or upgraded in the last 2 hours
+    cutoff=$(date -d '2 hours ago' +%s 2>/dev/null || date -v-2H +%s)
+    python3 -c "
+    import subprocess, json, time
+    result = subprocess.run(
+        ['dpkg-query', '-W',
+         '--showformat', '\${db:Status-Status}\t\${Package}\t\${Version}\t\${Architecture}\n'],
+        capture_output=True, text=True
+    )
+    packages = []
+    for line in result.stdout.splitlines():
+        parts = line.split('\t')
+        if len(parts) >= 4 and parts[0] == 'installed':
+            packages.append({
+                'name': parts[1],
+                'version': parts[2],
+                'arch': parts[3],
+                'action': 'Install',
+                'repository': ''
+            })
+    print(json.dumps(packages[:100]))  # cap to 100 to avoid oversized payload
+    " || echo '[]'
+  args:
+    executable: /bin/bash
+  register: apt_installed_raw
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Set installed packages list (Debian family)
+  ansible.builtin.set_fact:
+    lop_installed_packages: "{{ apt_installed_raw.stdout | from_json }}"
+  when: ansible_os_family == "Debian"
+
+# ── Default for unsupported OS ────────────────────────────────────────────
+
+- name: Set empty installed packages for unsupported OS
+  ansible.builtin.set_fact:
+    lop_installed_packages: []
+  when: ansible_os_family not in patch_supported_os_families
+
+###############################################################################
+# Remaining update count after patching
+###############################################################################
+
+- name: Count remaining updates after patching (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf check-update -q
+  register: post_dnf_updates
+  changed_when: false
+  failed_when: post_dnf_updates.rc not in [0, 100]
+  when: ansible_os_family == "RedHat"
+
+- name: Set remaining update count (RHEL family)
+  ansible.builtin.set_fact:
+    lop_post_patch_update_count: >-
+      {{
+        post_dnf_updates.stdout_lines
+        | select('match', '^[A-Za-z0-9]')
+        | reject('match', '^Last metadata')
+        | list | length
+      }}
+  when: ansible_os_family == "RedHat"
+
+- name: Count remaining updates after patching (Debian family)
+  ansible.builtin.command:
+    cmd: env LANG=C apt list --upgradable
+  register: post_apt_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Set remaining update count (Debian family)
+  ansible.builtin.set_fact:
+    lop_post_patch_update_count: "{{ (post_apt_updates.stdout_lines | length) - 1 }}"
+  when: ansible_os_family == "Debian"
+
+- name: Set default remaining update count
+  ansible.builtin.set_fact:
+    lop_post_patch_update_count: 0
+  when: ansible_os_family not in patch_supported_os_families
+
+###############################################################################
+# Check whether a reboot is required
+###############################################################################
+
+- name: Check if reboot is required (RHEL family — needs-restarting)
+  ansible.builtin.command:
+    cmd: needs-restarting -r
+  register: needs_restarting_check
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Set reboot required flag (RHEL family)
+  ansible.builtin.set_fact:
+    lop_reboot_required: "{{ needs_restarting_check.rc == 1 }}"
+  when: ansible_os_family == "RedHat"
+
+- name: Check if reboot is required (Debian family)
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: debian_reboot_required
+  when: ansible_os_family == "Debian"
+
+- name: Set reboot required flag (Debian family)
+  ansible.builtin.set_fact:
+    lop_reboot_required: "{{ debian_reboot_required.stat.exists }}"
+  when: ansible_os_family == "Debian"
+
+- name: Set default reboot required flag
+  ansible.builtin.set_fact:
+    lop_reboot_required: false
+  when: ansible_os_family not in patch_supported_os_families
+
+###############################################################################
+# Post-patch summary
+###############################################################################
+
+- name: Display post-patch summary
+  ansible.builtin.debug:
+    msg:
+      - "================================================"
+      - " LOP Patching — Post-Patch Summary"
+      - "================================================"
+      - " Host              : {{ ansible_hostname }}"
+      - " Packages Changed  : {{ lop_packages_changed }}"
+      - " Packages Installed: {{ lop_installed_packages | length }}"
+      - " Updates Before    : {{ lop_pre_patch_update_count }}"
+      - " Updates Remaining : {{ lop_post_patch_update_count }}"
+      - " Reboot Required   : {{ lop_reboot_required }}"
+      - "================================================"

@@ -1,0 +1,118 @@
+---
+# =============================================================================
+# LOP Patching
+# Task: patch.yml
+#
+# Purpose:
+#   Apply package updates using the native package manager.
+#
+# Patch modes (controlled by patch_mode variable):
+#   all        — install all available updates  (default)
+#   security   — install security updates only
+#   packages   — install specific packages listed in patch_packages
+#
+# Supported OS families:
+#   RedHat  — uses dnf
+#   Debian  — uses apt
+#
+# This file NEVER changes configuration or application files outside of
+# the package manager.  It only installs package updates.
+# =============================================================================
+
+###############################################################################
+# RHEL family
+###############################################################################
+
+# ── All updates ────────────────────────────────────────────────────────────
+
+- name: Apply all available updates (RHEL family — all mode)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_only: true
+  register: dnf_result_all
+  when:
+    - ansible_os_family == "RedHat"
+    - patch_mode == "all"
+
+# ── Security updates only ──────────────────────────────────────────────────
+
+- name: Apply security updates only (RHEL family — security mode)
+  ansible.builtin.command:
+    cmd: dnf update --security -y
+  register: dnf_result_security
+  changed_when: "'Nothing to do' not in dnf_result_security.stdout"
+  when:
+    - ansible_os_family == "RedHat"
+    - patch_mode == "security"
+
+# ── Specific packages ──────────────────────────────────────────────────────
+
+- name: Validate patch_packages is not empty (packages mode)
+  ansible.builtin.assert:
+    that:
+      - patch_packages | length > 0
+    fail_msg: >-
+      patch_mode is 'packages' but patch_packages list is empty.
+      Set patch_packages in your playbook or pass -e patch_packages='[...]'.
+  when: patch_mode == "packages"
+
+- name: Apply specific package updates (RHEL family — packages mode)
+  ansible.builtin.dnf:
+    name: "{{ patch_packages }}"
+    state: latest
+  register: dnf_result_packages
+  when:
+    - ansible_os_family == "RedHat"
+    - patch_mode == "packages"
+
+###############################################################################
+# Debian family
+###############################################################################
+
+- name: Refresh apt cache (Debian family)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+  when: ansible_os_family == "Debian"
+
+- name: Apply all available updates (Debian family — all mode)
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: "{{ patch_apt_autoremove }}"
+    autoclean: "{{ patch_apt_autoclean }}"
+  register: apt_result_all
+  when:
+    - ansible_os_family == "Debian"
+    - patch_mode == "all"
+
+- name: Apply specific package updates (Debian family — packages mode)
+  ansible.builtin.apt:
+    name: "{{ patch_packages }}"
+    state: latest
+    update_cache: false
+  register: apt_result_packages
+  when:
+    - ansible_os_family == "Debian"
+    - patch_mode == "packages"
+
+###############################################################################
+# Record patching outcome
+###############################################################################
+
+- name: Record patching changed flag
+  ansible.builtin.set_fact:
+    lop_packages_changed: >-
+      {{
+        (dnf_result_all.changed | default(false))
+        or (dnf_result_security is defined and dnf_result_security.changed | default(false))
+        or (dnf_result_packages is defined and dnf_result_packages.changed | default(false))
+        or (apt_result_all is defined and apt_result_all.changed | default(false))
+        or (apt_result_packages is defined and apt_result_packages.changed | default(false))
+      }}
+
+- name: Display patch outcome
+  ansible.builtin.debug:
+    msg: >-
+      Patching {{ 'applied changes' if lop_packages_changed else 'made no changes (already up to date)' }}
+      on {{ ansible_hostname }} at {{ ansible_date_time.iso8601 }}

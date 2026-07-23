@@ -1,0 +1,217 @@
+---
+# =============================================================================
+# LOP Patching
+# Task: report.yml
+#
+# Purpose:
+#   1. Send patch completion report to LOP via POST /api/v1/patching.
+#      This sets last_patch_date, records installed packages, and clears
+#      stale available-update flags in the portal database.
+#
+#   2. Re-run inventory sync (POST /api/v1/inventory) so that the portal
+#      reflects the current state: updated kernel, updated OS version, and
+#      the new available-update count.
+#
+# This file DOES NOT install anything.
+# =============================================================================
+
+###############################################################################
+# Build the patch report payload
+###############################################################################
+
+- name: Build patch completion payload
+  ansible.builtin.set_fact:
+    lop_patch_payload:
+      hostname: "{{ ansible_hostname }}"
+      last_patch_date: "{{ ansible_date_time.iso8601 }}"
+      installed_packages: "{{ lop_installed_packages | default([]) }}"
+      pending_updates: "{{ lop_post_patch_update_count | int }}"
+      reboot_required: "{{ lop_reboot_required | bool }}"
+
+###############################################################################
+# Validate portal configuration
+###############################################################################
+
+- name: Validate portal configuration
+  ansible.builtin.assert:
+    that:
+      - portal_url is defined
+      - portal_url | length > 0
+      - portal_api_token is defined
+      - portal_api_token | length > 0
+    fail_msg: >-
+      Linux Operations Portal configuration is incomplete.
+      Set portal_url and portal_api_token in group_vars/all.yml.
+
+###############################################################################
+# Send patch report to LOP API
+###############################################################################
+
+- name: Derive patching endpoint URL from portal_url
+  ansible.builtin.set_fact:
+    # portal_url points to /api/v1/inventory; replace the last path segment
+    lop_patching_url: >-
+      {{
+        portal_url
+        | regex_replace('/inventory$', '/patching')
+        | regex_replace('/inventory/$', '/patching')
+      }}
+
+- name: Send patch completion report to Linux Operations Portal
+  ansible.builtin.uri:
+    url: "{{ lop_patching_url }}"
+    method: POST
+    body_format: json
+    body: "{{ lop_patch_payload }}"
+    headers:
+      Authorization: "Bearer {{ portal_api_token }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+    validate_certs: "{{ portal_validate_certs | default(true) }}"
+    timeout: "{{ portal_timeout | default(30) | int }}"
+    return_content: true
+    status_code:
+      - 200
+      - 201
+      - 202
+  register: patch_report_response
+  retries: "{{ portal_retry_count | default(3) | int }}"
+  delay: "{{ portal_retry_delay | default(5) | int }}"
+  until: >-
+    patch_report_response.status is defined
+    and patch_report_response.status in [200, 201, 202]
+
+- name: Validate patch report response
+  ansible.builtin.assert:
+    that:
+      - patch_report_response.json is defined
+      - patch_report_response.json.status == "success"
+    fail_msg: >-
+      Patch report failed for {{ ansible_hostname }}:
+      {{ patch_report_response.json.message | default('Unexpected response') }}
+
+###############################################################################
+# Re-sync inventory so portal reflects post-patch state
+# (updated kernel, remaining updates, new package list)
+###############################################################################
+
+- name: Re-gather facts after patching
+  ansible.builtin.setup:
+    gather_subset:
+      - all
+  when: lop_packages_changed | bool
+
+- name: Get remaining structured updates after patching (RHEL family)
+  ansible.builtin.shell: |
+    dnf repoquery --upgrades --quiet \
+      --queryformat '%{name}\t%{version}-%{release}\t%{arch}\t%{reponame}\n' \
+      2>/dev/null | python3 -c "
+    import sys, json
+    packages = []
+    for line in sys.stdin:
+        p = line.strip().split('\t')
+        if len(p) >= 1 and p[0]:
+            packages.append({
+                'name': p[0],
+                'available_version': p[1] if len(p) > 1 else '',
+                'arch': p[2] if len(p) > 2 else '',
+                'repository': p[3] if len(p) > 3 else ''
+            })
+    print(json.dumps(packages))
+    " || echo '[]'
+  args:
+    executable: /bin/bash
+  register: post_patch_structured_raw
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_os_family == "RedHat"
+    - lop_packages_changed | bool
+
+- name: Set post-patch available packages (RHEL family)
+  ansible.builtin.set_fact:
+    lop_post_available_packages: "{{ post_patch_structured_raw.stdout | from_json }}"
+  when:
+    - ansible_os_family == "RedHat"
+    - lop_packages_changed | bool
+
+- name: Default post-patch available packages (no changes or unsupported OS)
+  ansible.builtin.set_fact:
+    lop_post_available_packages: []
+  when: not (lop_packages_changed | bool) or ansible_os_family not in patch_supported_os_families
+
+- name: Build post-patch inventory payload
+  ansible.builtin.set_fact:
+    lop_post_inventory_payload:
+      hostname: "{{ ansible_hostname }}"
+      fqdn: "{{ ansible_fqdn | default(ansible_hostname) }}"
+      ip_address: "{{ ansible_default_ipv4.address | default('') }}"
+      operating_system: "{{ ansible_distribution }}"
+      os_version: "{{ ansible_distribution_version }}"
+      kernel_version: "{{ ansible_kernel }}"
+      cpu_count: "{{ ansible_processor_vcpus | default(0) | int }}"
+      ram_gb: "{{ (ansible_memtotal_mb | float / 1024) | round(2) }}"
+      pending_updates: "{{ lop_post_patch_update_count | int }}"
+      reboot_required: "{{ lop_reboot_required | bool }}"
+      patch_status: "{{ 'current' if (lop_post_patch_update_count | int == 0) else 'pending' }}"
+      last_inventory_sync: "{{ ansible_date_time.iso8601 }}"
+      status: "active"
+      updates:
+        total: "{{ lop_post_patch_update_count | int }}"
+        available_packages: "{{ lop_post_available_packages }}"
+
+- name: Send post-patch inventory sync to Linux Operations Portal
+  ansible.builtin.uri:
+    url: "{{ portal_url }}"
+    method: POST
+    body_format: json
+    body: "{{ lop_post_inventory_payload }}"
+    headers:
+      Authorization: "Bearer {{ portal_api_token }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+    validate_certs: "{{ portal_validate_certs | default(true) }}"
+    timeout: "{{ portal_timeout | default(30) | int }}"
+    return_content: true
+    status_code:
+      - 200
+      - 201
+      - 202
+  register: post_inventory_response
+  retries: "{{ portal_retry_count | default(3) | int }}"
+  delay: "{{ portal_retry_delay | default(5) | int }}"
+  until: >-
+    post_inventory_response.status is defined
+    and post_inventory_response.status in [200, 201, 202]
+
+###############################################################################
+# Final summary
+###############################################################################
+
+- name: Display final patching summary
+  ansible.builtin.debug:
+    msg:
+      - "============================================================"
+      - " Linux Operations Portal — Patch Complete"
+      - "============================================================"
+      - " Host               : {{ ansible_hostname }}"
+      - " Portal             : {{ portal_url }}"
+      - " Last Patch Date    : {{ lop_patch_payload.last_patch_date }}"
+      - " Packages Installed : {{ lop_installed_packages | length }}"
+      - " Updates Remaining  : {{ lop_post_patch_update_count }}"
+      - " Reboot Required    : {{ lop_reboot_required }}"
+      - " Patch Report       : SUCCESS"
+      - " Inventory Re-Sync  : SUCCESS"
+      - "============================================================"
+
+###############################################################################
+# Optional reboot (only when patch_reboot_if_required is true)
+###############################################################################
+
+- name: Reboot server if required and permitted
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ patch_reboot_timeout | default(600) }}"
+    msg: "LOP patching complete — rebooting to apply kernel update"
+  when:
+    - lop_reboot_required | bool
+    - patch_reboot_if_required | default(false) | bool

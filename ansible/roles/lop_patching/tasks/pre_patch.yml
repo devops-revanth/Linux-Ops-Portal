@@ -1,0 +1,88 @@
+---
+# =============================================================================
+# LOP Patching
+# Task: pre_patch.yml
+#
+# Purpose:
+#   Verify the host is eligible for patching and snapshot the current state.
+#   All facts gathered here are used by post_patch.yml to produce the diff
+#   and by report.yml to build the API payload.
+#
+# This file DOES NOT install anything.
+# =============================================================================
+
+# ── Verify the host is supported ──────────────────────────────────────────
+
+- name: Verify supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family in patch_supported_os_families
+    fail_msg: >-
+      Patching is not supported for OS family '{{ ansible_os_family }}'.
+      Supported families: {{ patch_supported_os_families | join(', ') }}
+
+# ── Record patch start time ────────────────────────────────────────────────
+
+- name: Record patch start timestamp
+  ansible.builtin.set_fact:
+    lop_patch_started_at: "{{ ansible_date_time.iso8601 }}"
+    lop_pre_patch_kernel: "{{ ansible_kernel }}"
+
+# ── Snapshot installed packages before patching (RHEL) ───────────────────
+
+- name: Count available updates before patching (RHEL family)
+  ansible.builtin.command:
+    cmd: dnf check-update -q
+  register: pre_dnf_updates
+  changed_when: false
+  failed_when: pre_dnf_updates.rc not in [0, 100]
+  when: ansible_os_family == "RedHat"
+
+- name: Set pre-patch update count (RHEL family)
+  ansible.builtin.set_fact:
+    lop_pre_patch_update_count: >-
+      {{
+        pre_dnf_updates.stdout_lines
+        | select('match', '^[A-Za-z0-9]')
+        | reject('match', '^Last metadata')
+        | list | length
+      }}
+  when: ansible_os_family == "RedHat"
+
+# ── Snapshot installed packages before patching (Debian) ─────────────────
+
+- name: Count available updates before patching (Debian family)
+  ansible.builtin.command:
+    cmd: env LANG=C apt list --upgradable
+  register: pre_apt_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Set pre-patch update count (Debian family)
+  ansible.builtin.set_fact:
+    lop_pre_patch_update_count: "{{ (pre_apt_updates.stdout_lines | length) - 1 }}"
+  when: ansible_os_family == "Debian"
+
+# ── Default for unsupported (already blocked by assert, safety net) ───────
+
+- name: Set default pre-patch update count
+  ansible.builtin.set_fact:
+    lop_pre_patch_update_count: 0
+  when: ansible_os_family not in patch_supported_os_families
+
+# ── Display pre-patch summary ─────────────────────────────────────────────
+
+- name: Display pre-patch summary
+  ansible.builtin.debug:
+    msg:
+      - "================================================"
+      - " LOP Patching — Pre-Patch Snapshot"
+      - "================================================"
+      - " Host          : {{ ansible_hostname }}"
+      - " OS            : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - " Kernel        : {{ ansible_kernel }}"
+      - " Updates Found : {{ lop_pre_patch_update_count }}"
+      - " Patch Mode    : {{ patch_mode }}"
+      - " Started At    : {{ lop_patch_started_at }}"
+      - "================================================"

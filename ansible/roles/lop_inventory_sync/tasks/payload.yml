@@ -108,6 +108,9 @@
         enhancement: "{{ lop_facts.updates.enhancement | int }}"
         kernel_update: "{{ lop_facts.updates.kernel | bool }}"
         packages: "{{ lop_facts.updates.packages }}"
+        # Structured list consumed by the LOP API to populate server_packages
+        # with individual update rows (Available Updates tab in server detail).
+        available_packages: "{{ lop_facts.updates.available_packages | default([]) }}"
 
       uptime_seconds: "{{ lop_facts.uptime | int }}"
       timezone: "{{ lop_facts.timezone }}"

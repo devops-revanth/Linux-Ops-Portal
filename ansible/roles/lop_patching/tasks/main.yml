@@ -1,0 +1,16 @@
+---
+# =============================================================================
+# LOP Patching Role — Entry Point
+# =============================================================================
+#
+# Execution order:
+#   pre_patch.yml   — verify eligibility, snapshot current state
+#   patch.yml       — apply updates (dnf / apt)
+#   post_patch.yml  — collect recently installed packages from history
+#   report.yml      — POST results to LOP API, then re-sync inventory
+# =============================================================================
+
+- import_tasks: pre_patch.yml
+- import_tasks: patch.yml
+- import_tasks: post_patch.yml
+- import_tasks: report.yml

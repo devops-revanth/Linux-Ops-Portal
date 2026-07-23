@@ -1,0 +1,35 @@
+---
+###############################################################################
+# Linux Operations Portal — lop_patching Role Metadata
+###############################################################################
+
+galaxy_info:
+  role_name: lop_patching
+  author: Linux Operations Portal
+  description: >
+    Applies package updates to Linux servers and reports the patch completion
+    (last_patch_date, installed packages, remaining updates) to the Linux
+    Operations Portal REST API.
+  license: MIT
+  min_ansible_version: "2.12"
+
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+
+dependencies:
+  # lop_patching does NOT depend on lop_inventory_sync in the role graph.
+  # The patching playbook (lop_patching.yml) can optionally run inventory
+  # sync first, but it is not required.
+  []

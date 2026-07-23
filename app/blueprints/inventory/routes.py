@@ -208,6 +208,9 @@ def server_detail(server_id: int):
         pkg_base = pkg_base.filter(ServerPackage.update_available == True)  # noqa: E712
         pkg_base = pkg_base.order_by(Package.name.asc())
     else:  # recently-installed
+        # Only show packages that have been installed / upgraded (update_available=False).
+        # Available-update rows (update_available=True) are shown on the other tab only.
+        pkg_base = pkg_base.filter(ServerPackage.update_available == False)  # noqa: E712
         pkg_base = pkg_base.order_by(
             ServerPackage.collected_at.desc().nulls_last(),
             Package.name.asc(),
