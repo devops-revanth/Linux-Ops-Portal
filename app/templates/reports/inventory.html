@@ -152,17 +152,17 @@
               </a>
             {% endmacro %}
             <th>{{ sort_link('hostname',          'Hostname') }}</th>
-            <th>{{ sort_link('ip_address',        'IP Address') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('ip_address', 'IP Address') }}</th>
             <th>{{ sort_link('environment',       'Environment') }}</th>
-            <th>{{ sort_link('location',          'Location') }}</th>
-            <th>{{ sort_link('operating_system',  'OS') }}</th>
-            <th>{{ sort_link('kernel_version',    'Kernel') }}</th>
-            <th>{{ sort_link('cpu_count',         'CPU') }}</th>
-            <th>{{ sort_link('ram_gb',            'RAM') }}</th>
-            <th>{{ sort_link('owner',             'Owner') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('location',          'Location') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('operating_system',  'OS') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sort_link('kernel_version',    'Kernel') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sort_link('cpu_count',         'CPU') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sort_link('ram_gb',            'RAM') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('owner',             'Owner') }}</th>
             <th>{{ sort_link('status',            'Status') }}</th>
-            <th>{{ sort_link('last_ansible_sync', 'Last Sync') }}</th>
-            <th>{{ sort_link('created_at',        'Created') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('last_ansible_sync', 'Last Sync') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('created_at',        'Created') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -177,38 +177,38 @@
                   <div class="lop-mono" style="font-size:.7rem; margin-top:.1rem;">{{ srv.fqdn }}</div>
                 {% endif %}
               </td>
-              <td><span class="lop-mono">{{ srv.ip_address }}</span></td>
+              <td class="d-none d-md-table-cell"><span class="lop-mono">{{ srv.ip_address }}</span></td>
               <td>{% include "reports/_env_pill.html" %}</td>
-              <td>
+              <td class="d-none d-lg-table-cell">
                 {% if srv.location %}<i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>
+              <td class="d-none d-md-table-cell">
                 {% if srv.operating_system %}{{ srv.operating_system }}
                   {% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.kernel_version %}<span class="lop-mono">{{ srv.kernel_version }}</span>
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.cpu_count is not none %}{{ srv.cpu_count }} vCPU
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.ram_gb is not none %}
                   {{ srv.ram_gb | int if srv.ram_gb == srv.ram_gb | int else srv.ram_gb }} GB
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-lg-table-cell">{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>{% include "reports/_status_badge.html" %}</td>
-              <td>
+              <td class="d-none d-md-table-cell">
                 {% if srv.last_ansible_sync %}
                   <span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>
+              <td class="d-none d-lg-table-cell">
                 <span class="text-secondary" style="font-size:.82rem;">{{ srv.created_at | lop_ts(date_only=True) }}</span>
               </td>
             </tr>

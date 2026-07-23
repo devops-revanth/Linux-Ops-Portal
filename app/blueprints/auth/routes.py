@@ -35,12 +35,12 @@ class LoginForm(FlaskForm):
     username = StringField(
         "Username",
         validators=[DataRequired(), Length(min=1, max=64)],
-        render_kw={"placeholder": "admin", "autocomplete": "username"},
+        render_kw={"placeholder": "Enter your username", "autocomplete": "username"},
     )
     password = PasswordField(
         "Password",
         validators=[DataRequired()],
-        render_kw={"placeholder": "••••••••", "autocomplete": "current-password"},
+        render_kw={"placeholder": "Enter your password", "autocomplete": "current-password"},
     )
     remember_me = BooleanField("Remember me")
     submit = SubmitField("Sign in")

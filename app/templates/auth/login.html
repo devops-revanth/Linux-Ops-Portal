@@ -114,7 +114,7 @@
     <h5 class="text-center mb-4 fw-semibold">Sign in to your account</h5>
 
     <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next', '')) }}"
-          novalidate>
+          novalidate autocomplete="off">
       {{ form.hidden_tag() }}
 
       <!-- Username -->

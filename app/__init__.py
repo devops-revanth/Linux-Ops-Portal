@@ -47,7 +47,7 @@ def create_app(config_name: str | None = None) -> Flask:
 
     # Flask-Login
     login_manager.login_view = "auth.login"          # redirect destination
-    login_manager.login_message = "Please sign in to access this page."
+    login_manager.login_message = None               # suppress automatic flash on redirect
     login_manager.login_message_category = "warning"
     login_manager.init_app(app)
 

@@ -382,17 +382,17 @@
 
             <th class="lop-cb"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
-            <th>{{ sort_link('fqdn',             'FQDN') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sort_link('fqdn', 'FQDN') }}</th>
             <th>{{ sort_link('ip_address',       'Management IP') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
             <th>{{ sort_link('operating_system', 'OS') }}</th>
-            <th>{{ sort_link('kernel_version',   'Kernel') }}</th>
-            <th>{{ sort_link('cpu_count',        'CPU') }}</th>
-            <th>{{ sort_link('ram_gb',           'Memory') }}</th>
-            <th>{{ sort_link('location',         'Location') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('kernel_version', 'Kernel') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('cpu_count',      'CPU') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('ram_gb',         'Memory') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('location',       'Location') }}</th>
             <th>{{ sort_link('status',           'Status') }}</th>
-            <th>vCenter</th>
-            <th>Facts</th>
+            <th class="d-none d-xl-table-cell">vCenter</th>
+            <th class="d-none d-md-table-cell">Facts</th>
           </tr>
         </thead>
         <tbody>
@@ -426,7 +426,7 @@
               </td>
 
               {# FQDN #}
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.fqdn %}
                   <span class="lop-mono" style="font-size:.82rem;">{{ srv.fqdn }}</span>
                 {% else %}
@@ -465,7 +465,7 @@
               </td>
 
               {# Kernel #}
-              <td>
+              <td class="d-none d-lg-table-cell">
                 {% if srv.kernel_version %}
                   <span class="lop-mono">{{ srv.kernel_version }}</span>
                 {% else %}
@@ -474,7 +474,7 @@
               </td>
 
               {# CPU #}
-              <td>
+              <td class="d-none d-lg-table-cell">
                 {% if srv.cpu_count is not none %}
                   {{ srv.cpu_count }} vCPU
                 {% else %}
@@ -483,7 +483,7 @@
               </td>
 
               {# RAM #}
-              <td>
+              <td class="d-none d-lg-table-cell">
                 {% if srv.ram_gb is not none %}
                   {{ srv.ram_gb | int if srv.ram_gb == srv.ram_gb | int else srv.ram_gb }} GB
                 {% else %}
@@ -492,7 +492,7 @@
               </td>
 
               {# Location #}
-              <td>
+              <td class="d-none d-md-table-cell">
                 {% if srv.location %}
                   <i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}
                 {% else %}
@@ -509,7 +509,7 @@
               </td>
 
               {# vCenter (for VMware servers only) #}
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.source == 'vmware' and srv.vmware_meta and srv.vmware_meta.vcenter_name %}
                   <span class="text-secondary small">{{ srv.vmware_meta.vcenter_name }}</span>
                 {% elif srv.source == 'vmware' and srv.vmware_meta and srv.vmware_meta.vcenter_host %}
@@ -520,7 +520,7 @@
               </td>
 
               {# Fact age #}
-              <td style="white-space:nowrap;">
+              <td class="d-none d-md-table-cell" style="white-space:nowrap;">
                 {% if srv.ansible_fact_status == 'failed' %}
                   <span class="badge bg-danger-subtle text-danger border border-danger-subtle"
                         title="{{ srv.ansible_fact_error or 'Collection failed' }}">

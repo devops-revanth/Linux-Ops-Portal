@@ -328,12 +328,12 @@
           <tr>
             <th>{{ sort_link('hostname',         'Hostname') }}</th>
             <th>{{ sort_link('environment',      'Environment') }}</th>
-            <th>{{ sort_link('location',         'Location') }}</th>
-            <th>{{ sort_link('operating_system', 'OS') }}</th>
-            <th>{{ sort_link('kernel_version',   'Running Kernel') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sort_link('location', 'Location') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('operating_system', 'OS') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sort_link('kernel_version', 'Running Kernel') }}</th>
             <th>Updates Available</th>
             <th>Compliance</th>
-            <th>{{ sort_link('last_patch_date',  'Last Patched') }}</th>
+            <th class="d-none d-md-table-cell">{{ sort_link('last_patch_date', 'Last Patched') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -369,7 +369,7 @@
               </td>
 
               {# Location #}
-              <td>
+              <td class="d-none d-lg-table-cell">
                 {% if srv.location %}
                   <span class="text-secondary" style="font-size:.82rem;">
                     <i class="bi bi-building me-1"></i>{{ srv.location.name }}
@@ -380,7 +380,7 @@
               </td>
 
               {# OS #}
-              <td style="font-size:.82rem;">
+              <td class="d-none d-md-table-cell" style="font-size:.82rem;">
                 {% if srv.operating_system %}
                   {{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary"> {{ srv.os_version }}</span>{% endif %}
                 {% else %}
@@ -389,7 +389,7 @@
               </td>
 
               {# Running Kernel #}
-              <td>
+              <td class="d-none d-xl-table-cell">
                 {% if srv.kernel_version %}
                   <span class="lop-mono text-secondary" style="font-size:.75rem;">{{ srv.kernel_version }}</span>
                 {% else %}
@@ -437,7 +437,7 @@
               </td>
 
               {# Last Patched #}
-              <td>
+              <td class="d-none d-md-table-cell">
                 {% if p and p.last_patch_date %}
                   <span class="text-secondary" style="font-size:.82rem;">
                     {{ p.last_patch_date | lop_ts(date_only=True) }}

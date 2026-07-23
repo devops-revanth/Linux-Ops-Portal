@@ -161,15 +161,15 @@
             {% endmacro %}
             <th>{{ sl('hostname',          'Hostname') }}</th>
             <th>{{ sl('environment',       'Environment') }}</th>
-            <th>{{ sl('location',          'Location') }}</th>
-            <th>{{ sl('operating_system',  'OS') }}</th>
-            <th>{{ sl('current_kernel',    'Current Kernel') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sl('location',          'Location') }}</th>
+            <th class="d-none d-md-table-cell">{{ sl('operating_system',  'OS') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sl('current_kernel',    'Current Kernel') }}</th>
             <th>{{ sl('patch_status',      'Patch Status') }}</th>
-            <th>{{ sl('pending_updates',   'Pending') }}</th>
-            <th>{{ sl('last_patch_date',   'Last Patched') }}</th>
-            <th>{{ sl('last_reboot_date',  'Last Reboot') }}</th>
-            <th>{{ sl('last_ansible_sync', 'Last Sync') }}</th>
-            <th>{{ sl('owner',             'Owner') }}</th>
+            <th class="d-none d-md-table-cell">{{ sl('pending_updates',   'Pending') }}</th>
+            <th class="d-none d-md-table-cell">{{ sl('last_patch_date',   'Last Patched') }}</th>
+            <th class="d-none d-xl-table-cell">{{ sl('last_reboot_date',  'Last Reboot') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sl('last_ansible_sync', 'Last Sync') }}</th>
+            <th class="d-none d-lg-table-cell">{{ sl('owner',             'Owner') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -180,9 +180,9 @@
             <tr>
               <td><a href="{{ url_for('inventory.server_detail', server_id=srv.id) }}?tab=patching" class="lop-hostname-link"><i class="bi bi-terminal me-1 opacity-50"></i>{{ srv.hostname }}</a></td>
               <td>{% include "reports/_env_pill.html" %}</td>
-              <td>{% if srv.location %}<i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if srv.operating_system %}{{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if p and p.current_kernel %}<span class="lop-mono">{{ p.current_kernel }}</span>{% elif srv.kernel_version %}<span class="lop-mono">{{ srv.kernel_version }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-lg-table-cell">{% if srv.location %}<i class="bi bi-building me-1 text-secondary"></i>{{ srv.location.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-md-table-cell">{% if srv.operating_system %}{{ srv.operating_system }}{% if srv.os_version %}<span class="text-secondary small"> {{ srv.os_version }}</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-xl-table-cell">{% if p and p.current_kernel %}<span class="lop-mono">{{ p.current_kernel }}</span>{% elif srv.kernel_version %}<span class="lop-mono">{{ srv.kernel_version }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
               <td>
                 <span class="lop-patch-badge lop-patch-{{ ps | replace('-','_') if ps != 'up-to-date' else 'up-to-date' }}
                   lop-patch-{{ ps }}">
@@ -192,15 +192,15 @@
                   {% else                   %}<i class="bi bi-question-circle-fill"></i>Unknown{% endif %}
                 </span>
               </td>
-              <td>
+              <td class="d-none d-md-table-cell">
                 {% if p and p.pending_updates %}
                   <span class="badge bg-warning-subtle text-warning border border-warning-subtle">{{ p.pending_updates }}</span>
                 {% else %}<span class="text-secondary">—</span>{% endif %}
               </td>
-              <td>{% if p and p.last_patch_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_patch_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if p and p.last_reboot_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_reboot_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-              <td>{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-md-table-cell">{% if p and p.last_patch_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_patch_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-xl-table-cell">{% if p and p.last_reboot_date %}<span class="text-secondary" style="font-size:.82rem;">{{ p.last_reboot_date | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-lg-table-cell">{% if srv.last_ansible_sync %}<span class="text-secondary" style="font-size:.82rem;">{{ srv.last_ansible_sync | lop_ts(date_only=True) }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="d-none d-lg-table-cell">{% if srv.owner %}{{ srv.owner.name }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
             </tr>
             {% endfor %}
           {% else %}

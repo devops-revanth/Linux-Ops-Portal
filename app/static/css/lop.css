@@ -94,6 +94,7 @@ html, body {
 /* ── Main content area ──────────────────────────────────── */
 .lop-main {
   flex: 1;
+  overflow-x: hidden;   /* prevent horizontal bleed from wide table wrappers */
   overflow-y: auto;
   background-color: var(--lop-bg);
   min-width: 0;  /* prevent overflow in flex child */
@@ -105,6 +106,10 @@ html, body {
   border-bottom: 1px solid var(--lop-border);
   padding: .55rem 1.5rem;
   margin: 0;
+  /* Prevent breadcrumb text from wrapping awkwardly on narrow screens */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lop-breadcrumb .breadcrumb {
@@ -149,6 +154,15 @@ html, body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+/* ── Filter bars ────────────────────────────────────────── */
+.lop-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  row-gap: .75rem;  /* extra vertical breathing room when items wrap */
+  align-items: flex-end;
 }
 
 /* ── Tables ─────────────────────────────────────────────── */
