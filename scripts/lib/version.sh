@@ -23,9 +23,12 @@ version_get() {
         fi
     fi
 
-    [[ -f "$file" ]] || { echo "unknown"; return 1; }
+    [[ -f "$file" ]] || { echo "unknown"; return 0; }
     local val
-    val=$(grep "^${key}=" "$file" | cut -d= -f2- | tr -d '[:space:]')
+    # grep exits 1 when the key is absent; || true prevents set -e + pipefail
+    # from silently aborting the caller.  The ${val:-unknown} fallback handles
+    # the empty-string result when the key is missing.
+    val=$(grep "^${key}=" "$file" | cut -d= -f2- | tr -d '[:space:]' || true)
     echo "${val:-unknown}"
 }
 
@@ -53,7 +56,9 @@ alembic_current() {
     if [[ -f "$LOP_CONF_FILE" ]] && cmd_exists psql; then
         local db_url result
         # Use cut -d= -f2- so that '=' characters inside the URL are preserved.
-        db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
+        # || true prevents set -e + pipefail from silently aborting when grep
+        # finds no match (DATABASE_URL absent from the config file).
+        db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2- || true)
         if [[ -n "$db_url" ]]; then
             result=$(psql -tAq "$db_url" \
                 -c "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;" \
@@ -167,8 +172,13 @@ EOF
 # Reads a value from $LOP_INSTALL_INFO.
 install_info_read() {
     local key="$1"
-    [[ -f "$LOP_INSTALL_INFO" ]] || { echo "unknown"; return 1; }
-    grep "^${key}=" "$LOP_INSTALL_INFO" | cut -d= -f2- | tr -d '[:space:]'
+    [[ -f "$LOP_INSTALL_INFO" ]] || { echo "unknown"; return 0; }
+    # grep exits 1 when the key is absent (e.g. older installs that predate a
+    # new metadata field).  || true prevents set -e + pipefail from silently
+    # killing the caller.  ${val:-unknown} handles the empty-string result.
+    local val
+    val=$(grep "^${key}=" "$LOP_INSTALL_INFO" | cut -d= -f2- | tr -d '[:space:]' || true)
+    echo "${val:-unknown}"
 }
 
 # install_info_update <key> <value>

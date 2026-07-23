@@ -54,8 +54,11 @@ preflight_checks() {
     if ! git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
         if [[ -f "$LOP_INSTALL_INFO" ]]; then
             local _src_dir
+            # grep exits 1 when the key is absent (old install without
+            # install_source_dir field).  || true prevents set -e + pipefail
+            # from silently killing the script here.
             _src_dir=$(grep '^install_source_dir=' "$LOP_INSTALL_INFO" 2>/dev/null \
-                       | cut -d= -f2- | tr -d '[:space:]')
+                       | cut -d= -f2- | tr -d '[:space:]' || true)
             if [[ -n "$_src_dir" ]] && [[ -d "$_src_dir" ]]; then
                 log_info "Deployed copy detected — using source checkout: ${_src_dir}"
                 REPO_DIR="$_src_dir"
