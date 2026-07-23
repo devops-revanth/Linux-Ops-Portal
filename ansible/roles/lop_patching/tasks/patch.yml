@@ -17,6 +17,11 @@
 #
 # This file NEVER changes configuration or application files outside of
 # the package manager.  It only installs package updates.
+#
+# NOTE on | default() guards:
+#   This Ansible version finalizes BOTH module arguments AND when: conditions
+#   before role defaults/main.yml is loaded.  Every variable from defaults/
+#   that appears in a template or when: must carry its own | default(value).
 # =============================================================================
 
 ###############################################################################
@@ -33,7 +38,7 @@
   register: dnf_result_all
   when:
     - ansible_os_family == "RedHat"
-    - patch_mode == "all"
+    - (patch_mode | default('all')) == "all"
 
 # ── Security updates only ──────────────────────────────────────────────────
 
@@ -44,18 +49,18 @@
   changed_when: "'Nothing to do' not in dnf_result_security.stdout"
   when:
     - ansible_os_family == "RedHat"
-    - patch_mode == "security"
+    - (patch_mode | default('all')) == "security"
 
 # ── Specific packages ──────────────────────────────────────────────────────
 
 - name: Validate patch_packages is not empty (packages mode)
   ansible.builtin.assert:
     that:
-      - patch_packages | length > 0
+      - (patch_packages | default([])) | length > 0
     fail_msg: >-
       patch_mode is 'packages' but patch_packages list is empty.
       Set patch_packages in your playbook or pass -e patch_packages='[...]'.
-  when: patch_mode == "packages"
+  when: (patch_mode | default('all')) == "packages"
 
 - name: Apply specific package updates (RHEL family — packages mode)
   ansible.builtin.dnf:
@@ -64,7 +69,7 @@
   register: dnf_result_packages
   when:
     - ansible_os_family == "RedHat"
-    - patch_mode == "packages"
+    - (patch_mode | default('all')) == "packages"
 
 ###############################################################################
 # Debian family
@@ -84,7 +89,7 @@
   register: apt_result_all
   when:
     - ansible_os_family == "Debian"
-    - patch_mode == "all"
+    - (patch_mode | default('all')) == "all"
 
 - name: Apply specific package updates (Debian family — packages mode)
   ansible.builtin.apt:
@@ -94,7 +99,7 @@
   register: apt_result_packages
   when:
     - ansible_os_family == "Debian"
-    - patch_mode == "packages"
+    - (patch_mode | default('all')) == "packages"
 
 ###############################################################################
 # Record patching outcome
