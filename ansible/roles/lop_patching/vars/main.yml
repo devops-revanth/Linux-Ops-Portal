@@ -13,3 +13,10 @@ lop_patching_role_version: "1.0.0"
 # vs. an update.  Used for display categorisation in the portal.
 patch_action_install: "Install"
 patch_action_upgrade: "Upgrade"
+
+# Supported OS families — kept in vars/ (not defaults/) so this value is
+# always loaded and available during argument resolution for assert fail_msg.
+# Override in group_vars/all.yml if you need to extend the list.
+patch_supported_os_families:
+  - RedHat
+  - Debian

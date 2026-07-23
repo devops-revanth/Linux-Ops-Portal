@@ -19,7 +19,7 @@
       - ansible_os_family in patch_supported_os_families
     fail_msg: >-
       Patching is not supported for OS family '{{ ansible_os_family }}'.
-      Supported families: {{ patch_supported_os_families | join(', ') }}
+      Supported families: {{ patch_supported_os_families | default([]) | join(', ') }}
 
 # ── Record patch start time ────────────────────────────────────────────────
 

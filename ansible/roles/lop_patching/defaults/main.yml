@@ -47,7 +47,5 @@ patch_apt_autoremove: false
 patch_apt_autoclean: false
 
 # ── Supported OS families ──────────────────────────────────────────────────
-
-patch_supported_os_families:
-  - RedHat
-  - Debian
+# Defined in vars/main.yml (always loaded) — not here — so it is available
+# during assert fail_msg argument resolution.  Override in group_vars if needed.
