@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "0MWqqaQxCzVVaAcsL9Y7P"
+uri = "file://LOP_Ansible_GAP_Analysis.docx"
+type = "word_document"
+title = "LOP Ansible GAP Analysis"
