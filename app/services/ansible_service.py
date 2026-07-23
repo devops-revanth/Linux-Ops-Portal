@@ -173,39 +173,57 @@ class AnsibleService:
     @staticmethod
     def _load_private_key(key_text: str):
         """
-        Try to load a PEM private key (RSA, Ed25519, ECDSA, DSS).
-        Also handles encrypted private keys (passphrase) if the key_text
-        is a newline-separated "key\\npassphrase" pair — but in LOP the
-        passphrase is passed separately via the vault or a dedicated field.
+        Auto-detect and load an OpenSSH/PEM private key.
+
+        Uses ``paramiko.key_classes`` — the canonical list of key types
+        supported by the *installed* version of paramiko — so the code
+        adapts automatically as paramiko adds or removes key types.
+        DSA/DSS keys are not referenced here; DSSKey was removed from
+        paramiko 3.x and must not be imported directly.
+
         Raises AnsibleConnectionError with a sanitised message on failure.
+        Credentials and raw exception details are never surfaced.
         """
         import paramiko  # type: ignore
 
+        # key_classes is the authoritative list added in paramiko 3.x.
+        # Fallback: build the list from individual attributes so older
+        # versions of paramiko (3.0–3.x) that may not expose key_classes
+        # still work.  DSSKey is intentionally absent from the fallback.
+        classes_to_try = getattr(paramiko, "key_classes", None) or [
+            cls
+            for cls in (
+                getattr(paramiko, "RSAKey",     None),
+                getattr(paramiko, "Ed25519Key", None),
+                getattr(paramiko, "ECDSAKey",   None),
+            )
+            if cls is not None
+        ]
+
         key_io = io.StringIO(key_text)
-        errors = []
-        for key_cls in (
-            paramiko.RSAKey,
-            paramiko.Ed25519Key,
-            paramiko.ECDSAKey,
-            paramiko.DSSKey,
-        ):
+        for key_cls in classes_to_try:
             key_io.seek(0)
             try:
                 return key_cls.from_private_key(key_io)
             except paramiko.PasswordRequiredException:
+                # Raised by every key class when the key is passphrase-protected.
+                # No need to try the remaining classes — the key was recognised
+                # but needs a passphrase we don't have.
                 raise AnsibleConnectionError(
-                    "The SSH private key is encrypted (passphrase-protected). "
-                    "LOP does not yet support passphrase-protected keys. "
-                    "Use an unencrypted key or configure password authentication.",
+                    "The SSH private key is passphrase-protected. "
+                    "LOP does not currently support passphrase-protected keys. "
+                    "Use an unencrypted key or switch to password authentication.",
                     status=_STATUS_AUTH_FAILED,
                 )
-            except Exception as exc:
-                errors.append(type(exc).__name__)
+            except Exception:
+                # This key class cannot parse the data — try the next one.
                 continue
+
+        # No key class could parse the key material.
         raise AnsibleConnectionError(
-            "Could not load the SSH private key. "
-            "Supported formats: RSA, Ed25519, ECDSA, DSS. "
-            "Ensure the key is a valid PEM private key file.",
+            "Unsupported or invalid SSH private key. "
+            "Supported types: RSA, Ed25519, ECDSA. "
+            "Ensure the key is a valid OpenSSH or PEM private key.",
             status=_STATUS_AUTH_FAILED,
         )
 
