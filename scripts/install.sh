@@ -174,22 +174,59 @@ copy_application() {
     log_step "Copying application to ${LOP_APP_DIR}..."
     ensure_dir "$LOP_APP_DIR" "root:root" "755"
 
-    # rsync preserves permissions, skips .git and __pycache__
+    # rsync preserves permissions; only production-runtime files are copied.
+    # Development-only artifacts, Replit infrastructure, build tooling, and
+    # Docker/test/documentation files are explicitly excluded.
     if cmd_exists rsync; then
         rsync -a --delete \
             --exclude='.git' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             --exclude='.env' \
-            --exclude='venv' \
+            --exclude='venv/' \
             --exclude='lop/' \
+            --exclude='artifacts/' \
+            --exclude='lib/' \
+            --exclude='node_modules/' \
+            --exclude='.local/' \
+            --exclude='.agents/' \
+            --exclude='.cache/' \
+            --exclude='.pythonlibs/' \
+            --exclude='.replit' \
+            --exclude='.replitignore' \
+            --exclude='.flaskenv' \
+            --exclude='.npmrc' \
+            --exclude='pnpm-lock.yaml' \
+            --exclude='pnpm-workspace.yaml' \
+            --exclude='package.json' \
+            --exclude='tsconfig.json' \
+            --exclude='tsconfig.base.json' \
+            --exclude='docker/' \
+            --exclude='Dockerfile' \
+            --exclude='docker-compose.yml' \
+            --exclude='tests/' \
+            --exclude='attached_assets/' \
+            --exclude='logs/' \
+            --exclude='*.docx' \
+            --exclude='*.xlsx' \
             "$REPO_DIR/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
             || abort "rsync failed. Check ${LOG_FILE}."
     else
-        # Fallback to cp
+        # Fallback: copy only production directories/files one level at a time
+        local _dev_dirs=(
+            .git __pycache__ .env venv lop artifacts lib node_modules
+            .local .agents .cache .pythonlibs .replit .replitignore .flaskenv
+            .npmrc pnpm-lock.yaml pnpm-workspace.yaml package.json
+            tsconfig.json tsconfig.base.json docker Dockerfile
+            docker-compose.yml tests attached_assets logs
+        )
+        local _excl_args=()
+        for _d in "${_dev_dirs[@]}"; do
+            _excl_args+=( ! -name "$_d" )
+        done
         find "$REPO_DIR" -maxdepth 1 -mindepth 1 \
-            ! -name '.git' ! -name '__pycache__' ! -name '.env' \
-            ! -name 'venv' ! -name 'lop' \
+            "${_excl_args[@]}" \
+            ! -name '*.docx' ! -name '*.xlsx' \
             -exec cp -rp {} "$LOP_APP_DIR/" \; 2>> "$LOG_FILE" \
             || abort "File copy failed. Check ${LOG_FILE}."
     fi

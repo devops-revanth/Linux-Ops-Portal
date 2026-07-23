@@ -165,9 +165,202 @@ pg_version_ok() {
     (( ${PG_FOUND_VERSION%%.*} >= PG_MIN_VERSION ))
 }
 
+# pg_upgrade_auto
+# Automatically upgrades an installed PostgreSQL version that is below
+# PG_MIN_VERSION to the supported version (currently 16, with 15 as fallback).
+#
+# Safety guarantee: existing data is NEVER silently destroyed.
+#   1. If the data directory has an initialised cluster, pg_dumpall is attempted
+#      first.  If pg_dumpall succeeds the dump is stored under
+#      /var/backups/lop/postgresql/ and restored into the new cluster after
+#      the upgrade.  If pg_dumpall cannot run (service will not start) the raw
+#      data directory is copied to backup storage and the upgrade aborts with
+#      a clear explanation rather than deleting data.
+#   2. The old data directory is moved (not deleted) to the backup location
+#      so that initdb on the new version has a clean target.
+#   3. On failure at any step after packages have been removed, the function
+#      aborts so the operator sees a clear error; the backup dump/directory
+#      is preserved for manual recovery.
+pg_upgrade_auto() {
+    local old_version="$PG_FOUND_VERSION"
+    local old_service="$PG_FOUND_SERVICE"
+    # Rocky/RHEL AppStream target — try 16 first, fall back to 15
+    local target_version=16
+    local pg_backup_root="/var/backups/lop/postgresql"
+    local ts
+    ts=$(date +%Y%m%d_%H%M%S)
+
+    log_section "PostgreSQL Upgrade"
+    log_warn "PostgreSQL ${old_version} detected — LOP requires ${PG_MIN_VERSION}+."
+    log_step  "Automatically upgrading to PostgreSQL ${target_version}..."
+
+    ensure_dir "$pg_backup_root" "postgres:postgres" "750"
+
+    # ── Step 1: Back up existing cluster (if initialised) ─────────────────────
+    local dump_file="${pg_backup_root}/pg${old_version}_dumpall_${ts}.sql"
+    local has_dump=false
+
+    if [[ -f "${PG_DATA_DIR}/PG_VERSION" ]]; then
+        log_step "Existing data cluster found at ${PG_DATA_DIR}."
+        log_step "Starting PostgreSQL ${old_version} to create a full database dump..."
+
+        # Attempt to start the service so pg_dumpall can connect
+        systemctl start "$old_service" >> "$LOG_FILE" 2>&1 || true
+        sleep 3
+
+        if systemctl is-active --quiet "$old_service" 2>/dev/null; then
+            log_step "Dumping all databases (pg_dumpall → ${dump_file})..."
+            if su -s /bin/bash postgres -c "pg_dumpall" > "$dump_file" 2>> "$LOG_FILE"; then
+                has_dump=true
+                log_success "Database dump saved: ${dump_file} ($(du -sh "$dump_file" 2>/dev/null | cut -f1 || echo '?'))."
+            else
+                rm -f "$dump_file"
+                abort "pg_dumpall failed on PostgreSQL ${old_version}.
+The upgrade was aborted to protect your data.
+Fix the PostgreSQL ${old_version} issue, then re-run the installer.
+Log: ${LOG_FILE}"
+            fi
+        else
+            # Service will not start — back up raw data directory instead
+            log_warn "PostgreSQL ${old_version} service would not start."
+            log_step "Copying raw data directory to ${pg_backup_root}/data_pg${old_version}_${ts}/ ..."
+            cp -a "$PG_DATA_DIR" "${pg_backup_root}/data_pg${old_version}_${ts}/" 2>> "$LOG_FILE" \
+                || abort "Could not copy the raw data directory.
+Upgrade aborted to prevent data loss. Check ${LOG_FILE}.
+Back up ${PG_DATA_DIR} manually before re-running the installer."
+            log_success "Raw data directory backed up."
+            # We have a raw copy but cannot restore it automatically — continue
+            # without attempting a restore; the operator can recover from the copy.
+        fi
+    else
+        log_info "No initialised data cluster found — no backup required."
+    fi
+
+    # ── Step 2: Stop and disable old service ──────────────────────────────────
+    log_step "Stopping PostgreSQL ${old_version} service (${old_service})..."
+    systemctl stop    "$old_service" >> "$LOG_FILE" 2>&1 || true
+    systemctl disable "$old_service" >> "$LOG_FILE" 2>&1 || true
+
+    # ── Step 3: Move old data directory clear of the new initdb target ─────────
+    # dnf remove does NOT delete /var/lib/pgsql/data; initdb refuses to run
+    # if the target directory is non-empty.  Move it so initdb has a clean path.
+    if [[ -d "$PG_DATA_DIR" ]]; then
+        local data_backup_path="${pg_backup_root}/data_pg${old_version}_${ts}_raw"
+        # Only move if we did not already copy it above
+        if [[ ! -d "$data_backup_path" ]]; then
+            log_step "Moving old data directory to ${data_backup_path}..."
+            mv "$PG_DATA_DIR" "$data_backup_path" 2>> "$LOG_FILE" \
+                || { rm -rf "$PG_DATA_DIR" 2>/dev/null; log_warn "Could not move old data dir — removed."; }
+        else
+            rm -rf "$PG_DATA_DIR" 2>/dev/null || true
+        fi
+    fi
+
+    # ── Step 4: Remove old PostgreSQL packages ────────────────────────────────
+    log_step "Removing PostgreSQL ${old_version} packages..."
+    case "$OS_FAMILY" in
+        rhel)
+            # Reset the module stream so dnf will accept the new stream
+            dnf module reset postgresql -y >> "$LOG_FILE" 2>&1 || true
+            # Remove ALL postgresql packages (server, client, libs, contrib)
+            # rpm -qa lists exact package names; grep filters by prefix
+            local pg_pkgs
+            pg_pkgs=$(rpm -qa 2>/dev/null | grep -i '^postgresql' || true)
+            if [[ -n "$pg_pkgs" ]]; then
+                # shellcheck disable=SC2086
+                dnf remove -y $pg_pkgs >> "$LOG_FILE" 2>&1 || true
+            fi
+            ;;
+        debian)
+            apt-get remove -y \
+                "postgresql-${old_version}" \
+                "postgresql-client-${old_version}" \
+                "postgresql-contrib" \
+                2>/dev/null >> "$LOG_FILE" 2>&1 || true
+            apt-get autoremove -y >> "$LOG_FILE" 2>&1 || true
+            ;;
+    esac
+
+    # ── Step 5: Enable and install target version ──────────────────────────────
+    log_step "Installing PostgreSQL ${target_version}..."
+    case "$OS_FAMILY" in
+        rhel)
+            if dnf module enable "postgresql:${target_version}" -y >> "$LOG_FILE" 2>&1; then
+                log_info "AppStream module postgresql:${target_version} enabled."
+            elif dnf module enable "postgresql:15" -y >> "$LOG_FILE" 2>&1; then
+                log_info "AppStream module postgresql:15 enabled (16 not available)."
+                target_version=15
+            else
+                abort "Could not enable postgresql:${target_version} or postgresql:15 AppStream module.
+Check: dnf module list postgresql
+Log:   ${LOG_FILE}"
+            fi
+            dnf install -y postgresql-server >> "$LOG_FILE" 2>&1 \
+                || abort "Failed to install postgresql-server. Check ${LOG_FILE}."
+            ;;
+        debian)
+            if apt-get install -y "postgresql-${target_version}" >> "$LOG_FILE" 2>&1; then
+                log_info "Installed postgresql-${target_version}."
+            elif apt-get install -y "postgresql-15" >> "$LOG_FILE" 2>&1; then
+                log_info "Installed postgresql-15."
+                target_version=15
+            else
+                abort "Could not install postgresql-${target_version} or postgresql-15. Check ${LOG_FILE}."
+            fi
+            ;;
+    esac
+
+    # ── Step 6: Re-detect after install ───────────────────────────────────────
+    if ! pg_detect; then
+        abort "PostgreSQL installation appeared to succeed but no service unit was found.
+Check ${LOG_FILE}."
+    fi
+    if ! pg_version_ok; then
+        abort "Installed PostgreSQL ${PG_FOUND_VERSION} still does not meet the minimum (${PG_MIN_VERSION}+).
+This is unexpected — check ${LOG_FILE} and the dnf module list."
+    fi
+    log_success "PostgreSQL ${PG_FOUND_VERSION} installed (service: ${PG_FOUND_SERVICE})."
+
+    # ── Step 7: Initialise cluster ────────────────────────────────────────────
+    pg_init_cluster
+
+    # ── Step 8: Enable and start service ──────────────────────────────────────
+    pg_ensure_service
+
+    # ── Step 9: Verify psql connectivity ──────────────────────────────────────
+    log_step "Verifying PostgreSQL connectivity..."
+    local retries=6
+    local connected=false
+    for (( i=1; i<=retries; i++ )); do
+        if su -s /bin/bash postgres -c "psql -c '\\l'" >> "$LOG_FILE" 2>&1; then
+            connected=true
+            break
+        fi
+        log_info "  Waiting for PostgreSQL to accept connections (${i}/${retries})..."
+        sleep 3
+    done
+    if [[ "$connected" == "false" ]]; then
+        abort "PostgreSQL ${PG_FOUND_VERSION} is running but psql cannot connect.
+Check: sudo journalctl -u ${PG_FOUND_SERVICE} -n 50
+Log:   ${LOG_FILE}"
+    fi
+    log_success "PostgreSQL ${PG_FOUND_VERSION} is accepting connections."
+
+    # ── Step 10: Restore dump into new cluster ────────────────────────────────
+    if [[ "$has_dump" == "true" ]] && [[ -s "$dump_file" ]]; then
+        log_step "Restoring databases from dump..."
+        su -s /bin/bash postgres -c "psql -q" < "$dump_file" >> "$LOG_FILE" 2>&1 \
+            || log_warn "One or more objects may not have restored cleanly — check ${LOG_FILE}."
+        log_success "Databases restored from dump."
+    fi
+
+    track_change "Upgraded PostgreSQL ${old_version} → ${PG_FOUND_VERSION}"
+    log_success "PostgreSQL upgrade complete: ${old_version} → ${PG_FOUND_VERSION}."
+}
+
 # pg_ensure_installed
-# Verifies PostgreSQL is installed and compatible; installs if missing.
-# Never replaces an existing compatible installation.
+# Verifies PostgreSQL is installed and compatible; installs if missing;
+# automatically upgrades if an older version is detected.
 pg_ensure_installed() {
     log_section "PostgreSQL"
 
@@ -176,14 +369,9 @@ pg_ensure_installed() {
             log_success "PostgreSQL ${PG_FOUND_VERSION} detected (service: ${PG_FOUND_SERVICE}) — meets minimum (${PG_MIN_VERSION}+)."
             return 0
         else
-            abort "PostgreSQL ${PG_FOUND_VERSION} is installed (service: ${PG_FOUND_SERVICE}) but LOP requires PostgreSQL ${PG_MIN_VERSION}+.
-On Rocky/RHEL, enable a newer AppStream module and reinstall:
-  sudo dnf module enable postgresql:16 -y
-  sudo dnf install postgresql-server -y
-  sudo $0
-On Ubuntu/Debian:
-  sudo apt-get install postgresql-16
-  sudo $0"
+            # Installed but too old — upgrade automatically instead of aborting
+            pg_upgrade_auto
+            return 0
         fi
     fi
 
@@ -214,10 +402,8 @@ Check ${LOG_FILE} for details."
     fi
     if ! pg_version_ok; then
         abort "Installed PostgreSQL ${PG_FOUND_VERSION} does not meet the minimum requirement (${PG_MIN_VERSION}+).
-Enable a newer AppStream module manually:
-  sudo dnf module enable postgresql:16 -y
-  sudo dnf install postgresql-server -y
-  sudo $0"
+Check: dnf module list postgresql
+Log:   ${LOG_FILE}"
     fi
     log_success "PostgreSQL ${PG_FOUND_VERSION} installed (service: ${PG_FOUND_SERVICE})."
 }

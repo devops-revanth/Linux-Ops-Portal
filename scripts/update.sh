@@ -166,8 +166,35 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
                 || abort "Failed to extract archive. Check ${LOG_FILE}."
 
             rsync -a --delete \
-                --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-                --exclude='venv' --exclude='/etc/' \
+                --exclude='.git' \
+                --exclude='__pycache__' \
+                --exclude='*.pyc' \
+                --exclude='venv/' \
+                --exclude='/etc/' \
+                --exclude='artifacts/' \
+                --exclude='lib/' \
+                --exclude='node_modules/' \
+                --exclude='.local/' \
+                --exclude='.agents/' \
+                --exclude='.cache/' \
+                --exclude='.pythonlibs/' \
+                --exclude='.replit' \
+                --exclude='.replitignore' \
+                --exclude='.flaskenv' \
+                --exclude='.npmrc' \
+                --exclude='pnpm-lock.yaml' \
+                --exclude='pnpm-workspace.yaml' \
+                --exclude='package.json' \
+                --exclude='tsconfig.json' \
+                --exclude='tsconfig.base.json' \
+                --exclude='docker/' \
+                --exclude='Dockerfile' \
+                --exclude='docker-compose.yml' \
+                --exclude='tests/' \
+                --exclude='attached_assets/' \
+                --exclude='logs/' \
+                --exclude='*.docx' \
+                --exclude='*.xlsx' \
                 "$tmp_extract/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
                 || abort "Failed to sync extracted archive. Check ${LOG_FILE}."
 
@@ -195,8 +222,34 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
                 || abort "Source directory not found: ${source_url}"
 
             rsync -a --delete \
-                --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-                --exclude='venv' \
+                --exclude='.git' \
+                --exclude='__pycache__' \
+                --exclude='*.pyc' \
+                --exclude='venv/' \
+                --exclude='artifacts/' \
+                --exclude='lib/' \
+                --exclude='node_modules/' \
+                --exclude='.local/' \
+                --exclude='.agents/' \
+                --exclude='.cache/' \
+                --exclude='.pythonlibs/' \
+                --exclude='.replit' \
+                --exclude='.replitignore' \
+                --exclude='.flaskenv' \
+                --exclude='.npmrc' \
+                --exclude='pnpm-lock.yaml' \
+                --exclude='pnpm-workspace.yaml' \
+                --exclude='package.json' \
+                --exclude='tsconfig.json' \
+                --exclude='tsconfig.base.json' \
+                --exclude='docker/' \
+                --exclude='Dockerfile' \
+                --exclude='docker-compose.yml' \
+                --exclude='tests/' \
+                --exclude='attached_assets/' \
+                --exclude='logs/' \
+                --exclude='*.docx' \
+                --exclude='*.xlsx' \
                 "$source_url/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
                 || abort "rsync from local source failed. Check ${LOG_FILE}."
 
