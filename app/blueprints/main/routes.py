@@ -11,7 +11,7 @@ import os
 import platform
 import time
 
-from flask import current_app, redirect, send_from_directory, url_for
+from flask import current_app, redirect, url_for
 from sqlalchemy import text
 
 from . import main_bp
@@ -21,18 +21,6 @@ logger = logging.getLogger(__name__)
 
 # Track server start time for uptime calculation
 _START_TIME = time.time()
-
-
-@main_bp.route("/download/gap-analysis", methods=["GET"])
-def download_gap_analysis():
-    """Temporary route to download the GAP analysis Word document."""
-    static_dir = os.path.join(os.path.dirname(current_app.root_path), "app", "static")
-    return send_from_directory(
-        static_dir,
-        "LOP_Ansible_GAP_Analysis.docx",
-        as_attachment=True,
-        download_name="LOP_Ansible_GAP_Analysis.docx",
-    )
 
 
 @main_bp.route("/", methods=["GET"])

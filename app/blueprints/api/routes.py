@@ -13,7 +13,7 @@ CSRF:
 """
 import logging
 
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
 from ...extensions import csrf
 from ...models.api_token import ApiToken
@@ -118,4 +118,7 @@ def inventory_sync():
 @csrf.exempt
 def health():
     """GET /api/v1/health — liveness probe, no auth required."""
-    return jsonify({"status": "ok", "version": "1.0"}), 200
+    return jsonify({
+        "status": "ok",
+        "version": current_app.config.get("APP_VERSION", "1.0.0"),
+    }), 200

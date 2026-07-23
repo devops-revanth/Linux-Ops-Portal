@@ -1,5 +1,12 @@
 # Linux Operations Portal (LOP)
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+**Release:** v1.0.0 — Production Ready
+
 Enterprise web application for Linux Infrastructure Operations teams.
 
 Linux Operations Portal (LOP) replaces Excel-based server inventories with a centralized platform for Linux server inventory, patch management, automation integration, reporting, and infrastructure operations.
