@@ -68,6 +68,7 @@ def create_app(config_name: str | None = None) -> Flask:
             vmware_connection,
             vmware_server_meta,
             ansible_config,
+            runbook,
         )
 
         # User loader for Flask-Login

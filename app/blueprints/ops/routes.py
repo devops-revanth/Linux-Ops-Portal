@@ -117,12 +117,14 @@ def summary():
 
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    from ...models.runbook import Runbook
     stats = {
         "playbooks_total":   Playbook.query.count(),
         "playbooks_enabled": Playbook.query.filter_by(is_enabled=True).count(),
         "templates_total":   PlaybookJobTemplate.query.count(),
         "schedules_active":  PlaybookSchedule.query.filter_by(is_enabled=True).count(),
         "inventory_hosts":   AnsibleInventoryHost.query.count(),
+        "runbooks_total":    Runbook.query.filter_by(is_enabled=True).count(),
         "jobs_running":      PlaybookJob.query.filter(PlaybookJob.status == "running").count(),
         "jobs_pending":      PlaybookJob.query.filter(PlaybookJob.status == "pending").count(),
         "jobs_failed_today": PlaybookJob.query.filter(
@@ -197,20 +199,489 @@ def ansible_inventory():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# RUNBOOKS (placeholder — Phase 2)
+# RUNBOOKS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @ops_bp.route("/ansible/runbooks")
 @login_required
 def runbooks():
-    """Runbooks list — Phase 2 implementation coming soon."""
-    cfg = _get_cfg()
+    from ...models.runbook import Runbook, RunbookJob
+    rb_list = Runbook.query.order_by(Runbook.name).all()
+
+    # Last job status per runbook
+    last_jobs: dict[int, RunbookJob] = {}
+    for rb in rb_list:
+        last_job = (
+            RunbookJob.query
+            .filter_by(runbook_id=rb.id)
+            .order_by(RunbookJob.created_at.desc())
+            .first()
+        )
+        if last_job:
+            last_jobs[rb.id] = last_job
+
     return render_template(
-        "ops/runbooks_placeholder.html",
+        "ops/runbooks.html",
+        runbooks=rb_list,
+        last_jobs=last_jobs,
+        cfg=_get_cfg(),
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+@ops_bp.route("/ansible/runbooks/new")
+@login_required
+def runbook_new():
+    from ...models.playbook import Playbook, PlaybookJobTemplate
+    playbooks = Playbook.query.filter_by(is_enabled=True).order_by(Playbook.name).all()
+    templates = PlaybookJobTemplate.query.order_by(PlaybookJobTemplate.name).all()
+    return render_template(
+        "ops/runbook_detail.html",
+        rb=None,
+        playbooks=playbooks,
+        templates=templates,
+        cfg=_get_cfg(),
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>")
+@login_required
+def runbook_detail(rb_id: int):
+    from ...models.runbook import Runbook
+    from ...models.playbook import Playbook, PlaybookJobTemplate
+    rb = Runbook.query.get_or_404(rb_id)
+    playbooks = Playbook.query.filter_by(is_enabled=True).order_by(Playbook.name).all()
+    templates = PlaybookJobTemplate.query.order_by(PlaybookJobTemplate.name).all()
+    return render_template(
+        "ops/runbook_detail.html",
+        rb=rb,
+        playbooks=playbooks,
+        templates=templates,
+        cfg=_get_cfg(),
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+@ops_bp.route("/ansible/runbooks/save", methods=["POST"])
+@login_required
+def runbook_save():
+    from ...models.runbook import Runbook
+    data   = request.get_json(silent=True) or request.form
+    rb_id  = _int_or_none(data.get("id"))
+    name   = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "Runbook name is required."})
+
+    now = datetime.now(timezone.utc)
+    if rb_id:
+        rb = Runbook.query.get(rb_id)
+        if rb is None:
+            return jsonify({"success": False, "message": "Runbook not found."})
+        action = "runbook.update"
+    else:
+        rb = Runbook(created_by=_username(), created_at=now)
+        db.session.add(rb)
+        action = "runbook.create"
+
+    rb.name        = name
+    rb.description = (data.get("description") or "").strip() or None
+    rb.category    = (data.get("category") or "").strip() or None
+    rb.is_enabled  = _bool(data.get("is_enabled", True))
+    rb.updated_at  = now
+    db.session.commit()
+
+    commit_audit(action, target=rb.name, result="success")
+    return jsonify({"success": True, "id": rb.id, "message": f"Runbook '{rb.name}' saved."})
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/clone", methods=["POST"])
+@login_required
+def runbook_clone(rb_id: int):
+    from ...models.runbook import Runbook, RunbookStep
+    import copy
+    rb = Runbook.query.get_or_404(rb_id)
+    now = datetime.now(timezone.utc)
+
+    clone = Runbook(
+        name        = f"Copy of {rb.name}",
+        description = rb.description,
+        category    = rb.category,
+        is_enabled  = False,  # clones start disabled to avoid accidental runs
+        created_by  = _username(),
+        created_at  = now,
+        updated_at  = now,
+    )
+    db.session.add(clone)
+    db.session.flush()  # get clone.id
+
+    for step in rb.steps:
+        s = RunbookStep(
+            runbook_id  = clone.id,
+            step_type   = step.step_type,
+            playbook_id = step.playbook_id,
+            template_id = step.template_id,
+            position    = step.position,
+            label       = step.label,
+            notes       = step.notes,
+            is_required = step.is_required,
+            is_enabled  = step.is_enabled,
+            on_failure  = step.on_failure,
+        )
+        db.session.add(s)
+
+    db.session.commit()
+    commit_audit("runbook.clone", target=rb.name,
+                 details=f"clone_id={clone.id}", result="success")
+    return jsonify({
+        "success":  True,
+        "id":       clone.id,
+        "redirect": url_for("ops.runbook_detail", rb_id=clone.id),
+        "message":  f"Runbook cloned as '{clone.name}'.",
+    })
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/delete", methods=["POST"])
+@login_required
+def runbook_delete(rb_id: int):
+    from ...models.runbook import Runbook
+    rb = Runbook.query.get_or_404(rb_id)
+    name = rb.name
+    db.session.delete(rb)
+    db.session.commit()
+    commit_audit("runbook.delete", target=name, result="success")
+    return jsonify({"success": True, "message": f"Runbook '{name}' deleted."})
+
+
+# ── Runbook Steps CRUD ──────────────────────────────────────────────────────── #
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/steps/add", methods=["POST"])
+@login_required
+def runbook_step_add(rb_id: int):
+    from ...models.runbook import Runbook, RunbookStep
+    rb   = Runbook.query.get_or_404(rb_id)
+    data = request.get_json(silent=True) or request.form
+
+    step_type = (data.get("step_type") or "playbook").strip()
+    pb_id     = _int_or_none(data.get("playbook_id"))
+    tmpl_id   = _int_or_none(data.get("template_id"))
+
+    if step_type == "playbook" and not pb_id:
+        return jsonify({"success": False, "message": "Select a playbook for this step."})
+    if step_type == "template" and not tmpl_id:
+        return jsonify({"success": False, "message": "Select a template for this step."})
+
+    max_pos = max((s.position for s in rb.steps), default=0)
+    step = RunbookStep(
+        runbook_id  = rb.id,
+        step_type   = step_type,
+        playbook_id = pb_id  if step_type == "playbook" else None,
+        template_id = tmpl_id if step_type == "template" else None,
+        position    = max_pos + 1,
+        label       = (data.get("label") or "").strip() or None,
+        notes       = (data.get("notes") or "").strip() or None,
+        is_required = _bool(data.get("is_required", False)),
+        is_enabled  = _bool(data.get("is_enabled", True)),
+        on_failure  = (data.get("on_failure") or "stop").strip(),
+    )
+    db.session.add(step)
+    db.session.commit()
+    commit_audit("runbook.step.add", target=rb.name,
+                 details=f"pos={step.position} type={step_type}", result="success")
+    return jsonify({"success": True, "message": "Step added."})
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/steps/<int:step_id>/update", methods=["POST"])
+@login_required
+def runbook_step_update(rb_id: int, step_id: int):
+    from ...models.runbook import RunbookStep
+    step = RunbookStep.query.get_or_404(step_id)
+    if step.runbook_id != rb_id:
+        return jsonify({"success": False, "message": "Step not found."})
+
+    data = request.get_json(silent=True) or request.form
+    step_type = (data.get("step_type") or step.step_type).strip()
+
+    step.step_type   = step_type
+    step.playbook_id = _int_or_none(data.get("playbook_id")) if step_type == "playbook" else None
+    step.template_id = _int_or_none(data.get("template_id")) if step_type == "template" else None
+    step.label       = (data.get("label") or "").strip() or None
+    step.notes       = (data.get("notes") or "").strip() or None
+    step.is_required = _bool(data.get("is_required", step.is_required))
+    step.is_enabled  = _bool(data.get("is_enabled", step.is_enabled))
+    step.on_failure  = (data.get("on_failure") or step.on_failure).strip()
+    db.session.commit()
+    commit_audit("runbook.step.update", target=str(rb_id),
+                 details=f"step_id={step_id}", result="success")
+    return jsonify({"success": True, "message": "Step updated."})
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/steps/<int:step_id>/delete", methods=["POST"])
+@login_required
+def runbook_step_delete(rb_id: int, step_id: int):
+    from ...models.runbook import Runbook, RunbookStep
+    step = RunbookStep.query.get_or_404(step_id)
+    if step.runbook_id != rb_id:
+        return jsonify({"success": False, "message": "Step not found."})
+
+    rb = Runbook.query.get(rb_id)
+    db.session.delete(step)
+    db.session.flush()
+
+    # Renumber remaining steps
+    remaining = RunbookStep.query.filter_by(runbook_id=rb_id).order_by(RunbookStep.position).all()
+    for i, s in enumerate(remaining, start=1):
+        s.position = i
+    db.session.commit()
+    commit_audit("runbook.step.delete", target=rb.name if rb else str(rb_id),
+                 details=f"step_id={step_id}", result="success")
+    return jsonify({"success": True, "message": "Step removed."})
+
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/steps/<int:step_id>/move", methods=["POST"])
+@login_required
+def runbook_step_move(rb_id: int, step_id: int):
+    from ...models.runbook import RunbookStep
+    data      = request.get_json(silent=True) or request.form
+    direction = (data.get("direction") or "").strip()  # "up" | "down"
+
+    step = RunbookStep.query.get_or_404(step_id)
+    if step.runbook_id != rb_id:
+        return jsonify({"success": False, "message": "Step not found."})
+
+    siblings = (
+        RunbookStep.query
+        .filter_by(runbook_id=rb_id)
+        .order_by(RunbookStep.position)
+        .all()
+    )
+    idx = next((i for i, s in enumerate(siblings) if s.id == step_id), None)
+    if idx is None:
+        return jsonify({"success": False, "message": "Step not found in list."})
+
+    swap_idx = idx - 1 if direction == "up" else idx + 1
+    if swap_idx < 0 or swap_idx >= len(siblings):
+        return jsonify({"success": False, "message": "Cannot move further."})
+
+    # Swap positions
+    siblings[idx].position, siblings[swap_idx].position = (
+        siblings[swap_idx].position, siblings[idx].position
+    )
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+# ── Runbook launch page ─────────────────────────────────────────────────────── #
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/launch")
+@login_required
+def runbook_launch(rb_id: int):
+    from ...models.runbook import Runbook
+    from ...models.environment import Environment
+    rb = Runbook.query.get_or_404(rb_id)
+    envs = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
+    cfg  = _get_cfg()
+    return render_template(
+        "ops/runbook_launch.html",
+        rb=rb,
+        envs=envs,
         cfg=cfg,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
+
+
+# ── Runbook execute (AJAX POST) ─────────────────────────────────────────────── #
+
+@ops_bp.route("/ansible/runbooks/<int:rb_id>/execute", methods=["POST"])
+@login_required
+def runbook_execute(rb_id: int):
+    import json as _json
+    from ...models.runbook import Runbook, RunbookJob, RunbookStepExecution
+    from ...models.playbook import Playbook, PlaybookJobTemplate
+
+    rb  = Runbook.query.get_or_404(rb_id)
+    cfg = _get_cfg()
+    if cfg is None or not cfg.enabled:
+        return jsonify({"success": False, "message": "Ansible is not configured."})
+    if cfg.connection_status != "Connected":
+        return jsonify({"success": False, "message": "Control node is not connected."})
+
+    data = request.get_json(silent=True) or request.form
+
+    target_type  = (data.get("target_type") or "all").strip()
+    target_value = (data.get("target_value") or "").strip() or None
+    become       = _bool(data.get("become"))
+    check_mode   = _bool(data.get("check_mode"))
+    extra_vars   = (data.get("extra_vars") or "").strip() or None
+
+    # Build limit expression from target
+    limit_expression = _build_limit(target_type, target_value)
+
+    # Operator-skipped optional step IDs
+    skipped_ids: set[int] = set()
+    raw_skipped = data.get("skipped_steps") or data.getlist("skipped_steps[]") if hasattr(data, "getlist") else []
+    if isinstance(raw_skipped, str):
+        try:
+            raw_skipped = _json.loads(raw_skipped)
+        except Exception:
+            raw_skipped = [raw_skipped]
+    for v in (raw_skipped or []):
+        sid = _int_or_none(v)
+        if sid:
+            skipped_ids.add(sid)
+
+    # Only include enabled steps
+    enabled_steps = [s for s in rb.steps if s.is_enabled]
+    if not enabled_steps:
+        return jsonify({"success": False, "message": "This runbook has no enabled steps."})
+
+    now = datetime.now(timezone.utc)
+    job = RunbookJob(
+        runbook_id       = rb.id,
+        runbook_name     = rb.name,
+        triggered_by     = _username(),
+        status           = "pending",
+        target_type      = target_type,
+        target_value     = target_value,
+        limit_expression = limit_expression,
+        become           = become,
+        check_mode       = check_mode,
+        extra_vars       = extra_vars,
+        created_at       = now,
+    )
+    db.session.add(job)
+    db.session.flush()  # get job.id
+
+    for step in enabled_steps:
+        is_skipped = (step.id in skipped_ids) and not step.is_required
+
+        # Resolve snapshot values
+        playbook_path = ""
+        playbook_name = ""
+        template_name = ""
+        exec_params   = {}
+
+        if step.step_type == "playbook" and step.playbook:
+            pb = step.playbook
+            playbook_path = pb.relative_path
+            playbook_name = pb.name
+            exec_params   = {
+                "requires_become": pb.requires_become,
+                "forks": 5, "verbosity": 0,
+            }
+        elif step.step_type == "template" and step.template:
+            tmpl = step.template
+            template_name = tmpl.name
+            settings      = tmpl.get_settings()
+            playbook_path = settings.get("playbook_path") or ""
+            playbook_name = settings.get("playbook_name") or playbook_path.rsplit("/", 1)[-1]
+            exec_params   = settings
+
+        step_exec = RunbookStepExecution(
+            runbook_job_id   = job.id,
+            runbook_step_id  = step.id,
+            position         = step.position,
+            step_type        = step.step_type,
+            label            = step.label or step.display_name,
+            playbook_path    = playbook_path,
+            playbook_name    = playbook_name,
+            template_name    = template_name,
+            execution_params = _json.dumps(exec_params),
+            on_failure       = step.on_failure,
+            status           = "skipped" if is_skipped else "pending",
+            skipped          = is_skipped,
+        )
+        db.session.add(step_exec)
+
+    db.session.commit()
+
+    app = current_app._get_current_object()
+
+    def _run():
+        from ...services.runbook_service import execute_runbook
+        try:
+            execute_runbook(job.id, app)
+        except Exception:
+            logger.exception("execute_runbook(%d) unhandled exception", job.id)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    commit_audit("runbook.execute", target=rb.name,
+                 details=f"job_id={job.id} target={target_type}:{target_value}",
+                 result="success")
+    return jsonify({
+        "success":  True,
+        "job_id":   job.id,
+        "message":  f"Runbook '{rb.name}' started as Job #{job.id}.",
+        "redirect": url_for("ops.runbook_job_detail", job_id=job.id),
+    })
+
+
+# ── Runbook job detail ──────────────────────────────────────────────────────── #
+
+@ops_bp.route("/ansible/runbook-jobs/<int:job_id>")
+@login_required
+def runbook_job_detail(job_id: int):
+    from ...models.runbook import RunbookJob
+    job = RunbookJob.query.get_or_404(job_id)
+    return render_template(
+        "ops/runbook_job.html",
+        job=job,
+        cfg=_get_cfg(),
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+@ops_bp.route("/ansible/runbook-jobs/<int:job_id>/status")
+@login_required
+def runbook_job_status(job_id: int):
+    from ...models.runbook import RunbookJob
+    job = RunbookJob.query.get_or_404(job_id)
+
+    steps_data = []
+    for s in job.step_executions:
+        d = {
+            "id":             s.id,
+            "position":       s.position,
+            "label":          s.display_name,
+            "step_type":      s.step_type,
+            "status":         s.status,
+            "skipped":        s.skipped,
+            "on_failure":     s.on_failure,
+            "playbook_job_id": s.playbook_job_id,
+            "started_at":     s.started_at.isoformat() if s.started_at else None,
+            "finished_at":    s.finished_at.isoformat() if s.finished_at else None,
+            "duration":       s.duration_seconds,
+            "error_message":  s.error_message,
+        }
+        steps_data.append(d)
+
+    return jsonify({
+        "status":      job.status,
+        "started_at":  job.started_at.isoformat()  if job.started_at  else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "duration":    job.duration_seconds,
+        "error":       job.error_message,
+        "steps":       steps_data,
+    })
+
+
+# ── Helper ─────────────────────────────────────────────────────────────────── #
+
+def _build_limit(target_type: str, target_value: str | None) -> str | None:
+    """Translate UI target selection into an Ansible --limit expression."""
+    if target_type == "all" or not target_value:
+        return None
+    if target_type == "server":
+        return target_value.strip()
+    if target_type in ("group", "environment"):
+        return target_value.strip()
+    return target_value or None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

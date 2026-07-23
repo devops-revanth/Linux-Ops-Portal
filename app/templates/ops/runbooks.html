@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Runbooks | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.summary') }}">Ansible</a></li>
+    <li class="breadcrumb-item active">Runbooks</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .rb-status-completed { color: #3fb950; }
+  .rb-status-failed    { color: #f85149; }
+  .rb-status-running   { color: #58a6ff; }
+  .rb-status-pending   { color: #8b949e; }
+  .rb-status-cancelled { color: #8b949e; }
+  .rb-enabled-badge  { font-size:.7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h5 class="fw-semibold mb-0">
+        <i class="bi bi-journal-bookmark-fill me-2" style="color:#d29922;"></i>Runbooks
+      </h5>
+      <small class="text-secondary">Ordered playbook sequences for repeatable operations</small>
+    </div>
+    <a href="{{ url_for('ops.runbook_new') }}" class="btn btn-sm btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>New Runbook
+    </a>
+  </div>
+
+  {% if runbooks %}
+  <div class="lop-card">
+    <div class="table-responsive">
+      <table class="table table-hover lop-table mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th class="text-center">Steps</th>
+            <th>Last Run</th>
+            <th>Last Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rb in runbooks %}
+          {% set last = last_jobs.get(rb.id) %}
+          <tr>
+            <td>
+              <a href="{{ url_for('ops.runbook_detail', rb_id=rb.id) }}" class="fw-medium text-decoration-none">
+                {{ rb.name }}
+              </a>
+              {% if not rb.is_enabled %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle ms-1 rb-enabled-badge">Disabled</span>
+              {% endif %}
+              {% if rb.description %}
+              <br><small class="text-secondary">{{ rb.description | truncate(80) }}</small>
+              {% endif %}
+            </td>
+            <td class="text-secondary small">{{ rb.category or '—' }}</td>
+            <td class="text-center">
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                {{ rb.steps | selectattr('is_enabled') | list | length }}
+              </span>
+            </td>
+            <td class="text-secondary small">
+              {% if last %}
+                {{ last.created_at.strftime('%b %d %H:%M') if last.created_at else '—' }}
+                <br><span class="opacity-75">by {{ last.triggered_by or '—' }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if last %}
+              <span class="rb-status-{{ last.status }}">
+                {% if last.status == 'completed' %}<i class="bi bi-check-circle me-1"></i>
+                {% elif last.status == 'failed' %}<i class="bi bi-x-circle me-1"></i>
+                {% elif last.status == 'running' %}<i class="bi bi-arrow-repeat spin me-1"></i>
+                {% elif last.status == 'cancelled' %}<i class="bi bi-slash-circle me-1"></i>
+                {% else %}<i class="bi bi-hourglass me-1"></i>{% endif %}
+                {{ last.status | capitalize }}
+              </span>
+              {% else %}<span class="text-secondary">Never run</span>{% endif %}
+            </td>
+            <td class="text-end text-nowrap">
+              <a href="{{ url_for('ops.runbook_launch', rb_id=rb.id) }}"
+                 class="btn btn-sm btn-success me-1"
+                 title="Launch"
+                 {% if not rb.is_enabled or not cfg or not cfg.enabled or cfg.connection_status != 'Connected' %}disabled{% endif %}>
+                <i class="bi bi-play-fill"></i>
+              </a>
+              <a href="{{ url_for('ops.runbook_detail', rb_id=rb.id) }}"
+                 class="btn btn-sm btn-outline-secondary me-1" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <button class="btn btn-sm btn-outline-secondary me-1"
+                      onclick="cloneRunbook({{ rb.id }}, '{{ rb.name | e }}')"
+                      title="Clone">
+                <i class="bi bi-copy"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger"
+                      onclick="deleteRunbook({{ rb.id }}, '{{ rb.name | e }}')"
+                      title="Delete">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="lop-card">
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-journal-bookmark display-4 d-block mb-3 opacity-25" style="color:#d29922;"></i>
+      <h6 class="fw-semibold mb-2">No runbooks yet</h6>
+      <p class="mb-3">Create your first runbook to chain playbooks into a repeatable workflow.</p>
+      <a href="{{ url_for('ops.runbook_new') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>Create Runbook
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function cloneRunbook(id, name) {
+  if (!confirm(`Clone runbook "${name}"?`)) return;
+  fetch(`/ansible/runbooks/${id}/clone`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) window.location = d.redirect;
+      else alert(d.message);
+    });
+}
+function deleteRunbook(id, name) {
+  if (!confirm(`Delete runbook "${name}"? This cannot be undone.`)) return;
+  fetch(`/ansible/runbooks/${id}/delete`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.success) location.reload();
+      else alert(d.message);
+    });
+}
+</script>
+{% endblock %}

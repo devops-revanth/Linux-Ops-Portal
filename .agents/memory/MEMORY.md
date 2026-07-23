@@ -11,3 +11,4 @@
 - [Ansible Phase 2 facts](ansible-phase2-facts.md) — --tree collection; bulk DB; migration g7h8i9j0k1l2; Patching has no last_ansible_sync; no double create_index in migrations.
 - [Phase 3 playbook execution](phase3-playbook-exec.md) — AWX-style ops workspace at /ansible/*; ops_bp must import routes; lop_dt=alias of lop_ts; POSIX _q quoting; append-only log SQL; PID capture via bash wrapper.
 - [Phase 4 multi-vCenter](vmware-phase4.md) — VmwareConnection table replaces singleton; VmwareConfig kept as shim; per-conn locks; stale scoped to conn+other-conns; scheduler jobs vmware_conn_<id>.
+- [Runbooks Phase 2](runbooks-phase2.md) — 4 templates complete; migration k1l2m3n4o5p6 applied; execution via playbook_service; step timeline polls /runbook-jobs/<id>/status every 3 s.

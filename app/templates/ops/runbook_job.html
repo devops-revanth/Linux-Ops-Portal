@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}Runbook Job #{{ job.id }} | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.summary') }}">Ansible</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.runbooks') }}">Runbooks</a></li>
+    {% if job.runbook_id %}
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.runbook_detail', rb_id=job.runbook_id) }}">{{ job.runbook_name }}</a></li>
+    {% else %}
+    <li class="breadcrumb-item">{{ job.runbook_name }}</li>
+    {% endif %}
+    <li class="breadcrumb-item active">Job #{{ job.id }}</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .rjob-status-pending   { color: #8b949e; }
+  .rjob-status-running   { color: #58a6ff; }
+  .rjob-status-completed { color: #3fb950; }
+  .rjob-status-failed    { color: #f85149; }
+  .rjob-status-cancelled { color: #8b949e; }
+  .rjob-status-skipped   { color: #8b949e; }
+
+  .step-track-row {
+    display: flex; align-items: flex-start; gap: 1rem;
+    padding: .85rem 1rem; position: relative;
+  }
+  .step-track-row:not(:last-child)::after {
+    content: ''; position: absolute; left: 2.1rem; top: 2.8rem;
+    width: 2px; bottom: 0; background: var(--lop-border);
+  }
+  .step-track-icon {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; border: 2px solid var(--lop-border); background: var(--lop-bg);
+    position: relative; z-index: 1;
+  }
+  .step-icon-pending   { border-color: #444; color: #8b949e; }
+  .step-icon-running   { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,.1); }
+  .step-icon-completed { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,.1); }
+  .step-icon-failed    { border-color: #f85149; color: #f85149; background: rgba(248,81,73,.1); }
+  .step-icon-skipped   { border-color: #444; color: #8b949e; }
+  .step-icon-cancelled { border-color: #444; color: #8b949e; }
+  .step-icon-disabled  { border-color: #444; color: #8b949e; }
+
+  .step-track-body { flex: 1; }
+  .step-track-title { font-weight: 500; font-size: .9rem; }
+  .step-track-meta  { font-size: .75rem; color: var(--lop-muted); margin-top: .15rem; }
+  .step-log-panel   { margin-top: .5rem; display: none; }
+  .step-log-panel.show { display: block; }
+  .step-log-terminal {
+    background: #0d1117; border: 1px solid var(--lop-border); border-radius: 6px;
+    padding: .75rem 1rem; font-family: ui-monospace,'SFMono-Regular',monospace;
+    font-size: .75rem; line-height: 1.5; color: #c9d1d9;
+    max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+
+  .job-summary-stat { text-align: center; padding: .5rem; }
+  .job-summary-stat .value { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+  .job-summary-stat .label { font-size: .7rem; color: var(--lop-muted); margin-top: .15rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+
+  {# ── Job header ──────────────────────────────────────────────────────────── #}
+  <div class="lop-card mb-4">
+    <div class="lop-card-body">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:48px;height:48px;border-radius:8px;background:rgba(210,153,34,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="bi bi-journal-bookmark-fill" style="color:#d29922;font-size:1.3rem;"></i>
+          </div>
+          <div>
+            <div class="fw-semibold fs-5 mb-0" id="jobStatusHeading">
+              <span id="liveStatusBadge" class="rjob-status-{{ job.status }}">
+                {% if job.status == 'running' %}<i class="bi bi-arrow-repeat spin me-1"></i>
+                {% elif job.status == 'completed' %}<i class="bi bi-check-circle me-1"></i>
+                {% elif job.status == 'failed' %}<i class="bi bi-x-circle me-1"></i>
+                {% elif job.status == 'cancelled' %}<i class="bi bi-slash-circle me-1"></i>
+                {% else %}<i class="bi bi-hourglass me-1"></i>{% endif %}
+                {{ job.status | capitalize }}
+              </span>
+              <span class="text-secondary fw-normal fs-6 ms-2">— {{ job.runbook_name }}</span>
+            </div>
+            <div class="text-secondary small mt-1">
+              Job #{{ job.id }}
+              · Triggered by {{ job.triggered_by or '—' }}
+              {% if job.created_at %} · {{ job.created_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+              {% if job.target_type and job.target_type != 'all' %}
+               · Target: <span class="fw-medium">{{ job.target_value or job.target_type }}</span>
+              {% else %}
+               · Target: <span class="fw-medium">Entire Inventory</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-3 text-center">
+          <div class="job-summary-stat">
+            <div class="value" id="liveDuration">
+              {% if job.duration_seconds is not none %}
+                {% set d = job.duration_seconds %}
+                {% if d < 60 %}{{ d }}s{% else %}{{ (d // 60) }}m {{ (d % 60) }}s{% endif %}
+              {% else %}—{% endif %}
+            </div>
+            <div class="label">Duration</div>
+          </div>
+          <div class="job-summary-stat">
+            <div class="value" id="liveStepsDone">{% set ns = namespace(n=0) %}{% for s in job.step_executions %}{% if s.status in ['completed','failed','skipped'] %}{% set ns.n = ns.n + 1 %}{% endif %}{% endfor %}{{ ns.n }}</div>
+            <div class="label">Steps Done</div>
+          </div>
+          <div class="job-summary-stat">
+            <div class="value">{{ job.step_executions | list | length }}</div>
+            <div class="label">Total Steps</div>
+          </div>
+        </div>
+      </div>
+
+      {% if job.error_message %}
+      <div class="alert alert-danger mt-3 mb-0 py-2 small">
+        <i class="bi bi-x-circle me-1"></i>{{ job.error_message }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Step timeline ───────────────────────────────────────────────────────── #}
+  <div class="lop-card">
+    <div class="lop-card-header fw-medium">
+      <i class="bi bi-list-check me-2 text-primary"></i>Step Progress
+    </div>
+    <div class="lop-card-body p-0" id="stepsContainer">
+      {% for step in job.step_executions %}
+      <div class="step-track-row" id="stepRow{{ step.id }}" data-step-id="{{ step.id }}">
+
+        <div class="step-track-icon step-icon-{{ step.status }}" id="stepIcon{{ step.id }}">
+          {% if step.status == 'completed' %}<i class="bi bi-check-lg"></i>
+          {% elif step.status == 'running' %}<i class="bi bi-arrow-repeat spin"></i>
+          {% elif step.status == 'failed' %}<i class="bi bi-x-lg"></i>
+          {% elif step.status in ('skipped', 'disabled') %}<i class="bi bi-dash-lg"></i>
+          {% else %}<i class="bi bi-circle"></i>{% endif %}
+        </div>
+
+        <div class="step-track-body">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="step-track-title">
+              <span class="text-secondary me-2" style="font-size:.78rem;">{{ step.position }}.</span>
+              <span id="stepName{{ step.id }}">{{ step.display_name }}</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span id="stepStatusText{{ step.id }}" class="rjob-status-{{ step.status }}" style="font-size:.8rem;">
+                {{ step.status | capitalize }}
+              </span>
+              <span id="stepDuration{{ step.id }}" class="text-secondary" style="font-size:.75rem;">
+                {% if step.duration_seconds is not none %}
+                  {% set d = step.duration_seconds %}
+                  {% if d < 60 %}{{ d }}s{% else %}{{ (d // 60) }}m {{ (d % 60) }}s{% endif %}
+                {% endif %}
+              </span>
+              {% if step.playbook_job_id %}
+              <a href="{{ url_for('ops.job_detail', job_id=step.playbook_job_id) }}"
+                 class="btn btn-xs btn-outline-secondary" style="font-size:.72rem; padding:.15rem .45rem;"
+                 target="_blank" title="View playbook job">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+              {% endif %}
+              {% if step.status not in ('pending',) %}
+              <button class="btn btn-xs btn-outline-secondary"
+                      style="font-size:.72rem; padding:.15rem .45rem;"
+                      onclick="toggleLog({{ step.id }})"
+                      title="Toggle log">
+                <i class="bi bi-terminal"></i>
+              </button>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="step-track-meta" id="stepMeta{{ step.id }}">
+            {% if step.step_type == 'playbook' %}
+            <i class="bi bi-grid-3x3-gap me-1 text-primary"></i>Playbook
+            {% else %}
+            <i class="bi bi-bookmark me-1" style="color:#d29922;"></i>Template
+            {% endif %}
+            {% if step.playbook_name %}: {{ step.playbook_name }}{% elif step.template_name %}: {{ step.template_name }}{% endif %}
+            {% if step.skipped %} · <em>skipped by operator</em>{% endif %}
+            {% if step.error_message %} · <span class="text-danger">{{ step.error_message }}</span>{% endif %}
+          </div>
+
+          {# Expandable log panel (loads from linked PlaybookJob) #}
+          <div class="step-log-panel" id="stepLog{{ step.id }}">
+            {% if step.playbook_job_id %}
+            <div class="step-log-terminal" id="stepLogContent{{ step.id }}">Loading…</div>
+            {% else %}
+            <div class="step-log-terminal text-secondary">No log output available.</div>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const JOB_ID = {{ job.id }};
+const INITIAL_STATUS = '{{ job.status }}';
+const POLL_INTERVAL = 3000; // ms
+
+let pollTimer = null;
+const logOpen = {};  // stepId -> bool
+const logLoaded = {}; // stepId -> bool
+
+// ── Log toggle ───────────────────────────────────────────────────────────── //
+function toggleLog(stepId) {
+  const panel = document.getElementById(`stepLog${stepId}`);
+  if (!panel) return;
+  const opening = !logOpen[stepId];
+  logOpen[stepId] = opening;
+  panel.classList.toggle('show', opening);
+
+  if (opening && !logLoaded[stepId]) {
+    loadLog(stepId);
+  }
+}
+
+function loadLog(stepId) {
+  const contentEl = document.getElementById(`stepLogContent${stepId}`);
+  if (!contentEl) return;
+
+  // Find the playbook job id from the data we already have
+  const row = document.getElementById(`stepRow${stepId}`);
+  const link = row.querySelector('a[href*="/ansible/jobs/"]');
+  if (!link) { contentEl.textContent = 'No log available.'; logLoaded[stepId] = true; return; }
+
+  const match = link.href.match(/\/ansible\/jobs\/(\d+)/);
+  if (!match) { contentEl.textContent = 'No log available.'; logLoaded[stepId] = true; return; }
+
+  const pjobId = match[1];
+  fetch(`/ansible/jobs/${pjobId}/output`)
+    .then(r => r.json())
+    .then(d => {
+      contentEl.textContent = d.output || '— No output yet —';
+      logLoaded[stepId] = true;
+      // Auto-scroll to bottom
+      contentEl.scrollTop = contentEl.scrollHeight;
+    })
+    .catch(() => { contentEl.textContent = 'Failed to load log.'; });
+}
+
+// ── Status icon helpers ──────────────────────────────────────────────────── //
+const STATUS_ICONS = {
+  pending:   '<i class="bi bi-circle"></i>',
+  running:   '<i class="bi bi-arrow-repeat spin"></i>',
+  completed: '<i class="bi bi-check-lg"></i>',
+  failed:    '<i class="bi bi-x-lg"></i>',
+  skipped:   '<i class="bi bi-dash-lg"></i>',
+  cancelled: '<i class="bi bi-dash-lg"></i>',
+  disabled:  '<i class="bi bi-dash-lg"></i>',
+};
+
+function fmtDuration(secs) {
+  if (secs === null || secs === undefined) return '';
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs/60)}m ${secs%60}s`;
+}
+
+// ── Poll ─────────────────────────────────────────────────────────────────── //
+function poll() {
+  fetch(`/ansible/runbook-jobs/${JOB_ID}/status`)
+    .then(r => r.json())
+    .then(data => {
+      // Update job-level status badge
+      const badge = document.getElementById('liveStatusBadge');
+      if (badge) {
+        const icons = {
+          running:   '<i class="bi bi-arrow-repeat spin me-1"></i>',
+          completed: '<i class="bi bi-check-circle me-1"></i>',
+          failed:    '<i class="bi bi-x-circle me-1"></i>',
+          cancelled: '<i class="bi bi-slash-circle me-1"></i>',
+          pending:   '<i class="bi bi-hourglass me-1"></i>',
+        };
+        badge.className = `rjob-status-${data.status}`;
+        badge.innerHTML = (icons[data.status] || '') + data.status.charAt(0).toUpperCase() + data.status.slice(1);
+      }
+
+      // Duration
+      const durEl = document.getElementById('liveDuration');
+      if (durEl && data.duration !== null) durEl.textContent = fmtDuration(data.duration);
+
+      // Steps done count
+      const doneEl = document.getElementById('liveStepsDone');
+      if (doneEl) {
+        const done = (data.steps || []).filter(s => ['completed','failed','skipped'].includes(s.status)).length;
+        doneEl.textContent = done;
+      }
+
+      // Per-step updates
+      (data.steps || []).forEach(s => {
+        const icon = document.getElementById(`stepIcon${s.id}`);
+        if (icon) {
+          icon.className = `step-track-icon step-icon-${s.status}`;
+          icon.innerHTML = STATUS_ICONS[s.status] || '<i class="bi bi-circle"></i>';
+        }
+        const statusTxt = document.getElementById(`stepStatusText${s.id}`);
+        if (statusTxt) {
+          statusTxt.className = `rjob-status-${s.status}`;
+          statusTxt.textContent = s.status.charAt(0).toUpperCase() + s.status.slice(1);
+        }
+        const durTxt = document.getElementById(`stepDuration${s.id}`);
+        if (durTxt && s.duration) durTxt.textContent = fmtDuration(s.duration);
+
+        // Reload open log panels for running steps
+        if (logOpen[s.id] && s.status === 'running') {
+          logLoaded[s.id] = false;
+          loadLog(s.id);
+        }
+      });
+
+      // Stop polling when done
+      if (['completed', 'failed', 'cancelled'].includes(data.status)) {
+        clearInterval(pollTimer);
+        // Reload to show final state with proper links
+        setTimeout(() => location.reload(), 1500);
+      }
+    })
+    .catch(() => { /* ignore transient errors */ });
+}
+
+// Only poll for active jobs
+if (['pending', 'running'].includes(INITIAL_STATUS)) {
+  pollTimer = setInterval(poll, POLL_INTERVAL);
+  poll(); // immediate first call
+}
+</script>
+{% endblock %}

@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}{% if rb %}Edit {{ rb.name }}{% else %}New Runbook{% endif %} | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.summary') }}">Ansible</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.runbooks') }}">Runbooks</a></li>
+    <li class="breadcrumb-item active">{% if rb %}{{ rb.name }}{% else %}New Runbook{% endif %}</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .step-row td { vertical-align: middle; }
+  .step-type-badge { font-size:.7rem; padding:.2rem .45rem; border-radius:4px; }
+  .step-type-playbook  { background:rgba(var(--bs-primary-rgb),.12); color:var(--bs-primary); border:1px solid rgba(var(--bs-primary-rgb),.25); }
+  .step-type-template  { background:rgba(210,153,34,.12); color:#d29922; border:1px solid rgba(210,153,34,.25); }
+  .step-disabled-row td { opacity:.5; }
+  .required-lock { color:#d29922; font-size:.8rem; }
+  .failure-stop { color:#f85149; font-size:.75rem; }
+  .failure-cont { color:#3fb950; font-size:.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h5 class="fw-semibold mb-0">
+        <i class="bi bi-journal-bookmark-fill me-2" style="color:#d29922;"></i>
+        {% if rb %}{{ rb.name }}{% else %}New Runbook{% endif %}
+      </h5>
+      <small class="text-secondary">{% if rb %}Edit runbook definition and steps{% else %}Define a new runbook{% endif %}</small>
+    </div>
+    {% if rb %}
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('ops.runbook_launch', rb_id=rb.id) }}"
+         class="btn btn-sm btn-success"
+         {% if not rb.is_enabled %}title="Enable runbook to launch" {% endif %}>
+        <i class="bi bi-play-fill me-1"></i>Launch
+      </a>
+      <button class="btn btn-sm btn-outline-secondary"
+              onclick="cloneRunbook({{ rb.id }}, '{{ rb.name | e }}')">
+        <i class="bi bi-copy me-1"></i>Clone
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="row g-4">
+
+    {# ── Runbook metadata ──────────────────────────────────────────────────── #}
+    <div class="col-12 col-lg-4">
+      <div class="lop-card">
+        <div class="lop-card-header fw-medium">
+          <i class="bi bi-info-circle me-2 text-primary"></i>Runbook Details
+        </div>
+        <div class="lop-card-body">
+          <form id="rbForm">
+            <input type="hidden" name="id" value="{{ rb.id if rb else '' }}">
+
+            <div class="mb-3">
+              <label class="form-label fw-medium">Name <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control form-control-sm"
+                     value="{{ rb.name if rb else '' }}" required placeholder="e.g. Monthly Linux Patch">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-medium">Description</label>
+              <textarea name="description" class="form-control form-control-sm" rows="2"
+                        placeholder="What does this runbook do?">{{ rb.description if rb else '' }}</textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-medium">Category</label>
+              <input type="text" name="category" class="form-control form-control-sm"
+                     value="{{ rb.category if rb else '' }}" placeholder="e.g. Patching, Security">
+            </div>
+
+            <div class="mb-4">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_enabled" id="chkEnabled"
+                       value="1" {% if not rb or rb.is_enabled %}checked{% endif %}>
+                <label class="form-check-label fw-medium" for="chkEnabled">Enabled</label>
+              </div>
+              <small class="text-secondary">Disabled runbooks cannot be launched.</small>
+            </div>
+
+            <button type="button" class="btn btn-primary btn-sm w-100" onclick="saveRunbook()">
+              <i class="bi bi-floppy me-1"></i>Save Runbook
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# ── Step builder ──────────────────────────────────────────────────────── #}
+    <div class="col-12 col-lg-8">
+      <div class="lop-card">
+        <div class="lop-card-header d-flex align-items-center justify-content-between">
+          <span class="fw-medium"><i class="bi bi-list-ol me-2 text-primary"></i>Steps</span>
+          {% if rb %}
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#stepModal"
+                  onclick="openAddStep()">
+            <i class="bi bi-plus-lg me-1"></i>Add Step
+          </button>
+          {% endif %}
+        </div>
+
+        {% if not rb %}
+        <div class="lop-card-body text-center py-4 text-secondary">
+          <i class="bi bi-arrow-left-circle me-1"></i>
+          Save the runbook first, then add steps.
+        </div>
+        {% elif rb.steps %}
+        <div class="table-responsive">
+          <table class="table lop-table mb-0" id="stepsTable">
+            <thead>
+              <tr>
+                <th width="40">#</th>
+                <th>Step</th>
+                <th>Type</th>
+                <th>Required</th>
+                <th>On Failure</th>
+                <th>Enabled</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for step in rb.steps %}
+              <tr class="step-row {% if not step.is_enabled %}step-disabled-row{% endif %}"
+                  data-step-id="{{ step.id }}">
+                <td class="text-secondary fw-medium">{{ step.position }}</td>
+                <td>
+                  <span class="fw-medium">{{ step.display_name }}</span>
+                  {% if step.notes %}
+                  <br><small class="text-secondary">{{ step.notes | truncate(60) }}</small>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="step-type-badge step-type-{{ step.step_type }}">
+                    {% if step.step_type == 'playbook' %}<i class="bi bi-grid-3x3-gap me-1"></i>{% else %}<i class="bi bi-bookmark me-1"></i>{% endif %}
+                    {{ step.step_type | capitalize }}
+                  </span>
+                </td>
+                <td>
+                  {% if step.is_required %}
+                  <span class="required-lock"><i class="bi bi-lock-fill"></i> Required</span>
+                  {% else %}
+                  <span class="text-secondary small">Optional</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if step.on_failure == 'stop' %}
+                  <span class="failure-stop"><i class="bi bi-stop-circle me-1"></i>Stop</span>
+                  {% else %}
+                  <span class="failure-cont"><i class="bi bi-arrow-right-circle me-1"></i>Continue</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge {% if step.is_enabled %}bg-success-subtle text-success border border-success-subtle{% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %}" style="font-size:.7rem;">
+                    {{ 'Yes' if step.is_enabled else 'No' }}
+                  </span>
+                </td>
+                <td class="text-end text-nowrap">
+                  <button class="btn btn-sm btn-outline-secondary me-1"
+                          onclick="moveStep({{ rb.id }}, {{ step.id }}, 'up')"
+                          {% if loop.first %}disabled{% endif %} title="Move up">
+                    <i class="bi bi-chevron-up"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-secondary me-1"
+                          onclick="moveStep({{ rb.id }}, {{ step.id }}, 'down')"
+                          {% if loop.last %}disabled{% endif %} title="Move down">
+                    <i class="bi bi-chevron-down"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-secondary me-1"
+                          onclick="openEditStep({{ step.id }}, '{{ step.step_type }}',
+                                   {{ step.playbook_id or 'null' }}, {{ step.template_id or 'null' }},
+                                   '{{ (step.label or '') | e }}',
+                                   {{ 'true' if step.is_required else 'false' }},
+                                   {{ 'true' if step.is_enabled else 'false' }},
+                                   '{{ step.on_failure }}',
+                                   '{{ (step.notes or '') | e }}')"
+                          title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger"
+                          onclick="deleteStep({{ rb.id }}, {{ step.id }})"
+                          title="Remove">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="lop-card-body text-center py-4 text-secondary">
+          <i class="bi bi-list-ol display-6 d-block mb-2 opacity-25"></i>
+          No steps yet. Click <strong>Add Step</strong> to build your runbook.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /row #}
+</div>
+
+{# ── Add / Edit Step modal ─────────────────────────────────────────────────── #}
+{% if rb %}
+<div class="modal fade" id="stepModal" tabindex="-1" aria-labelledby="stepModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="stepModalLabel">Add Step</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editStepId" value="">
+
+        {# Step type #}
+        <div class="mb-3">
+          <label class="form-label fw-medium">Step Type <span class="text-danger">*</span></label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="stepTypeRadio" id="typePlaybook"
+                     value="playbook" checked onchange="onStepTypeChange()">
+              <label class="form-check-label" for="typePlaybook">
+                <i class="bi bi-grid-3x3-gap me-1 text-primary"></i>Playbook
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="stepTypeRadio" id="typeTemplate"
+                     value="template" onchange="onStepTypeChange()">
+              <label class="form-check-label" for="typeTemplate">
+                <i class="bi bi-bookmark me-1" style="color:#d29922;"></i>Template
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {# Playbook picker #}
+        <div class="mb-3" id="playbookPickerDiv">
+          <label class="form-label fw-medium">Playbook <span class="text-danger">*</span></label>
+          <select id="playbookSelect" class="form-select form-select-sm">
+            <option value="">— Select playbook —</option>
+            {% for pb in playbooks %}
+            <option value="{{ pb.id }}" data-name="{{ pb.name }}">{{ pb.name }}{% if pb.category %} ({{ pb.category }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Template picker #}
+        <div class="mb-3 d-none" id="templatePickerDiv">
+          <label class="form-label fw-medium">Template <span class="text-danger">*</span></label>
+          <select id="templateSelect" class="form-select form-select-sm">
+            <option value="">— Select template —</option>
+            {% for t in templates %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Label override #}
+        <div class="mb-3">
+          <label class="form-label fw-medium">Display Label <span class="text-secondary fw-normal">(optional)</span></label>
+          <input type="text" id="stepLabel" class="form-control form-control-sm"
+                 placeholder="Override the step name shown to operators">
+        </div>
+
+        <div class="row g-3 mb-3">
+          {# Required #}
+          <div class="col-6">
+            <label class="form-label fw-medium">Required</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="stepRequired">
+              <label class="form-check-label" for="stepRequired">
+                Lock checkbox at launch (cannot be skipped)
+              </label>
+            </div>
+          </div>
+
+          {# Enabled #}
+          <div class="col-6">
+            <label class="form-label fw-medium">Enabled</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="stepEnabled" checked>
+              <label class="form-check-label" for="stepEnabled">
+                Include in runbook
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {# Failure policy #}
+        <div class="mb-3">
+          <label class="form-label fw-medium">On Failure</label>
+          <div class="d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="failurePolicy" id="failureStop"
+                     value="stop" checked>
+              <label class="form-check-label" for="failureStop">
+                <i class="bi bi-stop-circle me-1 text-danger"></i>Stop Runbook
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="failurePolicy" id="failureContinue"
+                     value="continue">
+              <label class="form-check-label" for="failureContinue">
+                <i class="bi bi-arrow-right-circle me-1 text-success"></i>Continue
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {# Notes #}
+        <div class="mb-0">
+          <label class="form-label fw-medium">Operator Notes <span class="text-secondary fw-normal">(optional)</span></label>
+          <textarea id="stepNotes" class="form-control form-control-sm" rows="2"
+                    placeholder="Shown on the launch page to guide the operator"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveStep()">
+          <i class="bi bi-floppy me-1"></i>Save Step
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const RB_ID = {{ rb.id if rb else 'null' }};
+
+// ── Runbook save ────────────────────────────────────────────────────────── //
+function saveRunbook() {
+  const form = document.getElementById('rbForm');
+  const data = new FormData(form);
+  const payload = {};
+  data.forEach((v, k) => { payload[k] = v; });
+  payload.is_enabled = document.getElementById('chkEnabled').checked ? '1' : '0';
+
+  fetch('/ansible/runbooks/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) window.location = `/ansible/runbooks/${d.id}`;
+    else alert(d.message);
+  });
+}
+
+// ── Clone ──────────────────────────────────────────────────────────────── //
+function cloneRunbook(id, name) {
+  if (!confirm(`Clone runbook "${name}"?`)) return;
+  fetch(`/ansible/runbooks/${id}/clone`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => { if (d.success) window.location = d.redirect; else alert(d.message); });
+}
+
+// ── Step type toggle ────────────────────────────────────────────────────── //
+function onStepTypeChange() {
+  const t = document.querySelector('input[name="stepTypeRadio"]:checked').value;
+  document.getElementById('playbookPickerDiv').classList.toggle('d-none', t !== 'playbook');
+  document.getElementById('templatePickerDiv').classList.toggle('d-none', t !== 'template');
+}
+
+// ── Open Add modal ──────────────────────────────────────────────────────── //
+function openAddStep() {
+  document.getElementById('stepModalLabel').textContent = 'Add Step';
+  document.getElementById('editStepId').value = '';
+  document.getElementById('playbookSelect').value = '';
+  document.getElementById('templateSelect').value = '';
+  document.getElementById('stepLabel').value = '';
+  document.getElementById('stepRequired').checked = false;
+  document.getElementById('stepEnabled').checked = true;
+  document.getElementById('failureStop').checked = true;
+  document.getElementById('stepNotes').value = '';
+  document.querySelector('input[name="stepTypeRadio"][value="playbook"]').checked = true;
+  onStepTypeChange();
+}
+
+// ── Open Edit modal ──────────────────────────────────────────────────────── //
+function openEditStep(id, type, pbId, tmplId, label, required, enabled, onFail, notes) {
+  document.getElementById('stepModalLabel').textContent = 'Edit Step';
+  document.getElementById('editStepId').value = id;
+  document.querySelector(`input[name="stepTypeRadio"][value="${type}"]`).checked = true;
+  onStepTypeChange();
+  if (pbId)   document.getElementById('playbookSelect').value = pbId;
+  if (tmplId) document.getElementById('templateSelect').value = tmplId;
+  document.getElementById('stepLabel').value = label || '';
+  document.getElementById('stepRequired').checked = required;
+  document.getElementById('stepEnabled').checked  = enabled;
+  document.querySelector(`input[name="failurePolicy"][value="${onFail}"]`).checked = true;
+  document.getElementById('stepNotes').value = notes || '';
+}
+
+// ── Save step (add or update) ────────────────────────────────────────────── //
+function saveStep() {
+  const stepId   = document.getElementById('editStepId').value;
+  const stepType = document.querySelector('input[name="stepTypeRadio"]:checked').value;
+  const pbId     = document.getElementById('playbookSelect').value;
+  const tmplId   = document.getElementById('templateSelect').value;
+
+  if (stepType === 'playbook' && !pbId) { alert('Please select a playbook.'); return; }
+  if (stepType === 'template' && !tmplId) { alert('Please select a template.'); return; }
+
+  const payload = {
+    step_type:   stepType,
+    playbook_id: stepType === 'playbook' ? pbId : '',
+    template_id: stepType === 'template' ? tmplId : '',
+    label:       document.getElementById('stepLabel').value,
+    is_required: document.getElementById('stepRequired').checked ? '1' : '0',
+    is_enabled:  document.getElementById('stepEnabled').checked  ? '1' : '0',
+    on_failure:  document.querySelector('input[name="failurePolicy"]:checked').value,
+    notes:       document.getElementById('stepNotes').value,
+  };
+
+  const url = stepId
+    ? `/ansible/runbooks/${RB_ID}/steps/${stepId}/update`
+    : `/ansible/runbooks/${RB_ID}/steps/add`;
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) location.reload();
+    else alert(d.message);
+  });
+}
+
+// ── Move ─────────────────────────────────────────────────────────────────── //
+function moveStep(rbId, stepId, dir) {
+  fetch(`/ansible/runbooks/${rbId}/steps/${stepId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ direction: dir }),
+  })
+  .then(r => r.json())
+  .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+
+// ── Delete step ──────────────────────────────────────────────────────────── //
+function deleteStep(rbId, stepId) {
+  if (!confirm('Remove this step?')) return;
+  fetch(`/ansible/runbooks/${rbId}/steps/${stepId}/delete`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => { if (d.success) location.reload(); else alert(d.message); });
+}
+</script>
+{% endblock %}

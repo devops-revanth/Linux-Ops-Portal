@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}Launch {{ rb.name }} | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.summary') }}">Ansible</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.runbooks') }}">Runbooks</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.runbook_detail', rb_id=rb.id) }}">{{ rb.name }}</a></li>
+    <li class="breadcrumb-item active">Launch</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .launch-section { margin-bottom: 1.75rem; }
+  .launch-section-title {
+    font-size: .7rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--lop-muted);
+    margin-bottom: .75rem; padding-bottom: .4rem;
+    border-bottom: 1px solid var(--lop-border);
+  }
+  .step-launch-row {
+    display: flex; align-items: flex-start; gap: .75rem;
+    padding: .6rem .5rem; border-radius: 6px;
+    transition: background .1s;
+  }
+  .step-launch-row:hover { background: rgba(255,255,255,.03); }
+  .step-launch-row .step-num {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .72rem; font-weight: 700;
+    border: 1px solid var(--lop-border); color: var(--lop-muted);
+  }
+  .step-launch-row .step-check { flex-shrink: 0; margin-top: 3px; }
+  .step-launch-row .step-info { flex: 1; }
+  .step-launch-row .step-name { font-weight: 500; font-size: .9rem; }
+  .step-launch-row .step-notes { font-size: .78rem; color: var(--lop-muted); margin-top: .15rem; }
+  .step-launch-row .step-badges { margin-top: .3rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .step-required-badge { font-size:.68rem; }
+  .target-input { display: none; }
+  .target-input.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-xl-7">
+
+      {# ── Header ────────────────────────────────────────────────────────── #}
+      <div class="lop-card mb-4">
+        <div class="lop-card-body d-flex align-items-center gap-3 py-3">
+          <div style="width:42px;height:42px;border-radius:8px;background:rgba(210,153,34,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="bi bi-journal-bookmark-fill" style="color:#d29922;font-size:1.2rem;"></i>
+          </div>
+          <div>
+            <div class="fw-semibold fs-6">{{ rb.name }}</div>
+            {% if rb.description %}<div class="text-secondary small">{{ rb.description }}</div>{% endif %}
+            <div class="text-secondary" style="font-size:.75rem; margin-top:.1rem;">
+              {{ rb.steps | selectattr('is_enabled') | list | length }} step(s)
+              {% if rb.category %} · {{ rb.category }}{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if not cfg or not cfg.enabled or cfg.connection_status != 'Connected' %}
+      <div class="alert alert-danger mb-4">
+        <i class="bi bi-x-circle-fill me-2"></i>
+        <strong>Control node not connected.</strong>
+        <a href="{{ url_for('settings.index') }}" class="alert-link ms-1">Open Settings</a> to configure Ansible.
+      </div>
+      {% endif %}
+
+      <div class="lop-card">
+        <div class="lop-card-body">
+
+          {# ── Target ──────────────────────────────────────────────────────── #}
+          <div class="launch-section">
+            <div class="launch-section-title">Target</div>
+
+            <div class="mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="target_type" id="targetAll"
+                       value="all" checked onchange="onTargetChange()">
+                <label class="form-check-label fw-medium" for="targetAll">Entire Inventory</label>
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="target_type" id="targetEnv"
+                       value="environment" onchange="onTargetChange()">
+                <label class="form-check-label fw-medium" for="targetEnv">Environment</label>
+              </div>
+              <div class="target-input ms-4 mt-1" id="envInput">
+                <select id="envSelect" class="form-select form-select-sm" style="max-width:280px;">
+                  <option value="">— Select environment —</option>
+                  {% for e in envs %}
+                  <option value="{{ e.name }}">{{ e.name }}{% if e.label %} ({{ e.label }}){% endif %}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="target_type" id="targetGroup"
+                       value="group" onchange="onTargetChange()">
+                <label class="form-check-label fw-medium" for="targetGroup">Server Group</label>
+              </div>
+              <div class="target-input ms-4 mt-1" id="groupInput">
+                <input type="text" id="groupValue" class="form-control form-control-sm"
+                       style="max-width:280px;" placeholder="Ansible group name">
+              </div>
+            </div>
+
+            <div class="mb-0">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="target_type" id="targetServer"
+                       value="server" onchange="onTargetChange()">
+                <label class="form-check-label fw-medium" for="targetServer">Single Server</label>
+              </div>
+              <div class="target-input ms-4 mt-1" id="serverInput">
+                <input type="text" id="serverValue" class="form-control form-control-sm"
+                       style="max-width:280px;" placeholder="Hostname or IP">
+              </div>
+            </div>
+          </div>
+
+          {# ── Steps ───────────────────────────────────────────────────────── #}
+          {% set enabled_steps = rb.steps | selectattr('is_enabled') | list %}
+          {% if enabled_steps %}
+          <div class="launch-section">
+            <div class="launch-section-title">Execution Plan</div>
+
+            {% for step in enabled_steps %}
+            <div class="step-launch-row">
+              <div class="step-num">{{ step.position }}</div>
+
+              <div class="step-check">
+                {% if step.is_required %}
+                <input class="form-check-input" type="checkbox" checked disabled
+                       title="Required — cannot be skipped">
+                {% else %}
+                <input class="form-check-input step-opt-check" type="checkbox" checked
+                       data-step-id="{{ step.id }}" id="stepChk{{ step.id }}">
+                {% endif %}
+              </div>
+
+              <div class="step-info">
+                <div class="step-name">
+                  {{ step.display_name }}
+                </div>
+                {% if step.notes %}
+                <div class="step-notes">{{ step.notes }}</div>
+                {% endif %}
+                <div class="step-badges">
+                  {% if step.is_required %}
+                  <span class="badge bg-warning-subtle text-warning border border-warning-subtle step-required-badge">
+                    <i class="bi bi-lock-fill me-1"></i>Required
+                  </span>
+                  {% endif %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle step-required-badge">
+                    {% if step.step_type == 'playbook' %}<i class="bi bi-grid-3x3-gap me-1"></i>{% else %}<i class="bi bi-bookmark me-1"></i>{% endif %}
+                    {{ step.step_type | capitalize }}
+                  </span>
+                  {% if step.on_failure == 'stop' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle step-required-badge">
+                    <i class="bi bi-stop-circle me-1"></i>Fail: Stop
+                  </span>
+                  {% else %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle step-required-badge">
+                    <i class="bi bi-arrow-right-circle me-1"></i>Fail: Continue
+                  </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="alert alert-warning mb-4">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            This runbook has no enabled steps. <a href="{{ url_for('ops.runbook_detail', rb_id=rb.id) }}">Edit the runbook</a> to add steps.
+          </div>
+          {% endif %}
+
+          {# ── Advanced ────────────────────────────────────────────────────── #}
+          <div class="launch-section mb-4">
+            <a class="d-flex align-items-center gap-1 text-secondary text-decoration-none mb-2"
+               data-bs-toggle="collapse" href="#advancedSection" style="font-size:.85rem;">
+              <i class="bi bi-chevron-right" id="advChevron" style="transition:transform .2s;font-size:.7rem;"></i>
+              Advanced
+            </a>
+            <div class="collapse" id="advancedSection">
+              <div class="ps-3 pt-1">
+                <div class="row g-3 mb-3">
+                  <div class="col-auto">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="advBecome">
+                      <label class="form-check-label" for="advBecome">Become (sudo)</label>
+                    </div>
+                  </div>
+                  <div class="col-auto">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="advCheckMode">
+                      <label class="form-check-label" for="advCheckMode">Check Mode (dry run)</label>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label class="form-label fw-medium" style="font-size:.85rem;">Extra Variables</label>
+                  <textarea id="advExtraVars" class="form-control form-control-sm font-monospace" rows="2"
+                            placeholder='key: value&#10;another: value'></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Run button ──────────────────────────────────────────────────── #}
+          <div class="d-grid">
+            <button id="btnRun" class="btn btn-success btn-lg fw-semibold"
+                    onclick="launchRunbook()"
+                    {% if not cfg or not cfg.enabled or cfg.connection_status != 'Connected' or not enabled_steps %}disabled{% endif %}>
+              <i class="bi bi-play-fill me-2"></i>Run Runbook
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Chevron animation for Advanced section
+document.getElementById('advancedSection')?.addEventListener('show.bs.collapse',  () => { document.getElementById('advChevron').style.transform = 'rotate(90deg)'; });
+document.getElementById('advancedSection')?.addEventListener('hide.bs.collapse', () => { document.getElementById('advChevron').style.transform = 'rotate(0deg)'; });
+
+function onTargetChange() {
+  const t = document.querySelector('input[name="target_type"]:checked').value;
+  ['envInput', 'groupInput', 'serverInput'].forEach(id => {
+    document.getElementById(id).classList.remove('active');
+  });
+  if (t === 'environment') document.getElementById('envInput').classList.add('active');
+  if (t === 'group')       document.getElementById('groupInput').classList.add('active');
+  if (t === 'server')      document.getElementById('serverInput').classList.add('active');
+}
+
+function launchRunbook() {
+  const btn = document.getElementById('btnRun');
+  const targetType = document.querySelector('input[name="target_type"]:checked').value;
+
+  let targetValue = '';
+  if (targetType === 'environment') targetValue = document.getElementById('envSelect').value;
+  if (targetType === 'group')       targetValue = document.getElementById('groupValue').value.trim();
+  if (targetType === 'server')      targetValue = document.getElementById('serverValue').value.trim();
+
+  if (targetType !== 'all' && !targetValue) {
+    alert('Please specify a target value.'); return;
+  }
+
+  // Collect skipped optional step IDs
+  const skipped = [];
+  document.querySelectorAll('.step-opt-check:not(:checked)').forEach(chk => {
+    skipped.push(chk.dataset.stepId);
+  });
+
+  const payload = {
+    target_type:   targetType,
+    target_value:  targetValue,
+    become:        document.getElementById('advBecome').checked ? '1' : '0',
+    check_mode:    document.getElementById('advCheckMode').checked ? '1' : '0',
+    extra_vars:    document.getElementById('advExtraVars').value.trim(),
+    skipped_steps: JSON.stringify(skipped),
+  };
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting…';
+
+  fetch('/ansible/runbooks/{{ rb.id }}/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      window.location = d.redirect;
+    } else {
+      alert(d.message);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill me-2"></i>Run Runbook';
+    }
+  })
+  .catch(() => {
+    alert('Request failed. Check the console.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-2"></i>Run Runbook';
+  });
+}
+</script>
+{% endblock %}
