@@ -99,21 +99,59 @@ pull_latest_code() {
 
     case "$source" in
         git)
-            log_step "Fetching from git remote (${source_url})..."
-            if ! git -C "$LOP_APP_DIR" fetch origin >> "$LOG_FILE" 2>&1; then
-                abort "git fetch failed.
-Possible causes:
-  • No network access
-  • Remote URL changed (${source_url})
-  • Authentication required
+            # Verify the installed directory is actually a git repository before
+            # attempting any git operations.  When the installer runs from a
+            # git-cloned source but uses rsync to deploy, .git is excluded from
+            # the copy so $LOP_APP_DIR is NOT a git repo even though
+            # install_source=git.  Attempting git -C $LOP_APP_DIR fetch in that
+            # case fails with "fatal: not a git repository" — which the old code
+            # swallowed and reported as the generic "git fetch failed" message.
+            if ! git -C "$LOP_APP_DIR" rev-parse --git-dir &>/dev/null; then
+                abort "install_source is 'git' but ${LOP_APP_DIR} is not a git repository.
 
-To update without network access, use an archive:
-  sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
+The installer was run from a git-cloned source directory, but the
+application was deployed via rsync which excludes .git.
+
+To update:
+  1. Pull the latest code in your source checkout:
+       git -C <source-dir> pull origin ${source_branch}
+  2. Re-run the installer from that directory:
+       sudo <source-dir>/scripts/install.sh
+
+Alternatively, re-clone and install:
+  git clone ${source_url}
+  sudo <cloned-dir>/scripts/install.sh"
             fi
 
-            # Check for local modifications
+            log_step "Fetching from git remote (${source_url})..."
+
+            # Capture stderr so the real git error is shown on failure.
+            # Do NOT use 'if ! git ... >> logfile 2>&1' — that swallows the
+            # error message and the generic abort is all the operator sees.
+            local _fetch_out _fetch_rc=0
+            _fetch_out=$(git -C "$LOP_APP_DIR" fetch origin 2>&1) || _fetch_rc=$?
+            printf "%s\n" "$_fetch_out" >> "$LOG_FILE"
+            if (( _fetch_rc != 0 )); then
+                abort "git fetch failed (exit ${_fetch_rc}).
+Git output: ${_fetch_out}
+Remote:     ${source_url}
+Possible causes:
+  • No network access to the remote
+  • Remote URL changed
+  • Authentication required (SSH key or token missing)
+
+To update without network access:
+  sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
+            fi
+            log_success "git fetch complete."
+
+            # Count locally-modified tracked files.
+            # grep exits 1 when there are no matches (clean working tree) — guard
+            # with '|| true' so pipefail does not abort the script on a clean repo.
             local dirty
-            dirty=$(git -C "$LOP_APP_DIR" status --porcelain 2>/dev/null | grep -v '^??' | wc -l)
+            dirty=$(git -C "$LOP_APP_DIR" status --porcelain 2>/dev/null \
+                    | { grep -v '^??' || true; } \
+                    | wc -l)
             if (( dirty > 0 )); then
                 log_warn "Local modifications detected in ${LOP_APP_DIR}."
                 confirm "Overwrite local changes and continue?" \
@@ -121,8 +159,14 @@ To update without network access, use an archive:
                 git -C "$LOP_APP_DIR" stash >> "$LOG_FILE" 2>&1 || true
             fi
 
-            git -C "$LOP_APP_DIR" pull origin "$source_branch" >> "$LOG_FILE" 2>&1 \
-                || abort "git pull failed. Check ${LOG_FILE}."
+            local _pull_out _pull_rc=0
+            _pull_out=$(git -C "$LOP_APP_DIR" pull origin "$source_branch" 2>&1) || _pull_rc=$?
+            printf "%s\n" "$_pull_out" >> "$LOG_FILE"
+            if (( _pull_rc != 0 )); then
+                abort "git pull failed (exit ${_pull_rc}).
+Git output: ${_pull_out}
+Check: ${LOG_FILE}"
+            fi
             log_success "Code updated from ${source_branch}."
             ;;
 
