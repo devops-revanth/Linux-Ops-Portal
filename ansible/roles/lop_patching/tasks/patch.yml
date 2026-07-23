@@ -35,6 +35,7 @@
     name: "*"
     state: latest
     update_only: true
+    skip_broken: true
   register: dnf_result_all
   when:
     - ansible_os_family == "RedHat"
