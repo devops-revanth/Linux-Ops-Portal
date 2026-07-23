@@ -75,7 +75,11 @@ detect_install_mode() {
             INSTALL_MODE="repair"
         fi
     elif [[ -d "$LOP_APP_DIR" ]]; then
-        INSTALL_MODE="repair"
+        # Application directory exists but the service was never registered.
+        # This indicates a previous installation that was interrupted or failed
+        # before the systemd unit was written — offer the operator a choice
+        # instead of silently entering repair mode.
+        INSTALL_MODE="incomplete"
     fi
 
     if [[ "$FORCE_REINSTALL" == "true" ]]; then
@@ -393,6 +397,126 @@ do_repair() {
     log_success "Repair finished. Log: ${LOG_FILE}"
 }
 
+# =============================================================================
+# ── INCOMPLETE INSTALLATION RECOVERY ─────────────────────────────────────────
+# =============================================================================
+
+# do_wipe_incomplete
+# Removes the application directory, systemd unit, and runtime files left by a
+# failed or interrupted install.
+#
+# Intentionally preserves:
+#   /etc/lop/lop.env       — operator configuration (SECRET_KEY, DB passwords)
+#   /etc/lop/initial_credentials
+#   /var/backups/lop       — backup archives
+#   PostgreSQL database    — contains data, never removed without explicit flag
+#
+do_wipe_incomplete() {
+    log_section "Removing Incomplete Installation"
+
+    # Stop and disable service if it somehow exists (defensive — normally absent
+    # for incomplete installs, but uninstall.sh may have left a partial unit).
+    if systemd_service_exists "$LOP_BACKEND_SERVICE" 2>/dev/null; then
+        log_step "Stopping and disabling ${LOP_BACKEND_SERVICE}..."
+        systemctl stop    "$LOP_BACKEND_SERVICE" >> "$LOG_FILE" 2>&1 || true
+        systemctl disable "$LOP_BACKEND_SERVICE" >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    # Remove systemd unit file and reload daemon
+    local unit_file="/etc/systemd/system/${LOP_BACKEND_SERVICE}.service"
+    if [[ -f "$unit_file" ]]; then
+        rm -f "$unit_file"
+        systemctl daemon-reload >> "$LOG_FILE" 2>&1 || true
+        log_success "Removed systemd unit: ${unit_file}"
+    fi
+
+    # Remove application directory — includes the venv at ${LOP_VENV_DIR}
+    if [[ -d "$LOP_APP_DIR" ]]; then
+        rm -rf "$LOP_APP_DIR"
+        track_change "Removed application directory: ${LOP_APP_DIR}"
+        log_success "Removed: ${LOP_APP_DIR}"
+    fi
+
+    # Remove runtime configuration (regenerated on fresh install)
+    # Do NOT remove lop.env — it contains the database credentials
+    if [[ -f "$LOP_RUNTIME_FILE" ]]; then
+        rm -f "$LOP_RUNTIME_FILE"
+        log_info "Removed runtime env: ${LOP_RUNTIME_FILE}"
+    fi
+
+    # Remove install state and checksums (outside LOP_APP_DIR in /var/lib/lop)
+    if [[ -f "$LOP_INSTALL_INFO" ]]; then
+        rm -f "$LOP_INSTALL_INFO"
+        log_info "Removed install metadata: ${LOP_INSTALL_INFO}"
+    fi
+    if [[ -d "$LOP_CHECKSUMS_DIR" ]]; then
+        rm -rf "$LOP_CHECKSUMS_DIR"
+        log_info "Removed checksums: ${LOP_CHECKSUMS_DIR}"
+    fi
+
+    log_success "Incomplete installation cleaned up."
+    log_info "Preserved: ${LOP_CONF_DIR}  (configuration and credentials)"
+    log_info "Preserved: ${LOP_BACKUP_DIR} (backup archives)"
+    log_info "Preserved: PostgreSQL database (untouched)"
+}
+
+# handle_incomplete_install
+# Displays a recovery menu when a previous incomplete installation is detected.
+handle_incomplete_install() {
+    printf "\n%s%s╔══════════════════════════════════════════════════╗%s\n" \
+        "$CLR_BOLD" "$CLR_YELLOW" "$CLR_RESET"
+    printf "%s%s║  ⚠  Previous Incomplete Installation Detected   ║%s\n" \
+        "$CLR_BOLD" "$CLR_YELLOW" "$CLR_RESET"
+    printf "%s%s╚══════════════════════════════════════════════════╝%s\n\n" \
+        "$CLR_BOLD" "$CLR_YELLOW" "$CLR_RESET"
+
+    printf "  %s was found but the service was never registered.\n" "$LOP_APP_DIR"
+    printf "  A previous installation was likely interrupted or failed.\n\n"
+
+    printf "  Choose an option:\n\n"
+    printf "  %s1)%s Repair  — re-apply dependencies, virtual environment,\n" \
+        "$CLR_BOLD" "$CLR_RESET"
+    printf "       and systemd service. Preserves all existing files and\n"
+    printf "       the database.\n\n"
+    printf "  %s2)%s Clean reinstall  — remove the incomplete installation\n" \
+        "$CLR_BOLD" "$CLR_RESET"
+    printf "       and perform a fresh install.\n"
+    printf "       Preserves: %s/lop.env, database, backups.\n\n" "$LOP_CONF_DIR"
+
+    local choice
+    if [[ "$YES_ALL" == "true" ]]; then
+        log_info "Auto-selected: Repair (--yes mode)."
+        choice=1
+    else
+        printf "  Enter choice [1]: "
+        read -r choice
+        choice="${choice:-1}"
+    fi
+
+    case "$choice" in
+        1)
+            INSTALL_MODE="repair"
+            confirm "Proceed with repair? (Configuration and database will not be touched)" \
+                || abort "Repair cancelled by user."
+            do_repair
+            ;;
+        2)
+            log_warn "This will remove ${LOP_APP_DIR}, the systemd unit, and runtime files."
+            log_warn "Preserved: ${LOP_CONF_DIR} (config), database, ${LOP_BACKUP_DIR} (backups)."
+            confirm "Remove incomplete installation and perform a fresh install?" \
+                || abort "Reinstall cancelled by user."
+            do_wipe_incomplete
+            INSTALL_MODE="fresh"
+            confirm "Proceed with fresh installation?" \
+                || abort "Installation cancelled by user."
+            do_fresh_install
+            ;;
+        *)
+            abort "Invalid choice '${choice}'. Run the installer again and select 1 or 2."
+            ;;
+    esac
+}
+
 # ── CLI symlink ───────────────────────────────────────────────────────────────
 install_cli_symlink() {
     local lop_bin="$LOP_APP_DIR/lop"
@@ -417,6 +541,8 @@ main() {
     case "$INSTALL_MODE" in
         fresh)
             if [[ -d "$LOP_APP_DIR" ]] && [[ "$FORCE_REINSTALL" != "true" ]]; then
+                # Directory exists but --force was not passed — this can happen
+                # if FORCE_REINSTALL was set externally; treat as repair.
                 log_warn "Directory ${LOP_APP_DIR} already exists but no healthy service found."
                 log_warn "Running in repair mode. Use --force to force a full reinstall."
                 INSTALL_MODE="repair"
@@ -434,6 +560,9 @@ main() {
             confirm "Proceed with repair? (Config and database will not be touched)" \
                 || abort "Repair cancelled by user."
             do_repair
+            ;;
+        incomplete)
+            handle_incomplete_install
             ;;
     esac
 }

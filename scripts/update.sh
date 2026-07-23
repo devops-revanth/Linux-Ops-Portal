@@ -224,19 +224,21 @@ apply_changes() {
     source "$SCRIPT_DIR/lib/python.sh"   # re-source for fresh globals
     if python_find_compatible; then
         log_info "Python runtime: ${SELECTED_PYTHON} (${SELECTED_PYTHON_VERSION}) — OK"
+        # Ensure headers match the current interpreter before any venv/pip work.
+        # Handles the case where the system Python was upgraded (e.g. 3.11 → 3.12)
+        # between updates and the old devel headers no longer match.
+        python_install_devel_headers
     else
         log_warn "No compatible Python found — attempting installation..."
         python_install_best_available
         python_find_compatible || abort "Python installation failed."
+        # Install matching devel headers BEFORE creating the venv.
+        # python_install_best_available already installs them via python_package_name(),
+        # but calling again makes the ordering guarantee explicit and is idempotent.
+        python_install_devel_headers
         python_create_venv --force
         RESTART_NEEDED=true
     fi
-
-    # Ensure the development headers match the currently selected interpreter.
-    # This handles the case where Python was upgraded on the system (e.g.
-    # 3.11 → 3.12) and the old devel headers no longer match.  The function
-    # is idempotent — it skips the install if the package is already present.
-    python_install_devel_headers
 
     # ── Dependencies ─────────────────────────────────────────────────────────
     if checksum_changed "$LOP_APP_DIR/requirements.txt" "requirements"; then

@@ -8,55 +8,150 @@ PG_FOUND_VERSION=""
 PG_FOUND_SERVICE=""
 PG_MIN_VERSION=14
 
+# _pg_probe_version_from_system
+# Called when the detected service name has no embedded version number
+# (i.e. "postgresql" rather than "postgresql-16").  Tries multiple sources
+# to determine the installed major version.
+_pg_probe_version_from_system() {
+    local raw=""
+
+    # Binary in PATH (OS-default packages place postgres in /usr/bin)
+    if cmd_exists postgres; then
+        raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+    fi
+
+    # psql when postgres binary is not in PATH
+    if [[ -z "$raw" ]] && cmd_exists psql; then
+        raw=$(psql --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+    fi
+
+    # RPM database (RHEL/Rocky/AlmaLinux)
+    if [[ -z "$raw" ]] && cmd_exists rpm; then
+        local rpm_ver
+        rpm_ver=$(rpm -q postgresql-server 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        [[ -n "$rpm_ver" ]] && raw="$rpm_ver"
+    fi
+
+    # dpkg (Ubuntu/Debian)
+    if [[ -z "$raw" ]] && cmd_exists dpkg; then
+        local dpkg_ver
+        dpkg_ver=$(dpkg -l 'postgresql-[0-9]*' 2>/dev/null \
+                     | awk '/^ii/{print $2; exit}' \
+                     | grep -oP '(?<=-)\d+$')
+        [[ -n "$dpkg_ver" ]] && raw="${dpkg_ver}.0"
+    fi
+
+    # PG_VERSION file in the known data directory (last resort)
+    if [[ -z "$raw" ]] && [[ -f "${PG_DATA_DIR}/PG_VERSION" ]]; then
+        local pg_major
+        pg_major=$(cat "${PG_DATA_DIR}/PG_VERSION" 2>/dev/null | tr -d '[:space:]')
+        [[ -n "$pg_major" ]] && raw="${pg_major}.0"
+    fi
+
+    if [[ -n "$raw" ]]; then
+        PG_FOUND_VERSION="${raw%%.*}"
+        # Debian/Ubuntu versioned data directory layout
+        if [[ -d "/var/lib/postgresql/${PG_FOUND_VERSION}/main" ]]; then
+            PG_DATA_DIR="/var/lib/postgresql/${PG_FOUND_VERSION}/main"
+            PG_HBA_CONF="/etc/postgresql/${PG_FOUND_VERSION}/main/pg_hba.conf"
+        fi
+    fi
+}
+
 # pg_detect
-# Detects an installed PostgreSQL server and sets PG_FOUND_VERSION.
+# Detects an installed PostgreSQL server and populates:
+#   PG_FOUND_SERVICE  — the exact systemd service name  (e.g. postgresql-16)
+#   PG_FOUND_VERSION  — the installed major version      (e.g. 16)
+#   PG_SERVICE        — alias kept in sync with PG_FOUND_SERVICE
+#   PG_DATA_DIR / PG_HBA_CONF — updated for versioned layouts
+#
+# Detection order:
+#   1. systemd unit-file scan — catches OS-default AND PGDG versioned packages
+#      without relying on the PostgreSQL binaries being in PATH.
+#   2. pg_lsclusters — Debian/Ubuntu cluster manager.
+#   3. postgres binary in PATH — legacy fallback.
+#   4. pg_ctl binary in PATH — last resort.
 pg_detect() {
     PG_FOUND_VERSION=""
     PG_FOUND_SERVICE=""
 
-    # Try pg_lsclusters (Debian/Ubuntu) first
+    # ── Method 1: systemd unit-file scan ─────────────────────────────────────
+    # 'systemctl list-unit-files' shows ALL registered units regardless of
+    # whether they are active.  This is the only method that reliably finds
+    # PGDG versioned packages (e.g. postgresql-16) whose binaries live in
+    # /usr/pgsql-16/bin/ and are NOT added to the system PATH by default.
+    local svc_candidates=(
+        postgresql      # OS-default on Rocky/RHEL AppStream and Ubuntu/Debian
+        postgresql-17   # PGDG versioned — check newest first
+        postgresql-16
+        postgresql-15
+        postgresql-14
+        postgresql-13
+    )
+    for svc in "${svc_candidates[@]}"; do
+        if systemctl list-unit-files "${svc}.service" 2>/dev/null \
+                | grep -q "^${svc}\.service"; then
+            PG_FOUND_SERVICE="$svc"
+            PG_SERVICE="$svc"
+
+            if [[ "$svc" =~ ^postgresql-([0-9]+)$ ]]; then
+                # Versioned PGDG service — version is in the name
+                PG_FOUND_VERSION="${BASH_REMATCH[1]}"
+                if [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
+                    PG_DATA_DIR="/var/lib/pgsql/${PG_FOUND_VERSION}/data"
+                    PG_HBA_CONF="/var/lib/pgsql/${PG_FOUND_VERSION}/data/pg_hba.conf"
+                fi
+            else
+                # 'postgresql' (no version suffix) — probe version separately
+                _pg_probe_version_from_system
+            fi
+            return 0
+        fi
+    done
+
+    # ── Method 2: pg_lsclusters (Debian/Ubuntu) ───────────────────────────────
     if cmd_exists pg_lsclusters; then
         local ver_line
         ver_line=$(pg_lsclusters 2>/dev/null | awk 'NR>1 {print $1; exit}')
         if [[ -n "$ver_line" ]]; then
             PG_FOUND_VERSION="$ver_line"
             PG_FOUND_SERVICE="postgresql@${ver_line}-main"
-            # Update data/hba paths for versioned layout
+            PG_SERVICE="$PG_FOUND_SERVICE"
             PG_DATA_DIR="/var/lib/postgresql/${ver_line}/main"
             PG_HBA_CONF="/etc/postgresql/${ver_line}/main/pg_hba.conf"
             return 0
         fi
     fi
 
-    # Try postgres --version directly
+    # ── Method 3: postgres binary in PATH ────────────────────────────────────
     if cmd_exists postgres; then
         local raw
         raw=$(postgres --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
         PG_FOUND_VERSION="${raw%%.*}"
-        # On RHEL/Rocky/Alma, PGDG packages use /var/lib/pgsql/<major>/data
         if [[ -n "$PG_FOUND_VERSION" ]] && \
            [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
             PG_DATA_DIR="/var/lib/pgsql/${PG_FOUND_VERSION}/data"
             PG_HBA_CONF="/var/lib/pgsql/${PG_FOUND_VERSION}/data/pg_hba.conf"
-            PG_SERVICE="postgresql-${PG_FOUND_VERSION}"
+            PG_FOUND_SERVICE="postgresql-${PG_FOUND_VERSION}"
+            PG_SERVICE="$PG_FOUND_SERVICE"
         fi
-        PG_FOUND_SERVICE="$PG_SERVICE"
+        PG_FOUND_SERVICE="${PG_FOUND_SERVICE:-$PG_SERVICE}"
         return 0
     fi
 
-    # Try pg_ctl
+    # ── Method 4: pg_ctl binary in PATH ──────────────────────────────────────
     if cmd_exists pg_ctl; then
         local raw
         raw=$(pg_ctl --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
         PG_FOUND_VERSION="${raw%%.*}"
-        # On RHEL/Rocky/Alma, PGDG packages use /var/lib/pgsql/<major>/data
         if [[ -n "$PG_FOUND_VERSION" ]] && \
            [[ -d "/var/lib/pgsql/${PG_FOUND_VERSION}/data" ]]; then
             PG_DATA_DIR="/var/lib/pgsql/${PG_FOUND_VERSION}/data"
             PG_HBA_CONF="/var/lib/pgsql/${PG_FOUND_VERSION}/data/pg_hba.conf"
-            PG_SERVICE="postgresql-${PG_FOUND_VERSION}"
+            PG_FOUND_SERVICE="postgresql-${PG_FOUND_VERSION}"
+            PG_SERVICE="$PG_FOUND_SERVICE"
         fi
-        PG_FOUND_SERVICE="$PG_SERVICE"
+        PG_FOUND_SERVICE="${PG_FOUND_SERVICE:-$PG_SERVICE}"
         return 0
     fi
 
@@ -78,52 +173,103 @@ pg_ensure_installed() {
 
     if pg_detect; then
         if pg_version_ok; then
-            log_success "PostgreSQL ${PG_FOUND_VERSION} found — meets minimum (${PG_MIN_VERSION}+). Reusing."
+            log_success "PostgreSQL ${PG_FOUND_VERSION} detected (service: ${PG_FOUND_SERVICE}) — meets minimum (${PG_MIN_VERSION}+)."
             return 0
         else
-            abort "PostgreSQL ${PG_FOUND_VERSION} is installed but LOP requires PostgreSQL ${PG_MIN_VERSION}+.
-Please upgrade PostgreSQL manually before installing LOP.
-After upgrading, re-run: sudo $0"
+            abort "PostgreSQL ${PG_FOUND_VERSION} is installed (service: ${PG_FOUND_SERVICE}) but LOP requires PostgreSQL ${PG_MIN_VERSION}+.
+On Rocky/RHEL, enable a newer AppStream module and reinstall:
+  sudo dnf module enable postgresql:16 -y
+  sudo dnf install postgresql-server -y
+  sudo $0
+On Ubuntu/Debian:
+  sudo apt-get install postgresql-16
+  sudo $0"
         fi
     fi
 
-    log_warn "PostgreSQL not found — installing..."
+    log_warn "PostgreSQL server not found — installing..."
+
+    # On RHEL/Rocky/AlmaLinux, prefer the newest AppStream module available
+    # (postgresql:16) over the default (postgresql:13 on Rocky 9) so we meet
+    # the PG_MIN_VERSION=14 requirement out of the box.
+    case "$OS_FAMILY" in
+        rhel)
+            log_step "Enabling postgresql:16 AppStream module (if available)..."
+            dnf module enable postgresql:16 -y >> "$LOG_FILE" 2>&1 || \
+            dnf module enable postgresql:15 -y >> "$LOG_FILE" 2>&1 || true
+            ;;
+    esac
+
     local pkgs_str
     pkgs_str=$(pg_package_names)
-    # Convert space-separated string to array for safe expansion
     IFS=' ' read -ra _pg_pkgs <<< "$pkgs_str"
     pkg_install "${_pg_pkgs[@]}"
     track_change "Installed PostgreSQL packages: ${pkgs_str}"
 
-    # Re-detect after install
-    if ! pg_detect || ! pg_version_ok; then
-        abort "PostgreSQL installation appeared to succeed but server not found.
+    # Re-detect after install — pg_detect now uses systemd unit scan so it
+    # will find the newly registered service without needing binaries in PATH.
+    if ! pg_detect; then
+        abort "PostgreSQL installation appeared to succeed but no service unit was registered.
 Check ${LOG_FILE} for details."
     fi
-    log_success "PostgreSQL ${PG_FOUND_VERSION} installed."
+    if ! pg_version_ok; then
+        abort "Installed PostgreSQL ${PG_FOUND_VERSION} does not meet the minimum requirement (${PG_MIN_VERSION}+).
+Enable a newer AppStream module manually:
+  sudo dnf module enable postgresql:16 -y
+  sudo dnf install postgresql-server -y
+  sudo $0"
+    fi
+    log_success "PostgreSQL ${PG_FOUND_VERSION} installed (service: ${PG_FOUND_SERVICE})."
 }
 
 # pg_init_cluster
 # Initialises the PostgreSQL data directory if not already done (RHEL-style).
+# Handles both OS-default packages (postgresql-setup in PATH) and PGDG
+# versioned packages whose setup script lives in /usr/pgsql-<ver>/bin/.
 pg_init_cluster() {
     case "$OS_FAMILY" in
         rhel)
             if [[ ! -f "${PG_DATA_DIR}/PG_VERSION" ]]; then
-                log_step "Initialising PostgreSQL data directory..."
-                if cmd_exists postgresql-setup; then
-                    postgresql-setup --initdb >> "$LOG_FILE" 2>&1 \
-                        || abort "postgresql-setup --initdb failed. Check ${LOG_FILE}."
-                else
-                    local initdb_bin
-                    initdb_bin=$(find /usr -name initdb 2>/dev/null | head -1)
-                    [[ -n "$initdb_bin" ]] || abort "initdb not found. PostgreSQL installation may be incomplete."
-                    "$initdb_bin" -D "$PG_DATA_DIR" >> "$LOG_FILE" 2>&1 \
-                        || abort "initdb failed. Check ${LOG_FILE}."
+                log_step "Initialising PostgreSQL data directory (${PG_DATA_DIR})..."
+
+                local setup_bin=""
+
+                # PGDG versioned packages ship a version-specific setup script
+                # at /usr/pgsql-<ver>/bin/postgresql-<ver>-setup
+                if [[ -n "${PG_FOUND_VERSION:-}" ]]; then
+                    local pgdg_setup="/usr/pgsql-${PG_FOUND_VERSION}/bin/postgresql-${PG_FOUND_VERSION}-setup"
+                    if [[ -x "$pgdg_setup" ]]; then
+                        setup_bin="$pgdg_setup"
+                    fi
                 fi
+
+                # OS-default AppStream package: postgresql-setup is in PATH
+                if [[ -z "$setup_bin" ]] && cmd_exists postgresql-setup; then
+                    setup_bin="postgresql-setup"
+                fi
+
+                if [[ -n "$setup_bin" ]]; then
+                    "$setup_bin" --initdb >> "$LOG_FILE" 2>&1 \
+                        || abort "PostgreSQL initdb failed.
+Command: ${setup_bin} --initdb
+Check: ${LOG_FILE}"
+                else
+                    # Direct initdb invocation — search all known binary locations
+                    local initdb_bin
+                    initdb_bin=$(find /usr/pgsql-*/bin /usr/bin /usr/lib/postgresql/*/bin \
+                                     -name initdb 2>/dev/null | head -1)
+                    [[ -n "$initdb_bin" ]] \
+                        || abort "initdb not found. PostgreSQL installation may be incomplete.
+Check: ${LOG_FILE}"
+                    ensure_dir "$PG_DATA_DIR" "postgres:postgres" "700"
+                    "$initdb_bin" -D "$PG_DATA_DIR" >> "$LOG_FILE" 2>&1 \
+                        || abort "initdb -D ${PG_DATA_DIR} failed. Check ${LOG_FILE}."
+                fi
+
                 track_change "Initialised PostgreSQL data directory at ${PG_DATA_DIR}"
                 log_success "PostgreSQL cluster initialised."
             else
-                log_info "PostgreSQL data directory already initialised."
+                log_info "PostgreSQL data directory already initialised (${PG_DATA_DIR})."
             fi
             ;;
         debian)
