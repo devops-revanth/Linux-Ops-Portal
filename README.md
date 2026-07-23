@@ -71,6 +71,43 @@ sudo ./scripts/install.sh
 sudo lop update
 ```
 
+### Service Management
+
+Day-to-day service operations are handled by `scripts/service.sh`:
+
+```bash
+sudo ./scripts/service.sh start    # Start PostgreSQL → lop-backend → nginx
+sudo ./scripts/service.sh stop     # Stop lop-backend and nginx gracefully
+sudo ./scripts/service.sh restart  # Restart services; verify both active
+sudo ./scripts/service.sh reload   # Reload nginx config; reload systemd daemon
+sudo ./scripts/service.sh status   # Concise status summary
+sudo ./scripts/service.sh health   # HTTP health checks (nginx + app endpoint)
+sudo ./scripts/service.sh logs     # Last 50 log lines from lop-backend + nginx
+```
+
+**`status` output example:**
+
+```
+ LOP Service Status
+─────────────────────────────────────
+  LOP Backend :        running
+  nginx :              running
+  PostgreSQL :         running
+─────────────────────────────────────
+  Health :             OK
+```
+
+**`health` output example:**
+
+```
+[STEP] Probing http://localhost/ (nginx → lop-backend)...
+[OK]   http://localhost/              HTTP 200   [PASS]
+[STEP] Probing http://localhost/health (application)...
+[OK]   http://localhost/health        HTTP 200   [PASS]
+
+[OK]   Health check: PASS
+```
+
 ### Management CLI
 
 ```bash
