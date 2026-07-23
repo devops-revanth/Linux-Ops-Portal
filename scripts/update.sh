@@ -9,6 +9,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Parent of scripts/ — the source checkout the operator is running update.sh
+# from.  Identical in structure to how install.sh defines REPO_DIR so that
+# both scripts use the same source directory as the rsync origin.
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 export LOG_FILE="/var/log/lop/update.log"
 
 source "$SCRIPT_DIR/lib/common.sh"
@@ -59,8 +63,10 @@ Cannot determine how LOP was installed. Try: sudo ./install.sh --force"
     # Detect OS for package manager
     detect_os
 
-    # Record pre-update state
-    PRE_UPDATE_HASH=$(git -C "$LOP_APP_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+    # Record pre-update state.
+    # The source checkout ($REPO_DIR) is where .git lives; $LOP_APP_DIR
+    # is the rsync destination and never contains .git.
+    PRE_UPDATE_HASH=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
     PRE_UPDATE_ALEMBIC=$(alembic_current 2>/dev/null || echo "unknown")
     PRE_UPDATE_VERSION=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
 
@@ -99,75 +105,128 @@ pull_latest_code() {
 
     case "$source" in
         git)
-            # Verify the installed directory is actually a git repository before
-            # attempting any git operations.  When the installer runs from a
-            # git-cloned source but uses rsync to deploy, .git is excluded from
-            # the copy so $LOP_APP_DIR is NOT a git repo even though
-            # install_source=git.  Attempting git -C $LOP_APP_DIR fetch in that
-            # case fails with "fatal: not a git repository" — which the old code
-            # swallowed and reported as the generic "git fetch failed" message.
-            if ! git -C "$LOP_APP_DIR" rev-parse --git-dir &>/dev/null; then
-                abort "install_source is 'git' but ${LOP_APP_DIR} is not a git repository.
+            # ── Installer-based rsync deployment model ────────────────────────
+            # The installer copies application files from the source checkout
+            # (REPO_DIR) to the deployed directory (LOP_APP_DIR) via rsync,
+            # intentionally excluding .git.  LOP_APP_DIR therefore never
+            # contains .git — it is NOT a git repository.
+            #
+            # The correct update sequence is:
+            #   1. git pull in the SOURCE CHECKOUT (REPO_DIR)
+            #   2. rsync REPO_DIR → LOP_APP_DIR  (same as copy_application()
+            #      in install.sh)
+            #
+            # update.sh is expected to be run from the source checkout, so
+            # REPO_DIR = $(dirname SCRIPT_DIR) is the right directory.
+            # ─────────────────────────────────────────────────────────────────
 
-The installer was run from a git-cloned source directory, but the
-application was deployed via rsync which excludes .git.
+            # Guard: REPO_DIR must be a git repository.  If update.sh was
+            # somehow invoked from /opt/lop/scripts/ (the deployed copy) rather
+            # than from the source checkout, REPO_DIR won't have .git and we
+            # cannot proceed safely.
+            if ! git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null; then
+                abort "update.sh is not running from a git source checkout.
+update.sh is in: ${REPO_DIR}/scripts
+This directory does not contain a .git folder.
 
-To update:
-  1. Pull the latest code in your source checkout:
-       git -C <source-dir> pull origin ${source_branch}
-  2. Re-run the installer from that directory:
-       sudo <source-dir>/scripts/install.sh
+The git-based update path requires update.sh to be run from within
+the source checkout (the git clone, not the deployed /opt/lop copy).
 
-Alternatively, re-clone and install:
-  git clone ${source_url}
-  sudo <cloned-dir>/scripts/install.sh"
+Correct usage:
+  cd /opt/Linux-Ops-Portal   # or wherever the source checkout lives
+  git pull origin ${source_branch}
+  sudo ./scripts/update.sh"
             fi
 
-            log_step "Fetching from git remote (${source_url})..."
+            log_step "Fetching latest commits from ${source_url}..."
 
-            # Capture stderr so the real git error is shown on failure.
-            # Do NOT use 'if ! git ... >> logfile 2>&1' — that swallows the
-            # error message and the generic abort is all the operator sees.
-            local _fetch_out _fetch_rc=0
-            _fetch_out=$(git -C "$LOP_APP_DIR" fetch origin 2>&1) || _fetch_rc=$?
-            printf "%s\n" "$_fetch_out" >> "$LOG_FILE"
-            if (( _fetch_rc != 0 )); then
-                abort "git fetch failed (exit ${_fetch_rc}).
-Git output: ${_fetch_out}
+            # Capture stdout+stderr together so the real git message is shown
+            # in any abort.  Never redirect both to the log file only — that
+            # hides the error from the operator.
+            local _git_out _git_rc=0
+            _git_out=$(git -C "$REPO_DIR" fetch origin 2>&1) || _git_rc=$?
+            printf "%s\n" "$_git_out" >> "$LOG_FILE"
+            if (( _git_rc != 0 )); then
+                abort "git fetch failed in ${REPO_DIR} (exit ${_git_rc}).
+Git output: ${_git_out}
 Remote:     ${source_url}
 Possible causes:
   • No network access to the remote
   • Remote URL changed
   • Authentication required (SSH key or token missing)
 
-To update without network access:
-  sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
+If you have already pulled manually, ensure you are running update.sh
+from within the source checkout, then retry."
             fi
-            log_success "git fetch complete."
 
-            # Count locally-modified tracked files.
-            # grep exits 1 when there are no matches (clean working tree) — guard
-            # with '|| true' so pipefail does not abort the script on a clean repo.
+            # Check for uncommitted local modifications in the source checkout.
+            # grep -v exits 1 when there are no matching lines (clean tree) —
+            # '|| true' prevents pipefail from aborting on a clean checkout.
             local dirty
-            dirty=$(git -C "$LOP_APP_DIR" status --porcelain 2>/dev/null \
+            dirty=$(git -C "$REPO_DIR" status --porcelain 2>/dev/null \
                     | { grep -v '^??' || true; } \
                     | wc -l)
             if (( dirty > 0 )); then
-                log_warn "Local modifications detected in ${LOP_APP_DIR}."
-                confirm "Overwrite local changes and continue?" \
-                    || abort "Update cancelled. Stash or commit local changes first."
-                git -C "$LOP_APP_DIR" stash >> "$LOG_FILE" 2>&1 || true
+                log_warn "Local modifications detected in ${REPO_DIR}."
+                confirm "Stash local changes and continue?" \
+                    || abort "Update cancelled. Commit or stash local changes first."
+                git -C "$REPO_DIR" stash >> "$LOG_FILE" 2>&1 || true
             fi
 
-            local _pull_out _pull_rc=0
-            _pull_out=$(git -C "$LOP_APP_DIR" pull origin "$source_branch" 2>&1) || _pull_rc=$?
-            printf "%s\n" "$_pull_out" >> "$LOG_FILE"
-            if (( _pull_rc != 0 )); then
-                abort "git pull failed (exit ${_pull_rc}).
-Git output: ${_pull_out}
-Check: ${LOG_FILE}"
+            # Pull the fetched commits into the source checkout.
+            _git_rc=0
+            _git_out=$(git -C "$REPO_DIR" pull --ff-only origin "$source_branch" 2>&1) || _git_rc=$?
+            printf "%s\n" "$_git_out" >> "$LOG_FILE"
+            if (( _git_rc != 0 )); then
+                abort "git pull failed in ${REPO_DIR} (exit ${_git_rc}).
+Git output: ${_git_out}
+Branch: ${source_branch}
+Tip: if you already ran 'git pull' manually before update.sh, this
+is harmless — 'Already up to date.' exits 0 and is not a failure."
             fi
-            log_success "Code updated from ${source_branch}."
+
+            local _new_hash
+            _new_hash=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            log_success "Source checkout at ${source_branch} (${_new_hash})."
+
+            # Sync updated source files to the deployed directory.
+            # Excludes mirror copy_application() in install.sh — keep in sync.
+            log_step "Syncing files to ${LOP_APP_DIR}..."
+            rsync -a --delete \
+                --exclude='.git' \
+                --exclude='__pycache__' \
+                --exclude='*.pyc' \
+                --exclude='.env' \
+                --exclude='venv/' \
+                --exclude='lop/' \
+                --exclude='artifacts/' \
+                --exclude='lib/' \
+                --exclude='node_modules/' \
+                --exclude='.local/' \
+                --exclude='.agents/' \
+                --exclude='.cache/' \
+                --exclude='.pythonlibs/' \
+                --exclude='.replit' \
+                --exclude='.replitignore' \
+                --exclude='.flaskenv' \
+                --exclude='.npmrc' \
+                --exclude='pnpm-lock.yaml' \
+                --exclude='pnpm-workspace.yaml' \
+                --exclude='package.json' \
+                --exclude='tsconfig.json' \
+                --exclude='tsconfig.base.json' \
+                --exclude='docker/' \
+                --exclude='Dockerfile' \
+                --exclude='docker-compose.yml' \
+                --exclude='tests/' \
+                --exclude='attached_assets/' \
+                --exclude='logs/' \
+                --exclude='*.docx' \
+                --exclude='*.xlsx' \
+                "$REPO_DIR/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
+                || abort "rsync from ${REPO_DIR} to ${LOP_APP_DIR} failed. Check ${LOG_FILE}."
+
+            log_success "Files synced to ${LOP_APP_DIR} (${_new_hash})."
             ;;
 
         archive)
@@ -436,13 +495,54 @@ do_rollback() {
     log_section "ROLLBACK"
     log_warn "Rolling back to: ${PRE_UPDATE_VERSION} (${PRE_UPDATE_HASH:0:8})"
 
-    # 1. Code rollback (git installs only)
-    if [[ "$PRE_UPDATE_HASH" != "unknown" ]]; then
-        git -C "$LOP_APP_DIR" checkout "$PRE_UPDATE_HASH" -- . >> "$LOG_FILE" 2>&1 \
-            || log_warn "Code rollback failed — manual intervention may be needed."
-        log_info "Code rolled back to ${PRE_UPDATE_HASH:0:8}."
+    # 1. Code rollback
+    # For git+rsync installs: revert the source checkout to the pre-update
+    # commit, then re-sync to the deployed directory.
+    # For archive/local installs: rely on the pre-update backup.
+    if [[ "$PRE_UPDATE_HASH" != "unknown" ]] \
+        && git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
+
+        git -C "$REPO_DIR" checkout "$PRE_UPDATE_HASH" -- . >> "$LOG_FILE" 2>&1 \
+            || log_warn "Code rollback in source checkout failed — manual intervention may be needed."
+
+        # Re-sync the rolled-back source to the deployed directory.
+        rsync -a --delete \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='venv/' \
+            --exclude='lop/' \
+            --exclude='artifacts/' \
+            --exclude='lib/' \
+            --exclude='node_modules/' \
+            --exclude='.local/' \
+            --exclude='.agents/' \
+            --exclude='.cache/' \
+            --exclude='.pythonlibs/' \
+            --exclude='.replit' \
+            --exclude='.replitignore' \
+            --exclude='.flaskenv' \
+            --exclude='.npmrc' \
+            --exclude='pnpm-lock.yaml' \
+            --exclude='pnpm-workspace.yaml' \
+            --exclude='package.json' \
+            --exclude='tsconfig.json' \
+            --exclude='tsconfig.base.json' \
+            --exclude='docker/' \
+            --exclude='Dockerfile' \
+            --exclude='docker-compose.yml' \
+            --exclude='tests/' \
+            --exclude='attached_assets/' \
+            --exclude='logs/' \
+            --exclude='*.docx' \
+            --exclude='*.xlsx' \
+            "$REPO_DIR/" "$LOP_APP_DIR/" >> "$LOG_FILE" 2>&1 \
+            || log_warn "rsync rollback sync failed — deployed files may be inconsistent."
+
+        log_info "Code rolled back to ${PRE_UPDATE_HASH:0:8} and re-synced to ${LOP_APP_DIR}."
     else
-        log_warn "Code rollback is not available (archive or local-directory install)."
+        log_warn "Code rollback is not available (archive, local-directory, or non-git install)."
         log_warn "The application code cannot be automatically restored."
         if [[ -n "${BACKUP_PATH:-}" ]]; then
             log_info "Restore from backup to recover the previous state:"
@@ -502,7 +602,7 @@ save_update_state() {
 print_update_summary() {
     local new_version new_hash
     new_version=$(version_get "APP_VERSION" "$LOP_APP_DIR/VERSION")
-    new_hash=$(git -C "$LOP_APP_DIR" rev-parse HEAD 2>/dev/null | head -c 8 || echo "unknown")
+    new_hash=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null | head -c 8 || echo "unknown")
 
     printf "\n%s%s╔══════════════════════════════════════════════╗%s\n" "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"
     printf "%s%s║         LOP Update Complete                  ║%s\n"   "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"

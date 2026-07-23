@@ -154,6 +154,7 @@ install_mode=${mode}
 install_source=${source}
 install_source_url=${source_url}
 install_source_branch=${source_branch}
+install_source_dir=${INSTALL_SOURCE_DIR}
 install_version=${version}
 install_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 install_host=$(hostname -f 2>/dev/null || hostname)
@@ -186,12 +187,18 @@ install_info_update() {
 INSTALL_SOURCE=""
 INSTALL_SOURCE_URL=""
 INSTALL_SOURCE_BRANCH=""
+INSTALL_SOURCE_DIR=""
 
 # detect_install_source <directory>
 # Determines how the app was installed. Sets INSTALL_SOURCE, INSTALL_SOURCE_URL,
 # INSTALL_SOURCE_BRANCH.
 detect_install_source() {
     local dir="$1"
+
+    # Always record the filesystem path of the source checkout so that
+    # update.sh can locate it for rsync even when the git remote URL is
+    # stored as install_source_url.
+    INSTALL_SOURCE_DIR="$(realpath "$dir" 2>/dev/null || echo "$dir")"
 
     if [[ -d "${dir}/.git" ]]; then
         INSTALL_SOURCE="git"
@@ -203,7 +210,7 @@ detect_install_source() {
         INSTALL_SOURCE_BRANCH=""
     else
         INSTALL_SOURCE="local"
-        INSTALL_SOURCE_URL=$(realpath "$dir" 2>/dev/null || echo "$dir")
+        INSTALL_SOURCE_URL="$(realpath "$dir" 2>/dev/null || echo "$dir")"
         INSTALL_SOURCE_BRANCH=""
     fi
 
