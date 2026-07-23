@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Ansible Inventory | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('ops.summary') }}">Ansible</a></li>
+    <li class="breadcrumb-item active">Inventory</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h5 class="fw-semibold mb-0"><i class="bi bi-list-ul me-2 text-secondary"></i>Ansible Inventory</h5>
+      <small class="text-secondary">Hosts discovered from the Ansible control node inventory</small>
+    </div>
+    <button class="btn btn-sm btn-outline-primary" id="btnRefreshInventory"
+            {% if not cfg or not cfg.enabled or cfg.connection_status != 'Connected' %}disabled title="Control node not connected"{% endif %}>
+      <i class="bi bi-arrow-repeat me-1"></i>Refresh
+    </button>
+  </div>
+
+  {# ── Filters ─────────────────────────────────────────────────────────────── #}
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-12 col-md-5">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="q" class="form-control" placeholder="Search hostname…" value="{{ search }}">
+      </div>
+    </div>
+    <div class="col-12 col-md-4">
+      <select name="group" class="form-select form-select-sm">
+        <option value="">All Groups</option>
+        {% for g in all_groups %}
+        <option value="{{ g }}" {% if group_filter == g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+      {% if search or group_filter %}
+      <a href="{{ url_for('ops.ansible_inventory') }}" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {# ── Table ───────────────────────────────────────────────────────────────── #}
+  <div class="lop-card">
+    <div class="lop-card-header d-flex align-items-center justify-content-between">
+      <span class="fw-medium">
+        {% if hosts %}{{ hosts | length }} host{% if hosts | length != 1 %}s{% endif %}{% else %}No hosts{% endif %}
+        {% if search or group_filter %}<span class="text-secondary">(filtered)</span>{% endif %}
+      </span>
+      {% if cfg and cfg.last_validation_at %}
+      <small class="text-secondary">Last synced {{ cfg.last_validation_at.strftime('%b %d %H:%M') }}</small>
+      {% endif %}
+    </div>
+
+    {% if hosts %}
+    <div class="table-responsive">
+      <table class="table table-hover lop-table mb-0">
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>Groups</th>
+            <th>Discovered</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for host in hosts %}
+          <tr>
+            <td class="fw-medium font-monospace">{{ host.hostname }}</td>
+            <td>
+              {% if host.groups %}
+                {% for g in host.groups.split(',') %}
+                  {% set g = g.strip() %}
+                  {% if g %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle me-1">{{ g }}</span>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+              <span class="text-secondary">—</span>
+              {% endif %}
+            </td>
+            <td class="text-secondary small">
+              {{ host.discovered_at.strftime('%Y-%m-%d %H:%M') if host.discovered_at else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-list-ul display-6 d-block mb-2 opacity-25"></i>
+      {% if search or group_filter %}
+        No hosts match the current filter.
+      {% elif not cfg or not cfg.enabled %}
+        Ansible is not configured. <a href="{{ url_for('settings.index') }}">Open Settings</a> to connect a control node.
+      {% else %}
+        No inventory hosts discovered yet. Click <strong>Refresh</strong> to sync from the control node.
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const btn = document.getElementById('btnRefreshInventory');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Refreshing…';
+    fetch('{{ url_for("ops.inventory_refresh") }}', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) { location.reload(); }
+        else { alert(d.message || 'Refresh failed.'); btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Refresh'; }
+      })
+      .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Refresh'; });
+  });
+})();
+</script>
+{% endblock %}

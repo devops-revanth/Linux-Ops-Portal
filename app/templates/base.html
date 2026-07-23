@@ -151,17 +151,66 @@
           </a>
         </li>
 
+        {# ── Ansible expandable section ──────────────────────────────── #}
+        {% set ansible_active = request.endpoint and request.endpoint.startswith('ops.') %}
         <li class="nav-item">
-          <a
-            class="nav-link {% if request.endpoint and request.endpoint.startswith('ops.') %}active{% endif %}"
-            href="{{ url_for('ops.catalog') }}"
-            data-bs-toggle="tooltip"
-            data-bs-placement="right"
-            title="Ansible"
-          >
-            <i class="bi bi-gear-wide-connected"></i>
-            <span>Ansible</span>
+          <a class="nav-link lop-nav-parent {% if ansible_active %}active{% endif %}"
+             href="#ansibleSubnav"
+             data-bs-toggle="collapse"
+             aria-expanded="{{ 'true' if ansible_active else 'false' }}"
+             aria-controls="ansibleSubnav">
+            <span class="d-flex align-items-center gap-2">
+              <i class="bi bi-gear-wide-connected"></i>
+              <span>Ansible</span>
+            </span>
+            <i class="bi bi-chevron-down lop-nav-chevron"></i>
           </a>
+          <div class="collapse {% if ansible_active %}show{% endif %}" id="ansibleSubnav">
+            <ul class="nav flex-column lop-subnav">
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.summary' %}active{% endif %}"
+                   href="{{ url_for('ops.summary') }}">
+                  <i class="bi bi-speedometer2"></i><span>Summary</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint in ('ops.jobs', 'ops.job_detail') %}active{% endif %}"
+                   href="{{ url_for('ops.jobs') }}">
+                  <i class="bi bi-play-circle"></i><span>Jobs</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.runbooks' %}active{% endif %}"
+                   href="{{ url_for('ops.runbooks') }}">
+                  <i class="bi bi-journal-bookmark"></i><span>Runbooks</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.templates' %}active{% endif %}"
+                   href="{{ url_for('ops.templates') }}">
+                  <i class="bi bi-bookmark"></i><span>Templates</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.schedules' %}active{% endif %}"
+                   href="{{ url_for('ops.schedules') }}">
+                  <i class="bi bi-calendar-check"></i><span>Schedules</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.catalog' %}active{% endif %}"
+                   href="{{ url_for('ops.catalog') }}">
+                  <i class="bi bi-grid-3x3-gap"></i><span>Playbooks</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link lop-subnav-link {% if request.endpoint == 'ops.ansible_inventory' %}active{% endif %}"
+                   href="{{ url_for('ops.ansible_inventory') }}">
+                  <i class="bi bi-list-ul"></i><span>Inventory</span>
+                </a>
+              </li>
+            </ul>
+          </div>
         </li>
 
         <li class="nav-item">

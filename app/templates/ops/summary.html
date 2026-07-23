@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}Ansible Summary | Linux Operations Portal{% endblock %}
+
+{% block breadcrumbs %}
+<div class="lop-breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active">Ansible</li>
+  </ol>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ansible-stat-card {
+    background: var(--lop-card-bg);
+    border: 1px solid var(--lop-border);
+    border-radius: 8px;
+    padding: 1.1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: border-color .15s;
+  }
+  .ansible-stat-card:hover { border-color: rgba(var(--bs-primary-rgb), .4); text-decoration: none; }
+  .ansible-stat-icon {
+    width: 42px; height: 42px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; flex-shrink: 0;
+  }
+  .ansible-stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+  .ansible-stat-label { font-size: .75rem; color: var(--lop-muted); margin-top: .1rem; }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot-success { background: #3fb950; box-shadow: 0 0 6px rgba(63,185,80,.5); }
+  .status-dot-danger  { background: #f85149; }
+  .status-dot-warning { background: #d29922; }
+  .status-dot-muted   { background: #8b949e; }
+
+  .job-status-running   { color: #58a6ff; }
+  .job-status-pending   { color: #8b949e; }
+  .job-status-completed { color: #3fb950; }
+  .job-status-failed    { color: #f85149; }
+  .job-status-cancelled { color: #8b949e; }
+
+  .quick-action-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: .35rem; padding: .85rem .5rem; border-radius: 8px;
+    border: 1px solid var(--lop-border); background: var(--lop-card-bg);
+    color: var(--lop-text); font-size: .78rem; font-weight: 500;
+    text-decoration: none; transition: border-color .15s, background .15s;
+    cursor: pointer;
+  }
+  .quick-action-btn:hover { border-color: rgba(var(--bs-primary-rgb),.45); background: rgba(var(--bs-primary-rgb),.06); color: var(--lop-text); }
+  .quick-action-btn i { font-size: 1.3rem; color: var(--bs-primary); }
+  .quick-action-btn.btn-danger-soft:hover { border-color: rgba(var(--bs-danger-rgb),.45); background: rgba(var(--bs-danger-rgb),.06); }
+  .quick-action-btn.btn-danger-soft i { color: #f85149; }
+  .quick-action-btn.btn-success-soft:hover { border-color: rgba(63,185,80,.45); background: rgba(63,185,80,.06); }
+  .quick-action-btn.btn-success-soft i { color: #3fb950; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+
+  {# ── Section header ────────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h5 class="fw-semibold mb-0"><i class="bi bi-gear-wide-connected me-2 text-primary"></i>Ansible</h5>
+      <small class="text-secondary">Automation operations workspace</small>
+    </div>
+
+    {% if cfg and cfg.enabled %}
+    <div class="d-flex align-items-center gap-2">
+      {% if cfg.connection_status == 'Connected' %}
+        <span class="status-dot status-dot-success"></span>
+        <span class="text-success small fw-medium">Connected</span>
+        {% if cfg.control_node %}
+          <span class="text-secondary small">— {{ cfg.control_node }}</span>
+        {% endif %}
+      {% else %}
+        <span class="status-dot status-dot-danger"></span>
+        <span class="text-danger small fw-medium">{{ cfg.connection_status }}</span>
+      {% endif %}
+    </div>
+    {% else %}
+    <a href="{{ url_for('settings.index') }}#ansible" class="btn btn-sm btn-outline-warning">
+      <i class="bi bi-exclamation-triangle me-1"></i>Configure Ansible
+    </a>
+    {% endif %}
+  </div>
+
+  {# ── Stat cards ────────────────────────────────────────────────────────────── #}
+  <div class="row g-3 mb-4">
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.jobs') }}?status=running" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(88,166,255,.12);">
+          <i class="bi bi-play-circle-fill" style="color:#58a6ff;"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">{{ stats.jobs_running }}</div>
+          <div class="ansible-stat-label">Running Jobs</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.jobs') }}?status=failed" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(248,81,73,.12);">
+          <i class="bi bi-x-circle-fill" style="color:#f85149;"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">{{ stats.jobs_failed_today }}</div>
+          <div class="ansible-stat-label">Failed Today</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.jobs') }}?status=completed" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(63,185,80,.12);">
+          <i class="bi bi-check-circle-fill" style="color:#3fb950;"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">{{ stats.jobs_ok_today }}</div>
+          <div class="ansible-stat-label">Completed Today</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.catalog') }}" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(var(--bs-primary-rgb),.12);">
+          <i class="bi bi-grid-3x3-gap-fill text-primary"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">{{ stats.playbooks_enabled }}</div>
+          <div class="ansible-stat-label">Playbooks</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.runbooks') }}" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(210,153,34,.12);">
+          <i class="bi bi-journal-bookmark-fill" style="color:#d29922;"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">—</div>
+          <div class="ansible-stat-label">Runbooks</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+      <a href="{{ url_for('ops.ansible_inventory') }}" class="ansible-stat-card h-100 text-decoration-none text-reset d-flex">
+        <div class="ansible-stat-icon" style="background:rgba(139,148,158,.12);">
+          <i class="bi bi-list-ul" style="color:#8b949e;"></i>
+        </div>
+        <div>
+          <div class="ansible-stat-value">{{ stats.inventory_hosts }}</div>
+          <div class="ansible-stat-label">Inventory Hosts</div>
+        </div>
+      </a>
+    </div>
+
+  </div>{# /row stats #}
+
+  <div class="row g-4">
+
+    {# ── Quick actions ─────────────────────────────────────────────────────── #}
+    <div class="col-12 col-lg-4">
+      <div class="lop-card h-100">
+        <div class="lop-card-header d-flex align-items-center gap-2">
+          <i class="bi bi-lightning-charge-fill text-warning"></i>
+          <span class="fw-medium">Quick Actions</span>
+        </div>
+        <div class="lop-card-body">
+          <div class="row g-2">
+
+            <div class="col-6">
+              <a href="{{ url_for('ops.jobs') }}" class="quick-action-btn w-100">
+                <i class="bi bi-play-circle"></i>
+                Create Job
+              </a>
+            </div>
+
+            <div class="col-6">
+              <a href="{{ url_for('ops.runbooks') }}" class="quick-action-btn w-100">
+                <i class="bi bi-journal-bookmark"></i>
+                Run Runbook
+              </a>
+            </div>
+
+            <div class="col-6">
+              <button class="quick-action-btn btn-success-soft w-100" id="btnRefreshInventory"
+                      {% if not cfg or not cfg.enabled or cfg.connection_status != 'Connected' %}disabled{% endif %}>
+                <i class="bi bi-arrow-repeat"></i>
+                Refresh Inventory
+              </button>
+            </div>
+
+            <div class="col-6">
+              <button class="quick-action-btn w-100" id="btnDiscover"
+                      {% if not cfg or not cfg.enabled or cfg.connection_status != 'Connected' %}disabled{% endif %}>
+                <i class="bi bi-search"></i>
+                Discover Playbooks
+              </button>
+            </div>
+
+          </div>
+
+          {% if not cfg or not cfg.enabled %}
+          <div class="alert alert-warning mt-3 py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Ansible is not configured. <a href="{{ url_for('settings.index') }}">Open Settings</a> to connect a control node.
+          </div>
+          {% elif cfg.connection_status != 'Connected' %}
+          <div class="alert alert-danger mt-3 py-2 small mb-0">
+            <i class="bi bi-x-circle me-1"></i>
+            Control node is <strong>{{ cfg.connection_status }}</strong>. Check Settings.
+          </div>
+          {% endif %}
+
+          {# Mini stats row #}
+          <hr class="my-3">
+          <div class="row g-2 text-center">
+            <div class="col-4">
+              <div class="fw-semibold">{{ stats.templates_total }}</div>
+              <div class="text-secondary" style="font-size:.72rem;">Templates</div>
+            </div>
+            <div class="col-4">
+              <div class="fw-semibold">{{ stats.schedules_active }}</div>
+              <div class="text-secondary" style="font-size:.72rem;">Schedules</div>
+            </div>
+            <div class="col-4">
+              <div class="fw-semibold">{{ stats.jobs_total }}</div>
+              <div class="text-secondary" style="font-size:.72rem;">Total Jobs</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    {# ── Recent jobs ───────────────────────────────────────────────────────── #}
+    <div class="col-12 col-lg-8">
+      <div class="lop-card h-100">
+        <div class="lop-card-header d-flex align-items-center justify-content-between">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-clock-history text-primary"></i>
+            <span class="fw-medium">Recent Jobs</span>
+          </div>
+          <a href="{{ url_for('ops.jobs') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+        </div>
+        <div class="lop-card-body p-0">
+          {% if recent_jobs %}
+          <div class="table-responsive">
+            <table class="table table-hover table-sm lop-table mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Playbook</th>
+                  <th>Status</th>
+                  <th>Triggered By</th>
+                  <th>Started</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for job in recent_jobs %}
+                <tr class="cursor-pointer" onclick="window.location='{{ url_for('ops.job_detail', job_id=job.id) }}'">
+                  <td class="text-secondary">#{{ job.id }}</td>
+                  <td>
+                    <span class="fw-medium">{{ job.playbook_name or job.playbook_path }}</span>
+                    {% if job.limit_expression %}
+                    <br><small class="text-secondary">→ {{ job.limit_expression }}</small>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="job-status-{{ job.status }}">
+                      {% if job.status == 'running' %}<i class="bi bi-arrow-repeat spin me-1"></i>
+                      {% elif job.status == 'completed' %}<i class="bi bi-check-circle me-1"></i>
+                      {% elif job.status == 'failed' %}<i class="bi bi-x-circle me-1"></i>
+                      {% elif job.status == 'cancelled' %}<i class="bi bi-slash-circle me-1"></i>
+                      {% else %}<i class="bi bi-hourglass me-1"></i>
+                      {% endif %}
+                      {{ job.status | capitalize }}
+                    </span>
+                  </td>
+                  <td class="text-secondary small">{{ job.triggered_by or '—' }}</td>
+                  <td class="text-secondary small text-nowrap">
+                    {{ job.created_at.strftime('%b %d %H:%M') if job.created_at else '—' }}
+                  </td>
+                  <td class="text-secondary small text-nowrap">
+                    {% if job.duration_seconds is not none %}
+                      {% set d = job.duration_seconds %}
+                      {% if d < 60 %}{{ d }}s
+                      {% else %}{{ (d // 60) }}m {{ (d % 60) }}s{% endif %}
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-5 text-secondary">
+            <i class="bi bi-play-circle display-6 d-block mb-2 opacity-25"></i>
+            No jobs yet. Create a job to get started.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>{# /row #}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  // Discover playbooks
+  const btnDiscover = document.getElementById('btnDiscover');
+  if (btnDiscover) {
+    btnDiscover.addEventListener('click', function () {
+      btnDiscover.disabled = true;
+      btnDiscover.innerHTML = '<i class="bi bi-arrow-repeat spin"></i><span>Discovering…</span>';
+      fetch('{{ url_for("ops.catalog_discover") }}', { method: 'POST', headers: { 'X-CSRFToken': '' } })
+        .then(r => r.json())
+        .then(d => {
+          alert(d.message || 'Discovery started. Refresh in a moment.');
+          btnDiscover.disabled = false;
+          btnDiscover.innerHTML = '<i class="bi bi-search"></i><span>Discover Playbooks</span>';
+        })
+        .catch(() => { btnDiscover.disabled = false; btnDiscover.innerHTML = '<i class="bi bi-search"></i><span>Discover Playbooks</span>'; });
+    });
+  }
+
+  // Refresh inventory
+  const btnRI = document.getElementById('btnRefreshInventory');
+  if (btnRI) {
+    btnRI.addEventListener('click', function () {
+      btnRI.disabled = true;
+      btnRI.innerHTML = '<i class="bi bi-arrow-repeat spin"></i><span>Refreshing…</span>';
+      fetch('{{ url_for("ops.inventory_refresh") }}', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          alert(d.message || 'Done.');
+          btnRI.disabled = false;
+          btnRI.innerHTML = '<i class="bi bi-arrow-repeat"></i><span>Refresh Inventory</span>';
+        })
+        .catch(() => { btnRI.disabled = false; btnRI.innerHTML = '<i class="bi bi-arrow-repeat"></i><span>Refresh Inventory</span>'; });
+    });
+  }
+})();
+</script>
+{% endblock %}

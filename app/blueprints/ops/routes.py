@@ -98,7 +98,119 @@ def _detect_production(limit_expr: str, target_value: str) -> bool:
 @ops_bp.route("/ansible")
 @login_required
 def index():
-    return redirect(url_for("ops.catalog"))
+    return redirect(url_for("ops.summary"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANSIBLE SUMMARY (DASHBOARD)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/ansible/summary")
+@login_required
+def summary():
+    """Ansible section landing page — status cards + recent activity."""
+    from ...models.playbook import Playbook, PlaybookJob, PlaybookJobTemplate, PlaybookSchedule
+    from ...models.ansible_config import AnsibleInventoryHost
+    from datetime import date
+
+    cfg = _get_cfg()
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    stats = {
+        "playbooks_total":   Playbook.query.count(),
+        "playbooks_enabled": Playbook.query.filter_by(is_enabled=True).count(),
+        "templates_total":   PlaybookJobTemplate.query.count(),
+        "schedules_active":  PlaybookSchedule.query.filter_by(is_enabled=True).count(),
+        "inventory_hosts":   AnsibleInventoryHost.query.count(),
+        "jobs_running":      PlaybookJob.query.filter(PlaybookJob.status == "running").count(),
+        "jobs_pending":      PlaybookJob.query.filter(PlaybookJob.status == "pending").count(),
+        "jobs_failed_today": PlaybookJob.query.filter(
+            PlaybookJob.status == "failed",
+            PlaybookJob.created_at >= today_start,
+        ).count(),
+        "jobs_ok_today": PlaybookJob.query.filter(
+            PlaybookJob.status == "completed",
+            PlaybookJob.created_at >= today_start,
+        ).count(),
+        "jobs_total": PlaybookJob.query.count(),
+    }
+
+    recent_jobs = (
+        PlaybookJob.query
+        .order_by(PlaybookJob.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    return render_template(
+        "ops/summary.html",
+        cfg=cfg,
+        stats=stats,
+        recent_jobs=recent_jobs,
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANSIBLE INVENTORY VIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/ansible/inventory")
+@login_required
+def ansible_inventory():
+    """Show hosts discovered from the Ansible inventory."""
+    from ...models.ansible_config import AnsibleInventoryHost
+
+    search = request.args.get("q", "").strip()
+    group  = request.args.get("group", "").strip()
+
+    q = AnsibleInventoryHost.query
+    if search:
+        q = q.filter(AnsibleInventoryHost.hostname.ilike(f"%{search}%"))
+    if group:
+        q = q.filter(AnsibleInventoryHost.groups.ilike(f"%{group}%"))
+
+    hosts = q.order_by(AnsibleInventoryHost.hostname).all()
+
+    # Build group list for filter dropdown
+    all_groups: list[str] = sorted({
+        g.strip()
+        for h in AnsibleInventoryHost.query.all()
+        for g in (h.groups or "").split(",")
+        if g.strip()
+    })
+
+    cfg = _get_cfg()
+
+    return render_template(
+        "ops/ansible_inventory.html",
+        cfg=cfg,
+        hosts=hosts,
+        all_groups=all_groups,
+        search=search,
+        group_filter=group,
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUNBOOKS (placeholder — Phase 2)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ops_bp.route("/ansible/runbooks")
+@login_required
+def runbooks():
+    """Runbooks list — Phase 2 implementation coming soon."""
+    cfg = _get_cfg()
+    return render_template(
+        "ops/runbooks_placeholder.html",
+        cfg=cfg,
+        app_name=current_app.config["APP_NAME"],
+        app_version=current_app.config["APP_VERSION"],
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
