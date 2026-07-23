@@ -32,20 +32,26 @@ After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
-Type=notify
+Type=simple
 User=lop
 Group=lop
 WorkingDirectory=${LOP_APP_DIR}
 EnvironmentFile=${LOP_CONF_FILE}
 EnvironmentFile=-${LOP_RUNTIME_FILE}
 
+# Ensure Python output (tracebacks, print statements) reaches journald immediately.
+# PYTHONUNBUFFERED prevents line-buffering; --capture-output routes worker
+# stdout/stderr through gunicorn's logger.
+Environment=PYTHONUNBUFFERED=1
+
 ExecStart=${LOP_VENV_DIR}/bin/gunicorn \\
     --bind 0.0.0.0:5000 \\
     --workers ${workers} \\
     --worker-class sync \\
     --timeout ${timeout} \\
+    --capture-output \\
     --access-logfile ${LOP_LOG_DIR}/app/access.log \\
-    --error-logfile  ${LOP_LOG_DIR}/app/error.log  \\
+    --error-logfile  -                              \\
     --log-level info \\
     run:app
 
@@ -62,6 +68,9 @@ PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=${LOP_LOG_DIR} ${LOP_DATA_DIR}
 
+# Route all gunicorn output — including Python tracebacks — to journald.
+# Access logs still go to ${LOP_LOG_DIR}/app/access.log on disk.
+# Use: journalctl -u lop-backend -n 100 --no-pager
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=lop-backend
