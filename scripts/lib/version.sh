@@ -84,12 +84,235 @@ alembic_head() {
 }
 
 # alembic_needs_upgrade
-# Returns 0 (true) if the DB is behind the codebase head.
+# Returns 0 (true) if the DB is behind the codebase head, or if the current
+# revision is unknown (empty alembic_version table = fresh DB that needs its
+# first migration run).
 alembic_needs_upgrade() {
     local current head
     current=$(alembic_current)
     head=$(alembic_head)
-    [[ "$current" != "$head" ]] && [[ "$current" != "unknown" ]]
+    # "unknown" current means the alembic_version table is empty or
+    # unreachable — either way, we should attempt an upgrade.
+    [[ "$current" == "unknown" ]] && return 0
+    [[ "$current" != "$head"  ]] && return 0
+    return 1
+}
+
+# ── Automatic migration runner ────────────────────────────────────────────────
+#
+# MIGRATION_APPLIED — set to "true" by run_migrations_verbose when at least
+# one revision was actually applied; "false" when already at head.
+MIGRATION_APPLIED=false
+
+# run_migrations_verbose
+# Self-contained, idempotent database migration runner for use by both
+# install.sh and update.sh.  Performs these steps in order:
+#
+#   1. Verify the virtual environment / Flask binary exists.
+#   2. Confirm the database is reachable (via psql if available).
+#   3. Read the current Alembic revision from the database.
+#   4. Read the codebase head from migration files.
+#   5. Short-circuit with success if already at head (idempotent).
+#   6. Write the pending migration history to the log.
+#   7. Run `flask db upgrade` and capture full output.
+#   8. Classify failures with specific, actionable error messages.
+#   9. Confirm the post-migration revision.
+#  10. Set MIGRATION_APPLIED=true if new revisions were applied.
+#
+# Returns 0 on success (including already-at-head), non-zero on failure.
+# On failure the caller is responsible for rollback / abort.
+run_migrations_verbose() {
+    MIGRATION_APPLIED=false
+
+    local flask_bin="$LOP_VENV_DIR/bin/flask"
+
+    log_section "Database Migrations"
+
+    # ── 1. Verify the virtual environment is installed ────────────────────────
+    if [[ ! -x "$flask_bin" ]]; then
+        log_error "Flask binary not found at: ${flask_bin}"
+        log_error "The LOP virtual environment is not installed or is broken."
+        log_error ""
+        log_error "Fix:  sudo lop repair"
+        return 1
+    fi
+
+    # ── 2. Verify database connectivity ──────────────────────────────────────
+    log_step "Checking database connectivity..."
+    local db_url db_host
+    db_url=$(grep '^DATABASE_URL=' "${LOP_CONF_FILE}" 2>/dev/null | cut -d= -f2- || true)
+
+    if [[ -z "$db_url" ]]; then
+        log_error "DATABASE_URL is not set in ${LOP_CONF_FILE}."
+        log_error "The configuration file may be missing or incomplete."
+        log_error ""
+        log_error "Fix:  sudo lop repair"
+        return 1
+    fi
+
+    # Extract host for display (mask credentials)
+    db_host=$(printf '%s' "$db_url" | grep -oP '@[^/:]+' | head -1 | tr -d '@' || echo "unknown")
+
+    if cmd_exists psql; then
+        local pg_rc=0
+        psql -tAq "$db_url" -c "SELECT 1;" >/dev/null 2>&1 || pg_rc=$?
+        if (( pg_rc != 0 )); then
+            log_error "Cannot connect to the database (host: ${db_host})."
+            log_error ""
+            log_error "Possible causes:"
+            log_error "  • PostgreSQL is not running:"
+            log_error "      sudo systemctl status postgresql"
+            log_error "      sudo systemctl start  postgresql"
+            log_error "  • Wrong credentials — verify DATABASE_URL in ${LOP_CONF_FILE}"
+            log_error "  • Host/port unreachable — check network or firewall rules"
+            return 1
+        fi
+        log_success "Database connection verified (host: ${db_host})."
+    else
+        log_warn "psql not available — skipping pre-flight connectivity check."
+        log_warn "If the database is unreachable, the upgrade step will fail below."
+    fi
+
+    # ── 3. Read the current DB revision ──────────────────────────────────────
+    log_step "Reading Alembic revision..."
+    local pre_rev
+    pre_rev=$(alembic_current 2>/dev/null || echo "unknown")
+    log_info "  Current DB revision : ${pre_rev}"
+
+    # ── 4. Read the codebase head ─────────────────────────────────────────────
+    local head_rev
+    head_rev=$(alembic_head 2>/dev/null || echo "unknown")
+    log_info "  Codebase head       : ${head_rev}"
+
+    # ── 5. Short-circuit when already at head (idempotent) ────────────────────
+    if [[ "$pre_rev" == "$head_rev" ]] && [[ "$pre_rev" != "unknown" ]]; then
+        log_success "Database schema is already at head (${pre_rev}) — no migrations needed."
+        return 0
+    fi
+
+    if [[ "$pre_rev" == "unknown" ]] && [[ "$head_rev" == "unknown" ]]; then
+        log_warn "Cannot determine Alembic revision — attempting upgrade anyway."
+    fi
+
+    # ── 6. Write pending migration history to log ─────────────────────────────
+    log_step "Pending migrations: ${pre_rev} → ${head_rev}"
+    {
+        printf "\n=== Pending migration history (pre-upgrade) ===\n"
+        (
+            cd "$LOP_APP_DIR"
+            load_lop_env
+            FLASK_APP=run.py FLASK_ENV=production "$flask_bin" db history \
+                --rev-range "${pre_rev}:${head_rev}" 2>&1 || true
+        )
+        printf "=== end pending migrations ===\n\n"
+    } >> "$LOG_FILE" 2>/dev/null || true
+
+    # ── 7. Run flask db upgrade ───────────────────────────────────────────────
+    log_step "Applying migrations..."
+    local mig_out mig_rc=0
+    mig_out=$(
+        cd "$LOP_APP_DIR"
+        load_lop_env
+        FLASK_APP=run.py FLASK_ENV=production "$flask_bin" db upgrade 2>&1
+    ) || mig_rc=$?
+
+    # Always write full output to the log — admins can use `lop logs` to review
+    {
+        printf "\n=== flask db upgrade output (exit=%s) ===\n" "$mig_rc"
+        printf "%s\n" "$mig_out"
+        printf "=== end flask db upgrade ===\n\n"
+    } >> "$LOG_FILE" 2>/dev/null || true
+
+    # ── 8. Handle failure ─────────────────────────────────────────────────────
+    if (( mig_rc != 0 )); then
+        # "Already up to date" is not a real failure
+        if echo "$mig_out" | grep -qiE 'already up.to.date|up to date'; then
+            log_success "Database schema is already up to date."
+            return 0
+        fi
+        _migrate_classify_error "$mig_out"
+        return 1
+    fi
+
+    # ── 9. Confirm new revision ───────────────────────────────────────────────
+    local post_rev
+    post_rev=$(alembic_current 2>/dev/null || echo "unknown")
+    log_info "  New DB revision     : ${post_rev}"
+
+    # ── 10. Report and set MIGRATION_APPLIED ─────────────────────────────────
+    if [[ "$post_rev" != "$pre_rev" ]]; then
+        log_success "Migrations applied successfully  (${pre_rev} → ${post_rev})."
+        MIGRATION_APPLIED=true
+    elif [[ "$pre_rev" == "unknown" ]]; then
+        log_success "Migrations applied (revision now: ${post_rev})."
+        MIGRATION_APPLIED=true
+    else
+        log_success "Database schema is up to date (${post_rev})."
+    fi
+
+    return 0
+}
+
+# _migrate_classify_error <output_string>
+# Internal helper: parse migration failure output and emit a specific,
+# actionable error message for each known failure mode.
+_migrate_classify_error() {
+    local out="$1"
+
+    log_error "Database migration FAILED."
+    log_error ""
+
+    if echo "$out" | grep -qiE 'could not connect|connection refused|no route to host|network.*unreachable|the connection.*closed'; then
+        log_error "Cause: database connection lost during upgrade."
+        log_error ""
+        log_error "Verify PostgreSQL is running and accepting connections:"
+        log_error "  sudo systemctl status postgresql"
+        log_error "  sudo journalctl -u postgresql -n 30"
+
+    elif echo "$out" | grep -qiE 'authentication failed|password authentication|role.*does not exist|access denied'; then
+        log_error "Cause: database authentication rejected."
+        log_error ""
+        log_error "Check DATABASE_URL credentials in: ${LOP_CONF_FILE}"
+        log_error "Ensure the LOP database user exists and has access:"
+        log_error "  sudo -u postgres psql -c \"\\du\""
+
+    elif echo "$out" | grep -qiE 'multiple.*heads|more than one.*head|detected two heads|use.*merge'; then
+        log_error "Cause: conflicting migration heads — two branches diverged."
+        log_error ""
+        log_error "To resolve, create a merge migration in the source checkout:"
+        log_error "  flask db merge heads -m 'merge diverged branches'"
+        log_error "Commit the resulting file, then re-deploy."
+
+    elif echo "$out" | grep -qiE 'FileNotFoundError|No such file or directory|can.t find.*script|no migration file'; then
+        log_error "Cause: migration script file is missing from the deployment."
+        log_error ""
+        log_error "Ensure app/migrations/versions/ was fully synced to ${LOP_APP_DIR}."
+        log_error "Re-run the update:  sudo lop update"
+
+    elif echo "$out" | grep -qiE 'ProgrammingError|relation.*already exists|column.*already exists|duplicate.*object'; then
+        log_error "Cause: schema conflict — the database contains objects that"
+        log_error "       conflict with what the migration expects to create."
+        log_error ""
+        log_error "This can occur after a partially-applied previous migration."
+        log_error "Inspect the database to resolve the conflict, then retry."
+        log_error "Log details: ${LOG_FILE}"
+
+    elif echo "$out" | grep -qiE 'OperationalError.*disk|disk.*full|no space left'; then
+        log_error "Cause: disk full — the database ran out of storage during migration."
+        log_error ""
+        log_error "Free disk space and retry:  sudo lop update"
+
+    else
+        log_error "Cause: unknown (see full output below)."
+    fi
+
+    log_error ""
+    log_error "── Full migration output ─────────────────────────────────"
+    while IFS= read -r line; do
+        log_error "  ${line}"
+    done <<< "$out"
+    log_error "──────────────────────────────────────────────────────────"
+    log_error "Full log: ${LOG_FILE}"
 }
 
 # ── Checksum helpers ──────────────────────────────────────────────────────────

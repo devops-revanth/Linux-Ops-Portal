@@ -459,19 +459,21 @@ apply_changes() {
     fi
 
     # ── Database migrations ───────────────────────────────────────────────────
-    if alembic_head_changed; then
-        log_step "New database migrations detected — running upgrade..."
-        lop_flask db upgrade >> "$LOG_FILE" 2>&1 \
-            || {
-                log_error "Database migration failed — initiating rollback."
-                do_rollback
-                exit 1
-            }
+    # run_migrations_verbose is always called — it is idempotent (exits
+    # immediately with success when the schema is already at head) and does
+    # NOT rely on a saved checksum file, so it works correctly even when:
+    #   • code was pulled manually before running 'lop update'
+    #   • the checksums directory was wiped or was never initialised
+    #   • this is the first update after an install that predates this feature
+    run_migrations_verbose \
+        || {
+            log_error "Initiating rollback due to migration failure."
+            do_rollback
+            exit 1
+        }
+    if [[ "$MIGRATION_APPLIED" == "true" ]]; then
         MIGRATIONS_RAN=true
         RESTART_NEEDED=true
-        log_success "Database migrations applied."
-    else
-        log_info "No new database migrations — skipping."
     fi
 
     # ── Service restart ───────────────────────────────────────────────────────

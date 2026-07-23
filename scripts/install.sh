@@ -287,11 +287,9 @@ EOF
 
 # ── Run database migrations ───────────────────────────────────────────────────
 run_migrations() {
-    log_step "Running database migrations..."
-    lop_flask db upgrade >> "$LOG_FILE" 2>&1 \
-        || abort "Database migrations failed. Check ${LOG_FILE}."
+    run_migrations_verbose \
+        || abort "Database migrations failed. See the output above and ${LOG_FILE} for details."
     track_change "Ran database migrations"
-    log_success "Database migrations complete."
 }
 
 # ── Print installation summary ────────────────────────────────────────────────
