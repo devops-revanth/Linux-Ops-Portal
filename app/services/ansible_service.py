@@ -715,6 +715,18 @@ class AnsibleService:
             result["hosts"]      = hosts
             result["host_count"] = len(hosts)
 
+            # Fallback: if ansible-inventory returned 0 hosts, parse the file directly.
+            # This handles plain INI files with bare hostnames that some older
+            # ansible-inventory versions under-report.
+            if result["host_count"] == 0 and self.inventory_path:
+                fallback = self._count_inventory_file_hosts(client, self.inventory_path)
+                if fallback > 0:
+                    result["host_count"] = fallback
+                    result["errors"].append(
+                        "ansible-inventory returned 0 hosts; "
+                        "fell back to direct INI file parsing."
+                    )
+
             # ── All groups (including container groups with only children) ── #
             # A group entry looks like:
             #   { "hosts": [...], "children": [...], "vars": {...} }
@@ -750,6 +762,41 @@ class AnsibleService:
                     pass
 
         return result
+
+    def _count_inventory_file_hosts(self, client, path: str) -> int:
+        """
+        Count unique host entries in a static INI inventory file via SSH cat.
+
+        Handles:
+          - Lines preceded by [group] headers (host lines)
+          - Lines preceded by [group:vars] headers (skipped — variable assignments)
+          - Comment lines (#) and blank lines (skipped)
+          - Host lines with trailing variable assignments (hostname ansible_user=x)
+          - Port suffixes on hostnames (host:22)
+        """
+        try:
+            out, _, _ = self._exec(client, f"cat {_q(path)}", timeout=15)
+        except Exception:
+            return 0
+
+        in_vars_section = False
+        hosts: set[str] = set()
+        for line in out.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("["):
+                in_vars_section = ":vars]" in stripped.lower()
+                continue
+            if in_vars_section:
+                continue
+            # First whitespace-delimited token is the hostname (may have :port)
+            token = stripped.split()[0]
+            hostname = token.split(":")[0]
+            if hostname:
+                hosts.add(hostname)
+
+        return len(hosts)
 
     # ── Playbook discovery ────────────────────────────────────────────────── #
 

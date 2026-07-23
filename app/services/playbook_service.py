@@ -435,7 +435,7 @@ def launch_job(job_id: int, app) -> None:
         db.session.commit()
 
         log_action(
-            "playbook.job.start",
+            "playbook.job.run",
             target     = job.playbook_name or job.playbook_path,
             details    = f"job_id={job.id} limit={job.limit_expression!r}",
             result     = "success",

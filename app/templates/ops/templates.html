@@ -127,7 +127,11 @@
             <label class="form-label small fw-medium">Playbook</label>
             <select id="t-playbook" class="form-select form-select-sm">
               <option value="">Select playbook…</option>
-              {# Populated by existing playbooks #}
+              {% for pb in playbooks %}
+              <option value="{{ pb.id }}"
+                      data-path="{{ pb.relative_path }}"
+                      data-name="{{ pb.name }}">{{ pb.name }}</option>
+              {% endfor %}
             </select>
           </div>
           <div class="col-sm-6">
@@ -200,29 +204,27 @@
 </div>
 
 <script>
-// Populate playbook dropdown
-var _playbooks = [
-  {% for pb in (cfg and cfg.enabled and []) or [] %}{% endfor %}
-  {# We load these dynamically from the catalog page #}
-];
-
 function openTemplateModal(data, id) {
   var modal = new bootstrap.Modal(document.getElementById('templateModal'));
   document.getElementById('tmpl-modal-title').textContent = id ? 'Edit Template' : 'New Template';
   document.getElementById('t-id').value         = id || '';
-  document.getElementById('t-name').value       = '';
-  document.getElementById('t-desc').value       = '';
-  document.getElementById('t-limit').value      = '';
-  document.getElementById('t-inv-type').value   = 'default';
-  document.getElementById('t-inv-value').value  = '';
-  document.getElementById('t-tags').value       = '';
-  document.getElementById('t-skip-tags').value  = '';
-  document.getElementById('t-forks').value      = '5';
-  document.getElementById('t-verbosity').value  = '0';
-  document.getElementById('t-become').checked   = false;
-  document.getElementById('t-check').checked    = false;
-  document.getElementById('t-diff').checked     = false;
-  document.getElementById('t-extra-vars').value = '';
+  document.getElementById('t-name').value       = (data && data.name) ? data.name : '';
+  document.getElementById('t-desc').value       = (data && data.description) ? data.description : '';
+  document.getElementById('t-limit').value      = (data && data.limit_expression) ? data.limit_expression : '';
+  document.getElementById('t-inv-type').value   = (data && data.inventory_type)  ? data.inventory_type  : 'default';
+  document.getElementById('t-inv-value').value  = (data && data.inventory_value) ? data.inventory_value : '';
+  document.getElementById('t-tags').value       = (data && data.tags)      ? data.tags      : '';
+  document.getElementById('t-skip-tags').value  = (data && data.skip_tags) ? data.skip_tags : '';
+  document.getElementById('t-forks').value      = (data && data.forks)     ? data.forks     : '5';
+  document.getElementById('t-verbosity').value  = (data && data.verbosity) ? data.verbosity : '0';
+  document.getElementById('t-become').checked   = data ? (data.become === true || data.become === 'true' || data.become === '1') : false;
+  document.getElementById('t-check').checked    = data ? (data.check_mode === true || data.check_mode === 'true' || data.check_mode === '1') : false;
+  document.getElementById('t-diff').checked     = data ? (data.diff_mode === true || data.diff_mode === 'true' || data.diff_mode === '1') : false;
+  document.getElementById('t-extra-vars').value = (data && data.extra_vars) ? data.extra_vars : '';
+  // Restore playbook selection when editing
+  var pbSel = document.getElementById('t-playbook');
+  var pbId  = data && (data.playbook_id || '');
+  pbSel.value = pbId ? String(pbId) : '';
   document.getElementById('tmpl-error').style.display = 'none';
   modal.show();
 }
@@ -233,21 +235,29 @@ function saveTemplate() {
   if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
   errEl.style.display = 'none';
 
+  var pbSel  = document.getElementById('t-playbook');
+  var pbOpt  = pbSel.selectedOptions[0];
+  var pbId   = pbSel.value;
+  var pbPath = pbOpt ? (pbOpt.dataset.path || '') : '';
+  var pbName = pbOpt ? (pbOpt.dataset.name || pbOpt.textContent.trim()) : '';
   var payload = {
-    id:              document.getElementById('t-id').value,
-    name:            name,
-    description:     document.getElementById('t-desc').value.trim(),
+    id:               document.getElementById('t-id').value,
+    name:             name,
+    description:      document.getElementById('t-desc').value.trim(),
+    playbook_id:      pbId || null,
+    playbook_path:    pbPath,
+    playbook_name:    pbName,
     limit_expression: document.getElementById('t-limit').value.trim(),
-    inventory_type:  document.getElementById('t-inv-type').value,
-    inventory_value: document.getElementById('t-inv-value').value.trim(),
-    tags:            document.getElementById('t-tags').value.trim(),
-    skip_tags:       document.getElementById('t-skip-tags').value.trim(),
-    forks:           document.getElementById('t-forks').value,
-    verbosity:       document.getElementById('t-verbosity').value,
-    become:          document.getElementById('t-become').checked,
-    check_mode:      document.getElementById('t-check').checked,
-    diff_mode:       document.getElementById('t-diff').checked,
-    extra_vars:      document.getElementById('t-extra-vars').value.trim(),
+    inventory_type:   document.getElementById('t-inv-type').value,
+    inventory_value:  document.getElementById('t-inv-value').value.trim(),
+    tags:             document.getElementById('t-tags').value.trim(),
+    skip_tags:        document.getElementById('t-skip-tags').value.trim(),
+    forks:            document.getElementById('t-forks').value,
+    verbosity:        document.getElementById('t-verbosity').value,
+    become:           document.getElementById('t-become').checked,
+    check_mode:       document.getElementById('t-check').checked,
+    diff_mode:        document.getElementById('t-diff').checked,
+    extra_vars:       document.getElementById('t-extra-vars').value.trim(),
   };
 
   fetch('{{ url_for("ops.template_save") }}', {

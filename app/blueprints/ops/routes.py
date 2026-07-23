@@ -345,7 +345,7 @@ def launch():
     threading.Thread(target=_run, daemon=True).start()
 
     log_action(
-        "playbook.job.launch",
+        "playbook.job.create",
         target  = job.playbook_name,
         details = f"job_id={job.id} limit={job.limit_expression!r} become={job.become}",
         result  = "success",
@@ -408,6 +408,11 @@ def jobs():
         "cancelled": PlaybookJob.query.filter(PlaybookJob.status == "cancelled").count(),
     }
 
+    from ...models.playbook import Playbook
+    import json as _json
+    playbooks_qs = Playbook.query.filter_by(is_enabled=True).order_by(Playbook.name).all()
+    playbooks_json = _json.dumps([pb.to_dict() for pb in playbooks_qs])
+
     return render_template(
         "ops/jobs.html",
         jobs=job_rows,
@@ -418,6 +423,8 @@ def jobs():
         status_filter=status,
         status_counts=status_counts,
         search=search,
+        cfg=_get_cfg(),
+        playbooks_json=playbooks_json,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
@@ -459,6 +466,112 @@ def job_output(job_id: int):
         "hosts_failed": job.hosts_failed,
         "hosts_changed": job.hosts_changed,
     })
+
+
+@ops_bp.route("/ansible/catalog/<int:pb_id>/json")
+@login_required
+def catalog_json(pb_id: int):
+    """AJAX: return a single enabled playbook as JSON (for the jobs wizard)."""
+    from ...models.playbook import Playbook
+    pb = Playbook.query.get_or_404(pb_id)
+    return jsonify(pb.to_dict())
+
+
+@ops_bp.route("/ansible/jobs/<int:job_id>/rerun", methods=["POST"])
+@login_required
+def job_rerun(job_id: int):
+    """AJAX: clone a completed/failed/cancelled job and re-run it."""
+    from ...models.playbook import PlaybookJob
+
+    orig = PlaybookJob.query.get_or_404(job_id)
+    if orig.status in ("pending", "running"):
+        return jsonify({"success": False, "message": "Job is still active — stop it first."})
+
+    cfg = _get_cfg()
+    if cfg is None or not cfg.enabled or cfg.connection_status != "Connected":
+        return jsonify({"success": False, "message": "Control node not connected."})
+
+    now = datetime.now(timezone.utc)
+    job = PlaybookJob(
+        playbook_id      = orig.playbook_id,
+        playbook_path    = orig.playbook_path,
+        playbook_name    = orig.playbook_name,
+        template_id      = orig.template_id,
+        triggered_by     = _username(),
+        status           = "pending",
+        target_type      = orig.target_type,
+        target_value     = orig.target_value,
+        limit_expression = orig.limit_expression,
+        host_count       = orig.host_count,
+        inventory_type   = orig.inventory_type,
+        inventory_value  = orig.inventory_value,
+        become           = orig.become,
+        check_mode       = orig.check_mode,
+        diff_mode        = orig.diff_mode,
+        forks            = orig.forks,
+        verbosity        = orig.verbosity,
+        tags             = orig.tags,
+        skip_tags        = orig.skip_tags,
+        extra_vars       = orig.extra_vars,
+        created_at       = now,
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    app = current_app._get_current_object()
+
+    def _run():
+        from ...services.playbook_service import launch_job
+        try:
+            launch_job(job.id, app)
+        except Exception:
+            logger.exception("job_rerun launch_job(%d) failed", job.id)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    commit_audit(
+        "playbook.job.rerun",
+        target  = job.playbook_name,
+        details = f"new_job_id={job.id} original_job_id={job_id}",
+        result  = "success",
+    )
+    return jsonify({
+        "success":  True,
+        "job_id":   job.id,
+        "message":  f"Job #{job.id} started.",
+        "redirect": url_for("ops.job_detail", job_id=job.id),
+    })
+
+
+@ops_bp.route("/ansible/inventory/refresh", methods=["POST"])
+@login_required
+def inventory_refresh():
+    """AJAX: re-run validate_inventory() and persist the host count."""
+    cfg = _get_cfg()
+    if cfg is None or not cfg.enabled:
+        return jsonify({"success": False, "message": "Ansible not configured."})
+    if cfg.connection_status != "Connected":
+        return jsonify({"success": False, "message": "Control node not connected."})
+
+    try:
+        from ...services.ansible_service import AnsibleService
+        svc    = AnsibleService.from_config(cfg)
+        result = svc.validate_inventory()
+        if result.get("success"):
+            cfg.last_inventory_hosts = result["host_count"]
+            db.session.commit()
+        return jsonify({
+            "success":    result.get("success", False),
+            "host_count": result.get("host_count", 0),
+            "message":    (
+                f"{result['host_count']} host(s) found."
+                if result.get("success")
+                else (result.get("errors") or ["Inventory validation failed"])[0]
+            ),
+        })
+    except Exception as exc:
+        logger.exception("inventory_refresh failed")
+        return jsonify({"success": False, "message": str(exc)})
 
 
 @ops_bp.route("/ansible/jobs/<int:job_id>/cancel", methods=["POST"])
@@ -507,11 +620,14 @@ def templates():
         .order_by(PlaybookJobTemplate.name)
         .all()
     )
+    from ...models.playbook import Playbook
     cfg = _get_cfg()
+    playbooks = Playbook.query.filter_by(is_enabled=True).order_by(Playbook.name).all()
     return render_template(
         "ops/templates.html",
         templates=tmpl_list,
         cfg=cfg,
+        playbooks=playbooks,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
