@@ -2,11 +2,13 @@
 # =============================================================================
 # LOP — Backup script
 # Usage: sudo ./backup.sh [--quiet] [--retention <days>]
+#        sudo ./backup.sh [--quiet] [--retention=<days>]
 #
 # Creates a timestamped archive containing:
 #   - PostgreSQL database dump
 #   - Configuration (/etc/lop/lop.env)
 #   - Version and schema metadata
+#   - Runtime data directory (/var/lib/lop)
 # =============================================================================
 set -euo pipefail
 
@@ -22,13 +24,17 @@ QUIET=false
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 
 parse_common_flags "$@"
+_prev_arg=""
 for arg in "${REMAINING_ARGS[@]:-}"; do
     case "$arg" in
         --quiet)           QUIET=true ;;
-        --retention)       : ;;   # next arg handled below
         --retention=*)     RETENTION_DAYS="${arg#--retention=}" ;;
+        --retention)       : ;;   # value is the next positional arg (captured below)
+        *)  [[ "$_prev_arg" == "--retention" ]] && RETENTION_DAYS="$arg" ;;
     esac
+    _prev_arg="$arg"
 done
+unset _prev_arg
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 _info() { [[ "$QUIET" != "true" ]] && log_info "$@" || true; }
@@ -58,6 +64,15 @@ main() {
     _info "Creating backup: ${archive_name}"
 
     # ── 1. Database dump ──────────────────────────────────────────────────────
+    # Check available disk space before starting — a full disk leaves a corrupt archive
+    local _avail_kb _avail_mb
+    _avail_kb=$(df -k "$LOP_BACKUP_DIR" 2>/dev/null | awk 'NR==2{print $4}' || echo 0)
+    _avail_mb=$(( ${_avail_kb:-0} / 1024 ))
+    if (( _avail_mb < 200 )); then
+        log_warn "Low disk space: only ${_avail_mb}MB available in ${LOP_BACKUP_DIR}. Backup may fail on full disk."
+    fi
+    unset _avail_kb _avail_mb
+
     pg_ensure_service
     local db_name
     db_name=$(grep '^LOP_DB_NAME=' "$LOP_CONF_FILE" | cut -d= -f2 || echo "lop_db")
@@ -81,7 +96,14 @@ main() {
     # ── 4. Install info ───────────────────────────────────────────────────────
     [[ -f "$LOP_INSTALL_INFO" ]] && cp "$LOP_INSTALL_INFO" "$work_dir/install.info"
 
-    # ── 5. Create archive ─────────────────────────────────────────────────────
+    # ── 5. Runtime data directory ─────────────────────────────────────────────
+    # Contains install.info, checksums, and any filesystem state not in the DB.
+    if [[ -d "$LOP_DATA_DIR" ]]; then
+        cp -a "$LOP_DATA_DIR" "$work_dir/data" 2>/dev/null || true
+        _info "Runtime data directory backed up."
+    fi
+
+    # ── 6. Create archive ─────────────────────────────────────────────────────
     tar -czf "$archive_path" -C "$LOP_TMP_DIR" "backup_${ts}" 2>> "$LOG_FILE" \
         || abort "Failed to create backup archive. Check ${LOG_FILE}."
     chmod 600 "$archive_path"
@@ -94,7 +116,7 @@ main() {
     archive_size=$(du -sh "$archive_path" | cut -f1)
     _success "Backup created: ${archive_path} (${archive_size})"
 
-    # ── 6. Retention policy ───────────────────────────────────────────────────
+    # ── 7. Retention policy ───────────────────────────────────────────────────
     local deleted=0
     while IFS= read -r old_backup; do
         rm -f "$old_backup"

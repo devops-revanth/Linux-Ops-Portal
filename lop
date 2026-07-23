@@ -59,6 +59,7 @@ ${_B}Usage:${_R}  lop <command> [options]
 
 ${_B}Lifecycle:${_R}
   ${_C}install${_R}       [--yes] [--force]            Install or repair LOP
+  ${_C}repair${_R}        [--yes]                      Re-apply dependencies and service unit
   ${_C}update${_R}        [--yes] [--skip-backup]      Update to latest version
   ${_C}uninstall${_R}     [--yes] [--preserve-data]    Remove LOP
 
@@ -74,6 +75,7 @@ ${_B}Operations:${_R}
 
 ${_B}Examples:${_R}
   sudo lop install
+  sudo lop repair
   sudo lop update
   sudo lop backup
   sudo lop restore /var/backups/lop/lop_backup_2026-07-22_12-00-00.tar.gz
@@ -155,6 +157,11 @@ shift 2>/dev/null || true
 case "$COMMAND" in
     install)
         exec "$SCRIPTS_DIR/install.sh" "$@"
+        ;;
+    repair)
+        # Force repair mode regardless of health check outcome.
+        # Passes --repair to install.sh which sets INSTALL_MODE=repair unconditionally.
+        exec "$SCRIPTS_DIR/install.sh" --repair "$@"
         ;;
     update|upgrade)
         exec "$SCRIPTS_DIR/update.sh" "$@"

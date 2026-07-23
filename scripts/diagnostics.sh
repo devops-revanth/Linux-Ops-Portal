@@ -74,11 +74,11 @@ main() {
     # ── 3. Application logs ───────────────────────────────────────────────────
     mkdir -p "$work_dir/app_logs"
     if [[ -d "$LOP_LOG_DIR" ]]; then
-        find "$LOP_LOG_DIR" -name "*.log" -type f 2>/dev/null | while read -r f; do
-            # Tail each log to 2000 lines
-            local base; base=$(basename "$f")
-            tail -2000 "$f" > "$work_dir/app_logs/${base}" 2>/dev/null || true
-        done
+        while IFS= read -r f; do
+            # Tail each log to 2000 lines; base computed outside pipeline to avoid
+            # `local` inside subshell which is valid but misleading in some shells
+            tail -2000 "$f" > "$work_dir/app_logs/$(basename "$f")" 2>/dev/null || true
+        done < <(find "$LOP_LOG_DIR" -name "*.log" -type f 2>/dev/null)
     else
         echo "(no log directory)" > "$work_dir/app_logs/note.txt"
     fi
@@ -243,19 +243,21 @@ main() {
         fi
 
         echo ""
-        echo "=== VMware vCenter Integration ==="
+        echo "=== VMware vCenter Integration (multi-vCenter — vmware_connections) ==="
         if cmd_exists psql && [[ -n "$_db_url" ]]; then
             psql -tA "$_db_url" 2>/dev/null <<'EOSQL' || echo "(table not found — migration may be pending)"
 SELECT
+  '--- vCenter id: ' || id::text || ' ---',
   'enabled:          ' || enabled::text,
   'vcenter_host:     ' || COALESCE(vcenter_host, '(not set)'),
+  'port:             ' || COALESCE(port::text, '443'),
   'connection_status:' || COALESCE(connection_status, 'Not Tested'),
-  'sync_schedule:    ' || COALESCE(sync_schedule, 'none'),
+  'last_test_at:     ' || COALESCE(last_test_at::text, 'never'),
   'last_sync_at:     ' || COALESCE(last_sync_at::text, 'never'),
-  'last_sync_count:  ' || COALESCE(last_sync_count::text, '0') || ' VMs',
-  'last_sync_status: ' || COALESCE(last_sync_status, '—')
-FROM vmware_config
-LIMIT 1;
+  'last_sync_ok_at:  ' || COALESCE(last_sync_ok_at::text, 'never'),
+  'last_sync_fail_at:' || COALESCE(last_sync_fail_at::text, 'never')
+FROM vmware_connections
+ORDER BY id;
 EOSQL
         else
             echo "(psql not available or DATABASE_URL not set)"

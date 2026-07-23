@@ -12,8 +12,13 @@ readonly LOP_BACKEND_UNIT="/etc/systemd/system/lop-backend.service"
 systemd_write_backend() {
     log_step "Writing systemd unit: ${LOP_BACKEND_UNIT}..."
 
-    # Read worker count from environment or default to 4
-    local workers="${LOP_WORKERS:-4}"
+    # APScheduler runs embedded inside the Flask/Gunicorn process.
+    # With multiple workers each worker spawns its own scheduler instance,
+    # causing duplicate job execution (double VMware syncs, double Ansible runs).
+    # Default to 1 worker; operators who need concurrency must set LOP_WORKERS
+    # in /etc/lop/lop.env AND configure a database-backed APScheduler job store
+    # to prevent duplicate job fires.
+    local workers="${LOP_WORKERS:-1}"
     local timeout="${LOP_TIMEOUT:-60}"
 
     cat > "$LOP_BACKEND_UNIT" <<EOF

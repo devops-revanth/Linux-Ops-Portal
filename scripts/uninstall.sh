@@ -7,7 +7,7 @@
 #   --preserve-config  keep /etc/lop only, drop database
 #   (no flags)         full removal after confirmation
 # =============================================================================
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LOG_FILE="/tmp/lop_uninstall.log"

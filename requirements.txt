@@ -6,7 +6,9 @@ Flask-WTF==1.2.1
 Flask-Login==0.6.3
 
 # Database
-psycopg2-binary==2.9.10
+# psycopg2 (compiled from source) is required for production deployments.
+# libpq-devel (RHEL) / libpq-dev (Debian) is installed by scripts/lib/deps.sh.
+psycopg2==2.9.10
 
 # Utilities
 python-dotenv==1.0.1

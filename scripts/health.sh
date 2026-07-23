@@ -173,7 +173,7 @@ check_python_runtime() {
 }
 
 check_versions() {
-    local app_ver installer_ver build_date db_schema git_hash
+    local app_ver installer_ver build_date git_hash
     if [[ -f "$LOP_APP_DIR/VERSION" ]]; then
         app_ver=$(grep '^APP_VERSION=' "$LOP_APP_DIR/VERSION" | cut -d= -f2)
         installer_ver=$(grep '^INSTALLER_VERSION=' "$LOP_APP_DIR/VERSION" | cut -d= -f2)
@@ -183,10 +183,13 @@ check_versions() {
     fi
     git_hash=$(git -C "$LOP_APP_DIR" rev-parse HEAD 2>/dev/null | head -c 8 || echo "unknown")
 
-    record "Version: application"   "PASS" "${app_ver}"
-    record "Version: installer"     "PASS" "${installer_ver}"
-    record "Version: build date"    "PASS" "${build_date}"
-    record "Version: git commit"    "PASS" "${git_hash}"
+    # WARN when the VERSION file is missing or values could not be read
+    local app_status="PASS"
+    [[ -z "$app_ver"  || "$app_ver"  == "unknown" ]] && app_status="WARN"
+    record "Version: application"   "$app_status"       "${app_ver:-unknown}"
+    record "Version: installer"     "PASS"              "${installer_ver:-unknown}"
+    record "Version: build date"    "PASS"              "${build_date:-unknown}"
+    record "Version: git commit"    "PASS"              "${git_hash}"
 }
 
 check_disk() {
@@ -239,24 +242,61 @@ check_scheduler() {
         return
     fi
 
-    # Show the VMware sync schedule if configured (stored in the database).
+    # Report how many vCenter connections have sync enabled.
+    # Queries vmware_connections (multi-vCenter schema from Phase 4).
     if [[ -f "$LOP_CONF_FILE" ]] && cmd_exists psql; then
         local db_url
         db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
         if [[ -n "$db_url" ]]; then
-            local sync_schedule vmware_enabled
+            local vc_total vc_enabled
             # Graceful: table may not exist on very old schema versions
-            sync_schedule=$(psql -tAq "$db_url" \
-                -c "SELECT COALESCE(sync_schedule,'none') FROM vmware_config LIMIT 1;" \
+            vc_total=$(psql -tAq "$db_url" \
+                -c "SELECT count(*) FROM vmware_connections;" \
                 2>/dev/null | tr -d '[:space:]' || echo "")
-            vmware_enabled=$(psql -tAq "$db_url" \
-                -c "SELECT enabled FROM vmware_config LIMIT 1;" \
+            vc_enabled=$(psql -tAq "$db_url" \
+                -c "SELECT count(*) FROM vmware_connections WHERE enabled;" \
                 2>/dev/null | tr -d '[:space:]' || echo "")
-            if [[ "$vmware_enabled" == "t" ]] && [[ -n "$sync_schedule" ]] && [[ "$sync_schedule" != "none" ]]; then
-                record "Scheduler: VMware sync" "PASS" "enabled — schedule=${sync_schedule}"
+            if [[ -n "$vc_total" ]] && (( vc_total > 0 )); then
+                record "Scheduler: VMware sync" "PASS" \
+                    "${vc_enabled:-0} of ${vc_total} vCenter connection(s) enabled for periodic sync"
             else
-                record "Scheduler: VMware sync" "PASS" "not scheduled (VMware disabled or sync_schedule=none)"
+                record "Scheduler: VMware sync" "PASS" "no vCenter connections configured"
             fi
+        fi
+    fi
+}
+
+check_ldap() {
+    # Check FreeIPA / LDAP integration via the directory_config table.
+    if ! [[ -f "$LOP_CONF_FILE" ]] || ! cmd_exists psql; then
+        record "Integration: LDAP/FreeIPA" "WARN" "cannot verify — psql or config not available"
+        return
+    fi
+    local db_url
+    db_url=$(grep '^DATABASE_URL=' "$LOP_CONF_FILE" | cut -d= -f2-)
+    if [[ -z "$db_url" ]]; then
+        record "Integration: LDAP/FreeIPA" "WARN" "DATABASE_URL not set"
+        return
+    fi
+    local ldap_row
+    ldap_row=$(psql -tAq "$db_url" \
+        -c "SELECT enabled::text || '|' || COALESCE(ldap_uri,'') || '|' || COALESCE(connection_status,'Not Tested') FROM directory_config LIMIT 1;" \
+        2>/dev/null | tr -d '\n' || echo "")
+    if [[ -z "$ldap_row" ]]; then
+        record "Integration: LDAP/FreeIPA" "PASS" "not configured"
+    else
+        local ldap_en ldap_uri ldap_status
+        IFS='|' read -r ldap_en ldap_uri ldap_status <<< "$ldap_row"
+        if [[ "$ldap_en" == "true" ]] || [[ "$ldap_en" == "t" ]]; then
+            if [[ "$ldap_status" == "Connected" ]]; then
+                record "Integration: LDAP/FreeIPA" "PASS" \
+                    "Connected — uri=${ldap_uri}"
+            else
+                record "Integration: LDAP/FreeIPA" "WARN" \
+                    "enabled but status=${ldap_status} — uri=${ldap_uri}"
+            fi
+        else
+            record "Integration: LDAP/FreeIPA" "PASS" "disabled"
         fi
     fi
 }
@@ -279,27 +319,30 @@ check_integrations() {
         return
     fi
 
-    # ── VMware vCenter ────────────────────────────────────────────────────────
-    local vm_row
-    vm_row=$(psql -tAq "$db_url" \
-        -c "SELECT enabled::text || '|' || COALESCE(vcenter_host,'') || '|' || COALESCE(connection_status,'Not Tested') || '|' || COALESCE(last_sync_count::text,'0') FROM vmware_config LIMIT 1;" \
+    # ── VMware vCenter (multi-vCenter schema: vmware_connections) ─────────────
+    # Phase 4 replaced the singleton vmware_config with the vmware_connections
+    # table supporting multiple vCenter endpoints per installation.
+    local vm_summary
+    vm_summary=$(psql -tAq "$db_url" \
+        -c "SELECT count(*)::text || '|' || count(case when enabled then 1 end)::text || '|' || count(case when connection_status='Connected' then 1 end)::text FROM vmware_connections;" \
         2>/dev/null | tr -d '\n' || echo "")
 
-    if [[ -z "$vm_row" ]]; then
-        record "Integration: VMware" "PASS" "not configured"
+    if [[ -z "$vm_summary" ]]; then
+        record "Integration: VMware" "PASS" "not configured (vmware_connections table empty or missing)"
     else
-        local vm_en vm_host vm_status vm_count
-        IFS='|' read -r vm_en vm_host vm_status vm_count <<< "$vm_row"
-        if [[ "$vm_en" == "true" ]] || [[ "$vm_en" == "t" ]]; then
-            if [[ "$vm_status" == "Connected" ]]; then
-                record "Integration: VMware" "PASS" \
-                    "Connected — host=${vm_host} imported=${vm_count} VMs"
-            else
-                record "Integration: VMware" "WARN" \
-                    "enabled but status=${vm_status} — host=${vm_host}"
-            fi
+        local vm_total vm_enabled vm_connected
+        IFS='|' read -r vm_total vm_enabled vm_connected <<< "$vm_summary"
+        if (( ${vm_total:-0} == 0 )); then
+            record "Integration: VMware" "PASS" "not configured"
+        elif (( ${vm_connected:-0} > 0 )); then
+            record "Integration: VMware" "PASS" \
+                "${vm_connected} of ${vm_total} vCenter(s) Connected (${vm_enabled} enabled)"
+        elif (( ${vm_enabled:-0} > 0 )); then
+            record "Integration: VMware" "WARN" \
+                "${vm_enabled} of ${vm_total} vCenter(s) enabled but none Connected"
         else
-            record "Integration: VMware" "PASS" "disabled (connection_status=${vm_status})"
+            record "Integration: VMware" "PASS" \
+                "${vm_total} vCenter connection(s) configured, all disabled"
         fi
     fi
 
@@ -349,6 +392,7 @@ print_text_report() {
         "Disk"
         "Memory"
     )
+    # Note: "Integration" prefix covers VMware, Ansible, and LDAP/FreeIPA checks.
 
     for section in "${sections[@]}"; do
         local found=false
@@ -410,6 +454,7 @@ main() {
     check_database
     check_schema_versions
     check_scheduler
+    check_ldap
     check_integrations
     check_python_runtime
     check_versions

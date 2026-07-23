@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
 # LOP — Installation script
-# Usage: sudo ./install.sh [--yes] [--force]
+# Usage: sudo ./install.sh [--yes] [--force] [--repair]
 #
-# Modes (auto-detected):
+# Modes (auto-detected, or forced with flags):
 #   fresh   — first-time installation
 #   upgrade — existing healthy install (delegates to update.sh)
 #   repair  — existing broken install (re-applies service/deps/venv)
+#
+# --repair   Force repair mode regardless of health check outcome.
+#            Use this via 'sudo lop repair' when the install is healthy
+#            but you still want to re-apply dependencies / the service unit.
 # =============================================================================
 set -euo pipefail
 
@@ -31,9 +35,11 @@ source "$SCRIPT_DIR/lib/version.sh"
 
 # ── Flags ─────────────────────────────────────────────────────────────────────
 FORCE_REINSTALL=false
+FORCE_REPAIR=false
 parse_common_flags "$@"
 for arg in "${REMAINING_ARGS[@]:-}"; do
-    [[ "$arg" == "--force" ]] && FORCE_REINSTALL=true
+    [[ "$arg" == "--force"  ]] && FORCE_REINSTALL=true
+    [[ "$arg" == "--repair" ]] && FORCE_REPAIR=true
 done
 
 # ── Source repo directory (parent of scripts/) ───────────────────────────────
@@ -73,6 +79,9 @@ detect_install_mode() {
     fi
 
     [[ "$FORCE_REINSTALL" == "true" ]] && INSTALL_MODE="fresh"
+    # --repair forces repair mode even when the health check passes (e.g. to
+    # re-apply dependencies or the service unit on a healthy installation).
+    [[ "$FORCE_REPAIR" == "true" ]] && INSTALL_MODE="repair"
 }
 
 # ── Configuration file generation ────────────────────────────────────────────
@@ -345,6 +354,13 @@ do_repair() {
 
     # Reload existing config
     load_lop_env
+
+    # Ensure PostgreSQL is running before attempting migrations.
+    # Without this, run_migrations() will fail with an opaque connection error
+    # rather than a clear "database is down" message.
+    log_step "Ensuring PostgreSQL is running..."
+    pg_ensure_service \
+        || log_warn "PostgreSQL may not be running — migrations will fail if the DB is unreachable."
 
     # Re-select Python (may have changed)
     python_select

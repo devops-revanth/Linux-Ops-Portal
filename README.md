@@ -69,9 +69,13 @@ sudo lop update
 ```bash
 sudo lop health          # health report
 sudo lop backup          # create a backup
+sudo lop restore <file>  # restore from a backup archive
+sudo lop repair          # re-apply venv, dependencies, and service unit
 sudo lop diagnostics     # generate troubleshooting bundle
 sudo lop status          # service status
+sudo lop restart         # restart the backend service
 sudo lop logs            # tail application logs
+lop version              # show installed version info
 ```
 
 ---
@@ -85,15 +89,18 @@ sudo lop logs            # tail application logs
 | Server Details | ✅ Complete |
 | Settings | ✅ Complete |
 | Patching & Compliance | ✅ Complete |
+| Compliance Policy Configuration | ✅ Complete |
 | Global Search | ✅ Complete |
 | Reports & Export | ✅ Complete |
-| VMware vCenter Integration | ✅ Complete |
-| Ansible Integration (Foundation) | ✅ Complete |
+| VMware vCenter Integration (Multi-vCenter) | ✅ Complete |
+| Ansible Integration — SSH Connection & Inventory | ✅ Complete |
+| Ansible Playbook Execution (Ops Workspace) | ✅ Complete |
 | LDAP / FreeIPA Authentication | ✅ Complete |
 | Audit Log | ✅ Complete |
 | User Management | ✅ Complete |
 | Encryption at rest | ✅ Complete |
 | Background Scheduler | ✅ Complete |
+| Lifecycle Management CLI (`lop`) | ✅ Complete |
 
 ---
 
