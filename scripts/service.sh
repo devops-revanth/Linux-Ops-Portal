@@ -131,7 +131,7 @@ Log:     ${LOG_FILE}"
             ;;
         not-installed)
             abort "${LOP_BACKEND_SERVICE} service unit not found.
-Is LOP installed? Run: sudo ./scripts/install.sh"
+Is LOP installed? Run: sudo lop install"
             ;;
         stopped)
             log_step "Starting ${LOP_BACKEND_SERVICE}..."
@@ -152,7 +152,7 @@ Log:     ${LOG_FILE}"
             ;;
         not-installed)
             log_warn "nginx not installed — skipping."
-            log_warn "Run 'sudo ./scripts/install.sh' or 'sudo ./scripts/update.sh'"
+            log_warn "Run 'sudo lop install' or 'sudo lop update'"
             log_warn "to install and configure nginx."
             ;;
         stopped)
@@ -237,7 +237,7 @@ Log:     ${LOG_FILE}"
     # 2. Restart lop-backend
     if ! systemctl cat "$LOP_BACKEND_SERVICE" &>/dev/null 2>&1; then
         abort "${LOP_BACKEND_SERVICE} service unit not found.
-Is LOP installed? Run: sudo ./scripts/install.sh"
+Is LOP installed? Run: sudo lop install"
     fi
     log_step "Restarting ${LOP_BACKEND_SERVICE}..."
     systemctl restart "$LOP_BACKEND_SERVICE" >> "$LOG_FILE" 2>&1 \
@@ -266,7 +266,7 @@ Log:     ${LOG_FILE}"
 
     if (( failures > 0 )); then
         log_error "One or more services failed to become active."
-        log_error "Run: sudo ./scripts/service.sh logs"
+        log_error "Run: sudo lop logs"
         exit 1
     fi
 
@@ -307,7 +307,7 @@ cmd_reload() {
             ;;
         stopped)
             log_warn "nginx is installed but not running."
-            log_warn "Start it with: sudo ./scripts/service.sh start"
+            log_warn "Start it with: sudo lop start"
             ;;
         not-installed)
             log_warn "nginx not installed — skipping nginx reload."
@@ -427,7 +427,7 @@ cmd_health() {
         log_success "Health check: PASS"
     else
         log_error   "Health check: FAIL"
-        log_error   "Investigate: sudo ./scripts/service.sh logs"
+        log_error   "Investigate: sudo lop logs"
         log_error   "Log file:    ${LOG_FILE}"
     fi
 
@@ -453,7 +453,7 @@ cmd_logs() {
 # ── usage ─────────────────────────────────────────────────────────────────────
 usage() {
     printf "\n%s%sLOP Service Manager%s\n" "$CLR_BOLD" "$CLR_WHITE" "$CLR_RESET"
-    printf "Usage: %ssudo %s <command>%s\n\n" "$CLR_BOLD" "$0" "$CLR_RESET"
+    printf "Usage: %ssudo lop <command>%s\n\n" "$CLR_BOLD" "$CLR_RESET"
     printf "Commands:\n"
     printf "  %s%-10s%s  Start all LOP services in order:\n" \
         "$CLR_CYAN" "start" "$CLR_RESET"
@@ -473,10 +473,10 @@ usage() {
     printf "  %s%-10s%s  Show last 50 log lines from lop-backend and nginx\n" \
         "$CLR_CYAN" "logs" "$CLR_RESET"
     printf "\nExamples:\n"
-    printf "  sudo ./scripts/service.sh status\n"
-    printf "  sudo ./scripts/service.sh restart\n"
-    printf "  sudo ./scripts/service.sh health\n"
-    printf "  sudo ./scripts/service.sh logs\n\n"
+    printf "  sudo lop status\n"
+    printf "  sudo lop restart\n"
+    printf "  sudo lop health\n"
+    printf "  sudo lop logs\n\n"
 }
 
 # =============================================================================

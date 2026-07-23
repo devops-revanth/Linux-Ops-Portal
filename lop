@@ -6,16 +6,21 @@
 #
 # Commands:
 #   install      Install or repair LOP
+#   repair       Re-apply dependencies and service unit
 #   update       Update to the latest version
+#   uninstall    Remove LOP
+#
+#   start        Start all LOP services
+#   stop         Stop LOP application services
+#   restart      Restart LOP services
+#   reload       Reload nginx config; reload systemd daemon
+#   status       Show service status
+#   health       System health report
+#   logs         Tail application logs
+#   diagnostics  Create a diagnostics bundle for troubleshooting
 #   backup       Create a backup
 #   restore      Restore from a backup
-#   health       Show system health report
-#   diagnostics  Create a diagnostics bundle for troubleshooting
 #   version      Show version information
-#   restart      Restart LOP services
-#   status       Show service status
-#   logs         Tail application logs
-#   uninstall    Remove LOP
 #   help         Show this help
 #
 # Most commands require root. Use: sudo lop <command>
@@ -23,30 +28,29 @@
 
 set -uo pipefail
 
-# Resolve the scripts directory relative to this file.
-# Works whether lop is run from the repo, /opt/lop, or as /usr/local/bin/lop.
+# ── Locate scripts directory ─────────────────────────────────────────────────
+# Works whether lop is run from the repo, /opt/lop, or as /usr/local/bin/lop
+# (which is a symlink to /opt/lop/lop).
 _lop_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
 _lop_dir="$(dirname "$_lop_real")"
 
-# Scripts can live alongside lop (repo/install dir) or in scripts/
 if [[ -d "$_lop_dir/scripts" ]]; then
     SCRIPTS_DIR="$_lop_dir/scripts"
 elif [[ -d "$_lop_dir/../scripts" ]]; then
     SCRIPTS_DIR="$(cd "$_lop_dir/../scripts" && pwd)"
 else
-    printf "ERROR: Cannot locate scripts directory.\n" >&2
+    printf "ERROR: Cannot locate scripts directory (looked in %s and %s).\n" \
+        "$_lop_dir/scripts" "$_lop_dir/../scripts" >&2
     exit 1
 fi
-
-LOP_BACKEND_SERVICE="lop-backend"
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 if [[ -t 1 ]] && command -v tput &>/dev/null; then
     _B="$(tput bold)"; _R="$(tput sgr0)"
     _G="$(tput bold)$(tput setaf 2)"; _Y="$(tput bold)$(tput setaf 3)"
-    _C="$(tput bold)$(tput setaf 6)"
+    _C="$(tput bold)$(tput setaf 6)"; _W="$(tput bold)$(tput setaf 7)"
 else
-    _B=""; _R=""; _G=""; _Y=""; _C=""
+    _B=""; _R=""; _G=""; _Y=""; _C=""; _W=""
 fi
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
@@ -63,26 +67,34 @@ ${_B}Lifecycle:${_R}
   ${_C}update${_R}        [--yes] [--skip-backup]      Update to latest version
   ${_C}uninstall${_R}     [--yes] [--preserve-data]    Remove LOP
 
+${_B}Service management:${_R}
+  ${_C}start${_R}                                      Start all LOP services
+  ${_C}stop${_R}                                       Stop LOP application services
+  ${_C}restart${_R}                                    Restart LOP services
+  ${_C}reload${_R}                                     Reload nginx config; reload systemd daemon
+  ${_C}status${_R}                                     Show concise service status
+  ${_C}health${_R}        [--json]                     System health report
+  ${_C}logs${_R}          [-n <lines>] [-f]            Tail application logs
+
 ${_B}Operations:${_R}
   ${_C}backup${_R}        [--quiet]                    Create a timestamped backup
   ${_C}restore${_R}       <file> [--yes]               Restore from a backup
-  ${_C}health${_R}        [--json]                     System health report
   ${_C}diagnostics${_R}   [--output-dir <dir>]         Troubleshooting bundle
   ${_C}version${_R}                                    Show version information
-  ${_C}restart${_R}                                    Restart LOP services
-  ${_C}status${_R}                                     Show service status
-  ${_C}logs${_R}          [-n <lines>] [-f]            Tail application logs
 
 ${_B}Examples:${_R}
   sudo lop install
   sudo lop repair
   sudo lop update
+  sudo lop start
+  sudo lop restart
+  sudo lop status
+  sudo lop health
+  sudo lop logs -f
   sudo lop backup
   sudo lop restore /var/backups/lop/lop_backup_2026-07-22_12-00-00.tar.gz
-  sudo lop health
   sudo lop diagnostics
   lop version
-  sudo lop logs -f
 
 USAGE
 }
@@ -92,60 +104,82 @@ show_version() {
     local ver_file="/opt/lop/VERSION"
     [[ ! -f "$ver_file" ]] && ver_file="$_lop_dir/VERSION"
 
+    local app_version="unknown"
+    local git_commit="unknown"
+    local db_schema="unknown"
+    local python_version="unknown"
+    local install_type="unknown"
+    local deploy_path="/opt/lop"
+    local source_path="unknown"
+    local install_info="/var/lib/lop/install.info"
+
+    # Application version from VERSION file
     if [[ -f "$ver_file" ]]; then
-        printf "\n${_B}Linux Operations Portal${_R}\n\n"
-        while IFS='=' read -r key val; do
-            if [[ -z "$key" ]] || [[ "$key" =~ ^# ]] || [[ "$key" =~ ^[[:space:]]*$ ]]; then continue; fi
-            printf "  %-24s %s%s%s\n" "${key}:" "$_C" "$val" "$_R"
-        done < "$ver_file"
-
-        # DB schema (live, non-fatal)
-        local schema=""
-        if [[ -x "/opt/lop/venv/bin/flask" ]]; then
-            schema=$(
-                cd /opt/lop 2>/dev/null || true
-                [[ -f /etc/lop/lop.env ]] && { set -a; source /etc/lop/lop.env 2>/dev/null; set +a; } || true
-                FLASK_APP=run.py FLASK_ENV=production /opt/lop/venv/bin/flask db current \
-                    2>/dev/null | grep -oP '[0-9a-f]{12}' | head -1
-            ) 2>/dev/null || true
-            [[ -n "$schema" ]] && printf "  %-24s %s%s%s\n" "DB_SCHEMA:" "$_C" "$schema" "$_R"
-        fi
-
-        # Git hash
-        local git_hash=""
-        git_hash=$(git -C /opt/lop rev-parse HEAD 2>/dev/null | head -c 8 || true)
-        [[ -n "$git_hash" ]] && printf "  %-24s %s%s%s\n" "GIT_COMMIT:" "$_C" "$git_hash" "$_R"
-        printf "\n"
-    else
-        printf "LOP: version information not available\n"
+        app_version=$(grep '^APP_VERSION=' "$ver_file" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]') || true
+        [[ -z "$app_version" ]] && app_version="unknown"
     fi
-}
 
-# ── logs helper (no root required) ───────────────────────────────────────────
-show_logs() {
-    local lines=50 follow=false
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -n) lines="$2"; shift 2 ;;
-            -n*) lines="${1#-n}"; shift ;;
-            -f|--follow) follow=true; shift ;;
-            *) shift ;;
-        esac
-    done
-
-    if [[ "$follow" == "true" ]]; then
-        exec journalctl -u "$LOP_BACKEND_SERVICE" -f 2>/dev/null \
-            || exec tail -f /var/log/lop/app/error.log 2>/dev/null \
-            || { printf "No log source available.\n" >&2; exit 1; }
-    else
-        if command -v journalctl &>/dev/null; then
-            journalctl -u "$LOP_BACKEND_SERVICE" --no-pager -n "$lines" 2>/dev/null || true
-        elif [[ -f /var/log/lop/app/error.log ]]; then
-            tail -n "$lines" /var/log/lop/app/error.log
-        else
-            printf "No log source available. Try: sudo journalctl -u lop-backend\n" >&2
+    # Git commit — try deployed dir first, then source checkout
+    git_commit=$(git -C /opt/lop rev-parse HEAD 2>/dev/null | head -c 7 || true)
+    if [[ -z "$git_commit" ]] && [[ -f "$install_info" ]]; then
+        local _src_dir
+        _src_dir=$(grep '^install_source_dir=' "$install_info" 2>/dev/null \
+                   | cut -d= -f2- | tr -d '[:space:]') || true
+        if [[ -n "$_src_dir" ]] && [[ -d "$_src_dir" ]]; then
+            git_commit=$(git -C "$_src_dir" rev-parse HEAD 2>/dev/null | head -c 7 || true)
         fi
     fi
+    [[ -z "$git_commit" ]] && git_commit="unknown"
+
+    # Database schema revision (non-fatal)
+    if [[ -f /etc/lop/lop.env ]] && command -v psql &>/dev/null; then
+        local _db_url
+        _db_url=$(grep '^DATABASE_URL=' /etc/lop/lop.env 2>/dev/null | cut -d= -f2-)
+        if [[ -n "$_db_url" ]]; then
+            db_schema=$(psql -tAq "$_db_url" \
+                -c "SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1;" \
+                2>/dev/null | tr -d '[:space:]' || true)
+        fi
+    fi
+    if [[ -z "$db_schema" ]] && [[ -x "/opt/lop/venv/bin/flask" ]]; then
+        db_schema=$(
+            cd /opt/lop 2>/dev/null || true
+            [[ -f /etc/lop/lop.env ]] && { set -a; source /etc/lop/lop.env 2>/dev/null; set +a; } || true
+            FLASK_APP=run.py FLASK_ENV=production /opt/lop/venv/bin/flask db current \
+                2>/dev/null | grep -oP '[0-9a-f]{12}' | head -1 || true
+        ) 2>/dev/null || true
+    fi
+    [[ -z "$db_schema" ]] && db_schema="unknown"
+
+    # Python version from venv
+    if [[ -x "/opt/lop/venv/bin/python" ]]; then
+        python_version=$(/opt/lop/venv/bin/python --version 2>&1 | awk '{print $2}')
+    elif command -v python3 &>/dev/null; then
+        python_version=$(python3 --version 2>&1 | awk '{print $2}')
+    fi
+    [[ -z "$python_version" ]] && python_version="unknown"
+
+    # Install metadata
+    if [[ -f "$install_info" ]]; then
+        install_type=$(grep '^install_source=' "$install_info" 2>/dev/null \
+                       | cut -d= -f2- | tr -d '[:space:]') || true
+        local _src
+        _src=$(grep '^install_source_dir=' "$install_info" 2>/dev/null \
+               | cut -d= -f2- | tr -d '[:space:]') || true
+        [[ -n "$_src" ]] && source_path="$_src"
+    fi
+    [[ -z "$install_type" ]] && install_type="unknown"
+
+    printf "\n${_B}LOP Version${_R}\n"
+    printf "${_W}%s${_R}\n" "────────────────────────────────────"
+    printf "  %-14s %s%s%s\n" "Application :" "$_C" "$app_version"   "$_R"
+    printf "  %-14s %s%s%s\n" "Git Commit  :" "$_C" "$git_commit"    "$_R"
+    printf "  %-14s %s%s%s\n" "Database    :" "$_C" "$db_schema"     "$_R"
+    printf "  %-14s %s%s%s\n" "Python      :" "$_C" "$python_version" "$_R"
+    printf "  %-14s %s%s%s\n" "Install     :" "$_C" "$install_type"  "$_R"
+    printf "  %-14s %s%s%s\n" "Deploy Path :" "$_C" "$deploy_path"   "$_R"
+    printf "  %-14s %s%s%s\n" "Source Path :" "$_C" "$source_path"   "$_R"
+    printf "\n"
 }
 
 # =============================================================================
@@ -155,58 +189,57 @@ COMMAND="${1:-help}"
 shift 2>/dev/null || true
 
 case "$COMMAND" in
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
     install)
         exec "$SCRIPTS_DIR/install.sh" "$@"
         ;;
     repair)
-        # Force repair mode regardless of health check outcome.
-        # Passes --repair to install.sh which sets INSTALL_MODE=repair unconditionally.
         exec "$SCRIPTS_DIR/install.sh" --repair "$@"
         ;;
     update|upgrade)
         exec "$SCRIPTS_DIR/update.sh" "$@"
         ;;
+    uninstall|remove)
+        exec "$SCRIPTS_DIR/uninstall.sh" "$@"
+        ;;
+
+    # ── Service management (delegated entirely to service.sh) ─────────────────
+    start|stop|restart|reload|status)
+        exec "$SCRIPTS_DIR/service.sh" "$COMMAND" "$@"
+        ;;
+
+    # ── Health (delegated to the full health.sh report) ───────────────────────
+    health|check)
+        exec "$SCRIPTS_DIR/health.sh" "$@"
+        ;;
+
+    # ── Logs (delegated to service.sh which handles -n / -f) ─────────────────
+    logs)
+        exec "$SCRIPTS_DIR/service.sh" logs "$@"
+        ;;
+
+    # ── Operations ────────────────────────────────────────────────────────────
     backup)
         exec "$SCRIPTS_DIR/backup.sh" "$@"
         ;;
     restore)
         exec "$SCRIPTS_DIR/restore.sh" "$@"
         ;;
-    health|check)
-        exec "$SCRIPTS_DIR/health.sh" "$@"
-        ;;
     diagnostics|diag)
         exec "$SCRIPTS_DIR/diagnostics.sh" "$@"
         ;;
-    uninstall|remove)
-        exec "$SCRIPTS_DIR/uninstall.sh" "$@"
-        ;;
+
+    # ── Version (no root required) ────────────────────────────────────────────
     version|-v|--version)
         show_version
         ;;
-    restart)
-        if [[ "$EUID" -ne 0 ]]; then
-            printf "restart requires root. Try: sudo lop restart\n" >&2
-            exit 1
-        fi
-        printf "Restarting lop-backend...\n"
-        systemctl restart "$LOP_BACKEND_SERVICE" \
-            && printf "${_G}Restarted successfully.${_R}\n" \
-            || { printf "${_Y}Failed. Check: sudo journalctl -u lop-backend -n 50${_R}\n"; exit 1; }
-        ;;
-    status)
-        if command -v systemctl &>/dev/null; then
-            systemctl status "$LOP_BACKEND_SERVICE" --no-pager 2>&1 || true
-        else
-            printf "systemctl not available.\n" >&2
-        fi
-        ;;
-    logs)
-        show_logs "$@"
-        ;;
+
+    # ── Help ─────────────────────────────────────────────────────────────────
     help|-h|--help|"")
         usage
         ;;
+
     *)
         printf "Unknown command: %s\n\n" "$COMMAND" >&2
         usage >&2

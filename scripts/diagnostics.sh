@@ -29,7 +29,7 @@ export LOG_FILE="/dev/null"   # diagnostics writes its own output
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/version.sh"
 
-OUTPUT_DIR="/tmp"
+OUTPUT_DIR="/var/log/lop"
 
 parse_common_flags "$@"
 for arg in "${REMAINING_ARGS[@]:-}"; do

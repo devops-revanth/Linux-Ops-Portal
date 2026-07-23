@@ -46,9 +46,26 @@ MIGRATIONS_RAN=false
 preflight_checks() {
     log_section "Pre-flight Checks"
 
+    # ── Resolve source checkout ───────────────────────────────────────────────
+    # When update.sh runs via 'sudo lop update', SCRIPT_DIR is /opt/lop/scripts
+    # and REPO_DIR resolves to /opt/lop — the deployed copy, which has no .git.
+    # Look up the original source checkout path from install metadata so that
+    # git operations work correctly regardless of which directory lop is run from.
+    if ! git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
+        if [[ -f "$LOP_INSTALL_INFO" ]]; then
+            local _src_dir
+            _src_dir=$(grep '^install_source_dir=' "$LOP_INSTALL_INFO" 2>/dev/null \
+                       | cut -d= -f2- | tr -d '[:space:]')
+            if [[ -n "$_src_dir" ]] && [[ -d "$_src_dir" ]]; then
+                log_info "Deployed copy detected — using source checkout: ${_src_dir}"
+                REPO_DIR="$_src_dir"
+            fi
+        fi
+    fi
+
     [[ -d "$LOP_APP_DIR" ]] \
         || abort "LOP application not found at ${LOP_APP_DIR}.
-Is LOP installed? Try: sudo ./install.sh"
+Is LOP installed? Try: sudo lop install"
 
     [[ -f "$LOP_CONF_FILE" ]] \
         || abort "Configuration file not found: ${LOP_CONF_FILE}
@@ -135,7 +152,7 @@ the source checkout (the git clone, not the deployed /opt/lop copy).
 Correct usage:
   cd /opt/Linux-Ops-Portal   # or wherever the source checkout lives
   git pull origin ${source_branch}
-  sudo ./scripts/update.sh"
+  sudo lop update"
             fi
 
             log_step "Fetching latest commits from ${source_url}..."
@@ -200,7 +217,7 @@ is harmless — 'Already up to date.' exits 0 and is not a failure."
                 --exclude='venv/' \
                 --exclude='lop/' \
                 --exclude='artifacts/' \
-                --exclude='lib/' \
+                --exclude='/lib/' \
                 --exclude='node_modules/' \
                 --exclude='.local/' \
                 --exclude='.agents/' \
@@ -276,7 +293,7 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
                 --exclude='venv/' \
                 --exclude='/etc/' \
                 --exclude='artifacts/' \
-                --exclude='lib/' \
+                --exclude='/lib/' \
                 --exclude='node_modules/' \
                 --exclude='.local/' \
                 --exclude='.agents/' \
@@ -331,7 +348,7 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
                 --exclude='*.pyc' \
                 --exclude='venv/' \
                 --exclude='artifacts/' \
-                --exclude='lib/' \
+                --exclude='/lib/' \
                 --exclude='node_modules/' \
                 --exclude='.local/' \
                 --exclude='.agents/' \
@@ -362,7 +379,7 @@ Usage: sudo ./update.sh --source /path/to/lop-<version>.tar.gz"
 
         *)
             abort "Unknown install source type: '${source}'.
-Cannot determine update mechanism. Re-install with: sudo ./install.sh"
+Cannot determine update mechanism. Re-install with: sudo lop install"
             ;;
     esac
 }
@@ -548,7 +565,7 @@ do_rollback() {
             --exclude='venv/' \
             --exclude='lop/' \
             --exclude='artifacts/' \
-            --exclude='lib/' \
+            --exclude='/lib/' \
             --exclude='node_modules/' \
             --exclude='.local/' \
             --exclude='.agents/' \
@@ -580,7 +597,7 @@ do_rollback() {
         log_warn "The application code cannot be automatically restored."
         if [[ -n "${BACKUP_PATH:-}" ]]; then
             log_info "Restore from backup to recover the previous state:"
-            log_info "  sudo ./restore.sh ${BACKUP_PATH}"
+            log_info "  sudo lop restore ${BACKUP_PATH}"
         else
             log_warn "No pre-update backup was taken. Manual recovery required."
             log_warn "Re-extract the previous version archive and re-run the installer."

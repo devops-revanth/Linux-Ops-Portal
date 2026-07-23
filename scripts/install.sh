@@ -188,7 +188,7 @@ copy_application() {
             --exclude='venv/' \
             --exclude='lop/' \
             --exclude='artifacts/' \
-            --exclude='lib/' \
+            --exclude='/lib/' \
             --exclude='node_modules/' \
             --exclude='.local/' \
             --exclude='.agents/' \
@@ -235,6 +235,33 @@ copy_application() {
 
     track_change "Copied application to ${LOP_APP_DIR}"
     log_success "Application files copied."
+}
+
+# ── Scripts library validation ─────────────────────────────────────────────────
+# Aborts if any required lib file is missing in the deployed directory.
+# This catches rsync misconfiguration early — before any script tries to source
+# a missing library and fails with a cryptic "No such file" error.
+validate_scripts_lib() {
+    local required_libs=(
+        common.sh deps.sh nginx.sh os.sh postgres.sh python.sh systemd.sh version.sh
+    )
+    local lib_dir="$LOP_APP_DIR/scripts/lib"
+    local missing=()
+    for lib in "${required_libs[@]}"; do
+        [[ -f "${lib_dir}/${lib}" ]] || missing+=("$lib")
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        abort "Required script libraries missing from ${lib_dir}/
+
+Missing:
+$(printf '  %s\n' "${missing[@]}")
+
+This is a deployment problem — scripts/lib/ was excluded from the rsync.
+The installation cannot continue safely.
+Check the rsync excludes in copy_application() and remove any rule that
+matches 'lib/' at a path below scripts/."
+    fi
+    log_success "Script library validation passed (${#required_libs[@]}/${#required_libs[@]} files present)."
 }
 
 # ── Credentials file ──────────────────────────────────────────────────────────
@@ -337,6 +364,9 @@ do_fresh_install() {
 
     # 5. Copy application
     copy_application
+
+    # 5a. Validate that scripts/lib/ was fully deployed (catches rsync misconfig)
+    validate_scripts_lib
 
     # firewalld port management is handled by nginx_setup() below.
     # Gunicorn is not exposed directly; nginx proxies on port 80.
