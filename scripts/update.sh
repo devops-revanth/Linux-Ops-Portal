@@ -46,24 +46,30 @@ MIGRATIONS_RAN=false
 preflight_checks() {
     log_section "Pre-flight Checks"
 
-    # ── Resolve source checkout ───────────────────────────────────────────────
-    # When update.sh runs via 'sudo lop update', SCRIPT_DIR is /opt/lop/scripts
-    # and REPO_DIR resolves to /opt/lop — the deployed copy, which has no .git.
-    # Look up the original source checkout path from install metadata so that
-    # git operations work correctly regardless of which directory lop is run from.
+    # ── Require a Git source checkout ────────────────────────────────────────
+    # update.sh must always run from the Git source checkout so that REPO_DIR
+    # (derived from BASH_SOURCE[0]) points to the directory containing .git.
+    #
+    # When invoked via 'lop update', the lop CLI reads install metadata,
+    # resolves the source checkout path, and cd's there before exec'ing this
+    # script — so REPO_DIR is always correct.
+    #
+    # If someone runs /opt/lop/scripts/update.sh directly, REPO_DIR resolves
+    # to /opt/lop (no .git).  Abort with a clear message rather than silently
+    # failing later.
     if ! git -C "$REPO_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
-        if [[ -f "$LOP_INSTALL_INFO" ]]; then
-            local _src_dir
-            # grep exits 1 when the key is absent (old install without
-            # install_source_dir field).  || true prevents set -e + pipefail
-            # from silently killing the script here.
-            _src_dir=$(grep '^install_source_dir=' "$LOP_INSTALL_INFO" 2>/dev/null \
-                       | cut -d= -f2- | tr -d '[:space:]' || true)
-            if [[ -n "$_src_dir" ]] && [[ -d "$_src_dir" ]]; then
-                log_info "Deployed copy detected — using source checkout: ${_src_dir}"
-                REPO_DIR="$_src_dir"
-            fi
-        fi
+        abort "update.sh is not running from a Git source checkout.
+
+  REPO_DIR : ${REPO_DIR}
+
+Run the update through the management CLI instead:
+
+    sudo lop update
+
+Or change into the source checkout and run the script directly:
+
+    cd /path/to/Linux-Ops-Portal
+    sudo ./scripts/update.sh"
     fi
 
     [[ -d "$LOP_APP_DIR" ]] \

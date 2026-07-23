@@ -198,7 +198,81 @@ case "$COMMAND" in
         exec "$SCRIPTS_DIR/install.sh" --repair "$@"
         ;;
     update|upgrade)
-        exec "$SCRIPTS_DIR/update.sh" "$@"
+        # ── Resolve the source checkout from install metadata ─────────────────
+        # 'lop update' must exec update.sh from the Git source checkout so that
+        # REPO_DIR inside the script resolves to the directory with .git — NOT
+        # to /opt/lop, which is the deployed copy and has no .git.
+        #
+        # The install.info file written by install.sh records:
+        #   install_source=git | archive | local
+        #   install_source_dir=/path/to/source/checkout
+        #
+        # We read those two fields here, validate them, and cd into the source
+        # checkout before exec'ing update.sh so the script sees the correct
+        # REPO_DIR from its own ${BASH_SOURCE[0]} resolution.
+        _lop_install_info="/var/lib/lop/install.info"
+
+        # Read one key from install.info; || true makes it safe under pipefail.
+        _lop_read_key() {
+            grep "^${1}=" "$_lop_install_info" 2>/dev/null \
+                | cut -d= -f2- | tr -d '[:space:]' || true
+        }
+
+        if [[ -f "$_lop_install_info" ]]; then
+            _lop_src_type=$(_lop_read_key "install_source")
+            _lop_src_dir=$(_lop_read_key  "install_source_dir")
+
+            case "${_lop_src_type}" in
+
+                git)
+                    # ── Validate source checkout ──────────────────────────────
+                    if [[ -z "$_lop_src_dir" ]] || [[ "$_lop_src_dir" == "unknown" ]]; then
+                        printf "\n[ERROR] Source checkout path is not recorded in install metadata.\n\n" >&2
+                        printf "This installation may predate source-path tracking.\n" >&2
+                        printf "Please reinstall LOP:\n\n    sudo lop install\n\n" >&2
+                        exit 1
+                    fi
+
+                    if [[ ! -d "$_lop_src_dir" ]]; then
+                        printf "\nSource checkout not found:\n\n    %s\n\n" "$_lop_src_dir" >&2
+                        printf "This installation was installed from Git.\n\n" >&2
+                        printf "Please restore the source checkout or reinstall LOP:\n\n" >&2
+                        printf "    sudo lop install\n\n" >&2
+                        exit 1
+                    fi
+
+                    if [[ ! -d "$_lop_src_dir/.git" ]]; then
+                        printf "\nSource path exists but is not a Git repository:\n\n    %s\n\n" \
+                            "$_lop_src_dir" >&2
+                        printf "Please restore the source checkout or reinstall LOP:\n\n" >&2
+                        printf "    sudo lop install\n\n" >&2
+                        exit 1
+                    fi
+
+                    # ── Run update.sh from the source checkout ────────────────
+                    # cd first so BASH_SOURCE[0] resolves correctly inside the
+                    # script and REPO_DIR = SOURCE_PATH (has .git).
+                    cd "$_lop_src_dir"
+                    exec ./scripts/update.sh "$@"
+                    ;;
+
+                archive)
+                    printf "\nArchive installations cannot be updated via 'lop update'.\n\n" >&2
+                    printf "Download the latest release archive and run:\n\n" >&2
+                    printf "    sudo ./install.sh\n\n" >&2
+                    exit 1
+                    ;;
+
+                *)
+                    # Local / unknown install type — run from SCRIPTS_DIR.
+                    # Covers developer checkouts that were never installed.
+                    exec "$SCRIPTS_DIR/update.sh" "$@"
+                    ;;
+            esac
+        else
+            # No install metadata — run from SCRIPTS_DIR (developer / direct usage).
+            exec "$SCRIPTS_DIR/update.sh" "$@"
+        fi
         ;;
     uninstall|remove)
         exec "$SCRIPTS_DIR/uninstall.sh" "$@"
