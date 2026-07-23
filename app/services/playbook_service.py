@@ -62,24 +62,55 @@ def _q(s: str) -> str:
 
 # ── Playbook discovery ─────────────────────────────────────────────────────── #
 
-def discover_playbooks(cfg, app) -> dict[str, Any]:
+def discover_playbooks(cfg_id: int, app) -> dict[str, Any]:
     """
     SSH to the configured control node, find *.yml / *.yaml files under the
     configured playbook directory, and upsert catalog records in the DB.
+
+    Accepts the AnsibleConfig *primary key* rather than the model object so
+    this function is safe to call from a background thread.  SQLAlchemy marks
+    every tracked instance as expired when the request-scoped session commits
+    (commit_audit runs before the thread starts); passing the detached object
+    into the thread raises DetachedInstanceError on the first attribute access.
+    Reloading by ID inside a fresh app context avoids this entirely.
 
     Never executes any playbook — read-only filesystem traversal only.
 
     Returns a summary dict: {found, new, updated, errors}.
     """
-    from ..models.playbook import Playbook
-    from ..extensions import db
-    from ..services.ansible_service import AnsibleService
+    summary: dict[str, Any] = {"found": 0, "new": 0, "updated": 0, "errors": []}
 
-    summary = {"found": 0, "new": 0, "updated": 0, "errors": []}
+    # ── Phase 1: load config and extract plain Python values ────────────────
+    # Keep the app_context open only long enough to read the row and decrypt
+    # credentials.  Everything extracted here is a plain str/int/bool so no
+    # SQLAlchemy object escapes the context boundary.
+    try:
+        with app.app_context():
+            from ..models.ansible_config import AnsibleConfig
+            cfg = AnsibleConfig.query.get(cfg_id)
+            if cfg is None:
+                summary["errors"].append("Ansible configuration not found in database.")
+                return summary
 
-    pb_dir     = (cfg.playbook_dir or "/etc/ansible/playbooks").rstrip("/")
-    ssh_target = f"{cfg.username or '?'}@{cfg.control_node or '?'}:{cfg.port or 22}"
+            pb_dir      = (cfg.playbook_dir or "/etc/ansible/playbooks").rstrip("/")
+            ssh_host    = cfg.control_node or ""
+            ssh_port    = int(cfg.port or 22)
+            ssh_user    = cfg.username or ""
+            auth_method = cfg.auth_method or "key"
+            ssh_key     = cfg.get_ssh_private_key() or ""
+            ssh_pwd     = cfg.get_ssh_password() or ""
+            hkc         = bool(cfg.host_key_checking)
+            timeout     = int(cfg.connection_timeout or 30)
+            inv_path    = cfg.inventory_path or "/etc/ansible/hosts"
+    except Exception as exc:
+        logger.error(
+            "Playbook discovery: failed to load config id=%s — %s: %s",
+            cfg_id, type(exc).__name__, exc,
+        )
+        summary["errors"].append(f"Config load failed: {_sanitize_error(exc)}")
+        return summary
 
+    ssh_target = f"{ssh_user}@{ssh_host}:{ssh_port}"
     logger.info(
         "Playbook discovery starting:\n"
         "  Playbook Directory : %s\n"
@@ -87,23 +118,33 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
         pb_dir, ssh_target,
     )
 
-    # ── SSH connection ──────────────────────────────────────────────────────
-    try:
-        svc    = AnsibleService.from_config(cfg)
-        client = svc._connect()
-    except Exception as exc:
-        err = _sanitize_error(exc)
-        logger.error(
-            "Playbook discovery: SSH connection failed — %s: %s",
-            type(exc).__name__, exc,
-        )
-        summary["errors"].append(err)
-        return summary
+    # ── Phase 2: SSH connection and remote find ──────────────────────────────
+    # All SSH work happens outside any app_context so we hold no DB connection
+    # during potentially long network operations.
+    from ..services.ansible_service import AnsibleService, AnsibleConnectionError
+
+    svc = AnsibleService(
+        host              = ssh_host,
+        port              = ssh_port,
+        username          = ssh_user,
+        auth_method       = auth_method,
+        ssh_private_key   = ssh_key,
+        ssh_password      = ssh_pwd,
+        host_key_checking = hkc,
+        timeout           = timeout,
+        inventory_path    = inv_path,
+        playbook_dir      = pb_dir,
+    )
+
+    client = None
+    found_entries: list[dict] = []
+    now = datetime.now(timezone.utc)
 
     try:
-        # ── Find command ────────────────────────────────────────────────────
-        # Recursive, no depth limit.  Excludes non-playbook trees.
-        # -printf '%P\t%T@\n' gives path-relative-to-start-point TAB mtime.
+        client = svc._connect()
+
+        # Recursive find; exclude non-playbook directory trees.
+        # -printf '%P\t%T@\n' → relative-path TAB unix-mtime.
         cmd = (
             f"find {_q(pb_dir)}"
             f" -type f"
@@ -115,35 +156,33 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
             f" -printf '%P\\t%T@\\n'"
             f" 2>/dev/null | sort"
         )
-        logger.debug("Playbook discovery: command: %s", cmd)
+        logger.info("Playbook discovery command: %s", cmd)
 
         stdout, stderr, rc = AnsibleService._exec(client, cmd, timeout=60)
 
         logger.info(
             "Playbook discovery find result:\n"
-            "  Command    : %s\n"
             "  Exit code  : %d\n"
             "  Stderr     : %s\n"
             "  Lines out  : %d\n"
-            "  Stdout     : %s",
-            cmd, rc,
+            "  Stdout     :\n%s",
+            rc,
             stderr.strip()[:400] if stderr.strip() else "(none)",
             len(stdout.splitlines()),
-            stdout[:800] if stdout else "(empty)",
+            stdout[:1200] if stdout else "(empty)",
         )
 
         if not stdout.strip():
             msg = (
                 f"No playbooks found under {pb_dir}. "
-                f"Verify the directory exists on the control node and contains "
-                f"*.yml / *.yaml files."
+                f"Verify the directory exists on the control node and "
+                f"contains *.yml / *.yaml files outside roles/ and collections/."
             )
             logger.warning("Playbook discovery: %s", msg)
             summary["errors"].append(msg)
             return summary
 
-        # ── Parse find output and upsert each playbook ──────────────────────
-        now = datetime.now(timezone.utc)
+        # Parse each line and pull the first 50 lines of each file for metadata.
         for line in stdout.splitlines():
             if "\t" not in line:
                 continue
@@ -151,21 +190,57 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
             rel_path = rel_path.strip()
             if not rel_path:
                 continue
-            summary["found"] += 1
 
             try:
                 last_mod = datetime.fromtimestamp(float(mtime_str.strip()), tz=timezone.utc)
             except (ValueError, OSError):
                 last_mod = None
 
-            # Read first 50 lines for metadata (one SSH exec per file)
             abs_path = pb_dir + "/" + rel_path
             head_out, _, _ = AnsibleService._exec(
                 client, f"head -50 {_q(abs_path)} 2>/dev/null", timeout=10
             )
             meta = parse_metadata(head_out, rel_path)
+            found_entries.append({"rel_path": rel_path, "last_mod": last_mod, "meta": meta})
 
-            with app.app_context():
+        summary["found"] = len(found_entries)
+        logger.info(
+            "Playbook discovery: %d playbook(s) found:\n  %s",
+            len(found_entries),
+            "\n  ".join(e["rel_path"] for e in found_entries),
+        )
+
+    except AnsibleConnectionError as exc:
+        logger.error("Playbook discovery: connection failed — %s", exc)
+        summary["errors"].append(str(exc))
+        return summary
+    except Exception as exc:
+        logger.exception("Playbook discovery: SSH/find error — %s: %s", type(exc).__name__, exc)
+        summary["errors"].append(_sanitize_error(exc))
+        return summary
+    finally:
+        if client:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    if not found_entries:
+        return summary
+
+    # ── Phase 3: persist to DB in a single app context ──────────────────────
+    # One context, one transaction, one commit.  All 'found_entries' are plain
+    # dicts so nothing here touches a detached SQLAlchemy instance.
+    try:
+        with app.app_context():
+            from ..models.playbook import Playbook
+            from ..extensions import db
+
+            for entry in found_entries:
+                rel_path = entry["rel_path"]
+                last_mod = entry["last_mod"]
+                meta     = entry["meta"]
+
                 existing = Playbook.query.filter_by(relative_path=rel_path).first()
                 if existing:
                     existing.name               = meta["name"]
@@ -195,21 +270,16 @@ def discover_playbooks(cfg, app) -> dict[str, Any]:
                     )
                     db.session.add(pb)
                     summary["new"] += 1
-                db.session.commit()
 
-        logger.info(
-            "Playbook discovery complete: found=%d new=%d updated=%d errors=%d",
-            summary["found"], summary["new"], summary["updated"], len(summary["errors"]),
-        )
+            db.session.commit()
+            logger.info(
+                "Playbook discovery: DB commit complete — new=%d updated=%d total=%d",
+                summary["new"], summary["updated"], summary["found"],
+            )
 
     except Exception as exc:
-        logger.exception("Playbook discovery: unexpected error — %s", exc)
-        summary["errors"].append(_sanitize_error(exc))
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
+        logger.exception("Playbook discovery: DB write failed — %s: %s", type(exc).__name__, exc)
+        summary["errors"].append(f"Database write failed: {_sanitize_error(exc)}")
 
     return summary
 

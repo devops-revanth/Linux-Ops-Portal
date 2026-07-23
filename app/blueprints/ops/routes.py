@@ -174,31 +174,56 @@ def catalog_discover():
     if not _discover_lock.acquire(blocking=False):
         return jsonify({"success": False, "message": "Discovery already in progress."})
 
-    app = current_app._get_current_object()
+    # Pass the primary key only.  commit_audit() below calls db.session.commit()
+    # which marks every tracked SQLAlchemy instance (including cfg) as expired.
+    # The request context then ends, fully detaching cfg.  If the thread received
+    # the object instead of its ID it would raise DetachedInstanceError on the
+    # first attribute access and produce zero playbooks with no UI feedback.
+    cfg_id = cfg.id
+    app    = current_app._get_current_object()
 
     def _run():
         try:
             from ...services.playbook_service import discover_playbooks
-            summary = discover_playbooks(cfg, app)
-            if summary.get("errors"):
-                logger.error(
-                    "Catalog discovery finished with errors: %s", summary["errors"]
+            summary = discover_playbooks(cfg_id, app)
+
+            found   = summary.get("found", 0)
+            new     = summary.get("new", 0)
+            updated = summary.get("updated", 0)
+            errors  = summary.get("errors", [])
+
+            # Audit the actual outcome with counts so the log is useful.
+            details = f"{found} playbook(s) discovered — new={new} updated={updated}"
+            if errors:
+                details += f"; errors: {'; '.join(str(e) for e in errors[:2])}"
+
+            with app.app_context():
+                from ...audit import commit_audit as _ca
+                _ca(
+                    "playbook.catalog.discover",
+                    result  = "failure" if errors and found == 0 else "success",
+                    details = details,
+                )
+
+            if errors and found == 0:
+                logger.error("Catalog discovery failed: %s", errors)
+            elif errors:
+                logger.warning(
+                    "Catalog discovery finished with warnings: found=%d new=%d updated=%d errors=%s",
+                    found, new, updated, errors,
                 )
             else:
                 logger.info(
                     "Catalog discovery finished: found=%d new=%d updated=%d",
-                    summary.get("found", 0),
-                    summary.get("new", 0),
-                    summary.get("updated", 0),
+                    found, new, updated,
                 )
         except Exception:
-            logger.exception("Catalog discovery failed")
+            logger.exception("Catalog discovery: unhandled exception in background thread")
         finally:
             _discover_lock.release()
 
     threading.Thread(target=_run, daemon=True).start()
-    commit_audit("playbook.catalog.discover", result="success")
-    return jsonify({"success": True, "message": "Discovery started in background. Refresh in a moment."})
+    return jsonify({"success": True, "message": "Discovery started. Refresh the page in a moment."})
 
 
 @ops_bp.route("/ansible/catalog/<int:pb_id>/toggle", methods=["POST"])
