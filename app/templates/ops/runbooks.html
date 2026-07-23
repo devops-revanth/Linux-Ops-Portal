@@ -36,7 +36,15 @@
     </a>
   </div>
 
-  {% if runbooks %}
+  {% if migration_needed %}
+  <div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+    <div>
+      <strong>Database migration required.</strong>
+      The Runbook tables do not exist yet. Run <code>flask db upgrade</code> on your server, then reload this page.
+    </div>
+  </div>
+  {% elif runbooks %}
   <div class="lop-card">
     <div class="table-responsive">
       <table class="table table-hover lop-table mb-0">

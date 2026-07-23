@@ -111,20 +111,32 @@ def summary():
     """Ansible section landing page — status cards + recent activity."""
     from ...models.playbook import Playbook, PlaybookJob, PlaybookJobTemplate, PlaybookSchedule
     from ...models.ansible_config import AnsibleInventoryHost
-    from datetime import date
+    from ...extensions import db
 
     cfg = _get_cfg()
+    migration_needed = False
 
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
-    from ...models.runbook import Runbook
+    # Runbook count — guarded: table may not exist if migration hasn't been applied.
+    runbooks_total = 0
+    try:
+        from ...models.runbook import Runbook
+        runbooks_total = Runbook.query.filter_by(is_enabled=True).count()
+    except Exception:
+        db.session.rollback()
+        migration_needed = True
+        current_app.logger.warning(
+            "Runbook tables missing — run `flask db upgrade`. Defaulting to 0."
+        )
+
     stats = {
         "playbooks_total":   Playbook.query.count(),
         "playbooks_enabled": Playbook.query.filter_by(is_enabled=True).count(),
         "templates_total":   PlaybookJobTemplate.query.count(),
         "schedules_active":  PlaybookSchedule.query.filter_by(is_enabled=True).count(),
         "inventory_hosts":   AnsibleInventoryHost.query.count(),
-        "runbooks_total":    Runbook.query.filter_by(is_enabled=True).count(),
+        "runbooks_total":    runbooks_total,
         "jobs_running":      PlaybookJob.query.filter(PlaybookJob.status == "running").count(),
         "jobs_pending":      PlaybookJob.query.filter(PlaybookJob.status == "pending").count(),
         "jobs_failed_today": PlaybookJob.query.filter(
@@ -150,6 +162,7 @@ def summary():
         cfg=cfg,
         stats=stats,
         recent_jobs=recent_jobs,
+        migration_needed=migration_needed,
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
     )
@@ -205,25 +218,38 @@ def ansible_inventory():
 @ops_bp.route("/ansible/runbooks")
 @login_required
 def runbooks():
-    from ...models.runbook import Runbook, RunbookJob
-    rb_list = Runbook.query.order_by(Runbook.name).all()
+    from ...extensions import db
 
-    # Last job status per runbook
-    last_jobs: dict[int, RunbookJob] = {}
-    for rb in rb_list:
-        last_job = (
-            RunbookJob.query
-            .filter_by(runbook_id=rb.id)
-            .order_by(RunbookJob.created_at.desc())
-            .first()
+    migration_needed = False
+    rb_list: list = []
+    last_jobs: dict = {}
+
+    try:
+        from ...models.runbook import Runbook, RunbookJob
+        rb_list = Runbook.query.order_by(Runbook.name).all()
+
+        # Last job status per runbook
+        for rb in rb_list:
+            last_job = (
+                RunbookJob.query
+                .filter_by(runbook_id=rb.id)
+                .order_by(RunbookJob.created_at.desc())
+                .first()
+            )
+            if last_job:
+                last_jobs[rb.id] = last_job
+    except Exception:
+        db.session.rollback()
+        migration_needed = True
+        current_app.logger.warning(
+            "Runbook tables missing — run `flask db upgrade`. Showing empty list."
         )
-        if last_job:
-            last_jobs[rb.id] = last_job
 
     return render_template(
         "ops/runbooks.html",
         runbooks=rb_list,
         last_jobs=last_jobs,
+        migration_needed=migration_needed,
         cfg=_get_cfg(),
         app_name=current_app.config["APP_NAME"],
         app_version=current_app.config["APP_VERSION"],
