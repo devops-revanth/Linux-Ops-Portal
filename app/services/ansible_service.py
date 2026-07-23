@@ -89,8 +89,8 @@ class AnsibleService:
         Open a paramiko SSHClient to the control node.
 
         Returns a connected SSHClient.  Raises AnsibleConnectionError with a
-        sanitised, administrator-friendly message on any failure.
-        Credentials are NEVER included in exception messages or logs.
+        specific, actionable message on any failure.
+        The private key and password are NEVER included in log output.
         """
         try:
             import paramiko  # type: ignore
@@ -99,6 +99,13 @@ class AnsibleService:
                 "paramiko is not installed. Run: pip install paramiko",
                 status=_STATUS_DISCONNECTED,
             )
+
+        logger.debug(
+            "_connect: host=%s port=%s user=%r auth_method=%s timeout=%ss "
+            "host_key_checking=%s",
+            self.host, self.port, self.username,
+            self.auth_method, self.timeout, self.host_key_checking,
+        )
 
         client = paramiko.SSHClient()
         if self.host_key_checking:
@@ -117,63 +124,132 @@ class AnsibleService:
         }
 
         if self.auth_method == "key" and self.ssh_private_key:
+            # _load_private_key sanitises the key text (CRLF, trailing
+            # whitespace, blank lines) before handing it to paramiko.
             pkey = self._load_private_key(self.ssh_private_key)
-            connect_kwargs["pkey"]           = pkey
-            connect_kwargs["look_for_keys"]  = False
-            connect_kwargs["allow_agent"]    = False
+            logger.debug("_connect: using pkey type=%s", type(pkey).__name__)
+            connect_kwargs["pkey"]          = pkey
+            connect_kwargs["look_for_keys"] = False
+            connect_kwargs["allow_agent"]   = False
         elif self.auth_method == "password" and self.ssh_password:
-            connect_kwargs["password"]       = self.ssh_password
-            connect_kwargs["look_for_keys"]  = False
-            connect_kwargs["allow_agent"]    = False
+            logger.debug("_connect: using password auth")
+            connect_kwargs["password"]      = self.ssh_password
+            connect_kwargs["look_for_keys"] = False
+            connect_kwargs["allow_agent"]   = False
         else:
             # Fall back to SSH agent / default key locations
-            connect_kwargs["look_for_keys"]  = True
-            connect_kwargs["allow_agent"]    = True
+            logger.debug("_connect: using agent/default-key fallback")
+            connect_kwargs["look_for_keys"] = True
+            connect_kwargs["allow_agent"]   = True
 
         try:
             client.connect(**connect_kwargs)
+            logger.debug("_connect: connected successfully to %s:%s", self.host, self.port)
             return client
+
         except Exception as exc:
             client.close()
-            # Classify the error into a user-friendly category.
-            # str(exc) is only used for keyword matching; it is never surfaced.
-            msg = str(exc).lower()
-            if any(k in msg for k in (
-                "authentication", "auth failed", "denied", "invalid key",
+            exc_type = type(exc).__name__
+            exc_msg  = str(exc)
+            # Log the real exception at DEBUG so administrators can diagnose
+            # failures without credentials ever appearing in the output.
+            logger.debug(
+                "_connect: failed to %s:%s — %s: %s",
+                self.host, self.port, exc_type, exc_msg,
+            )
+
+            msg_lower = exc_msg.lower()
+
+            # ── Authentication failure ─────────────────────────────────────
+            if any(k in msg_lower for k in (
+                "authentication", "auth failed", "denied",
                 "no auth", "publickey", "password authentication",
-            )):
+                "unable to authenticate",
+            )) or exc_type in ("AuthenticationException",):
                 raise AnsibleConnectionError(
                     f"Authentication Failed: Could not authenticate to "
                     f"{self.host}:{self.port} as '{self.username}'. "
-                    f"Check the username and credentials.",
+                    f"Check the username and SSH key/password.",
                     status=_STATUS_AUTH_FAILED,
                 )
-            if "not in known" in msg or "host key" in msg or "changed" in msg:
+
+            # ── Host key mismatch ──────────────────────────────────────────
+            if (
+                "not in known" in msg_lower
+                or "host key" in msg_lower
+                or "changed" in msg_lower
+                or exc_type in ("BadHostKeyException",)
+            ):
                 raise AnsibleConnectionError(
                     f"Host Key Mismatch: The host key for {self.host} has "
-                    f"changed or is not in known_hosts. Either update "
-                    f"known_hosts or disable host key checking.",
+                    f"changed or is not in known_hosts. Update known_hosts "
+                    f"or disable host key checking.",
                     status=_STATUS_HOST_KEY_MISMATCH,
                 )
-            if any(k in msg for k in (
-                "timeout", "timed out", "connection refused", "no route",
-                "network unreachable", "name or service",
-            )):
+
+            # ── Network / reachability failures ───────────────────────────
+            if any(k in msg_lower for k in (
+                "timeout", "timed out", "connection refused",
+                "no route", "network unreachable", "name or service",
+                "nodename nor servname", "getaddrinfo",
+            )) or exc_type in ("NoValidConnectionsError", "timeout"):
                 raise AnsibleConnectionError(
-                    f"Connection Timeout: Could not reach {self.host}:{self.port}. "
-                    f"Check that the host is reachable and port {self.port} is open.",
+                    f"Host Unreachable: Could not reach {self.host}:{self.port}. "
+                    f"Check that the host is reachable and port {self.port} "
+                    f"is open ({exc_type}).",
                     status=_STATUS_TIMEOUT,
                 )
+
+            # ── SSH protocol / negotiation failures ───────────────────────
+            if exc_type in ("SSHException", "ProxyCommandFailure") or \
+                    any(k in msg_lower for k in (
+                        "ssh", "negotiat", "kex", "banner",
+                        "packet", "encrypt", "compress",
+                    )):
+                raise AnsibleConnectionError(
+                    f"SSH Negotiation Failed: {exc_type}: {exc_msg}",
+                    status=_STATUS_DISCONNECTED,
+                )
+
+            # ── Catch-all: surface the real exception so the cause is visible
             raise AnsibleConnectionError(
-                f"Connection Failed: Could not connect to {self.host}:{self.port}. "
-                f"Verify the hostname and that SSH is running on port {self.port}.",
+                f"Connection Failed ({exc_type}): {exc_msg}",
                 status=_STATUS_DISCONNECTED,
             )
 
     @staticmethod
+    def _sanitize_key_text(raw: str) -> str:
+        """
+        Normalize a PEM/OpenSSH private key string before handing it to paramiko.
+
+        Web browser textareas introduce several problems that cause paramiko to
+        silently reject an otherwise valid key:
+
+        * Windows CRLF line endings (\\r\\n) — the PEM parser expects bare LF
+        * Trailing spaces on lines — confuses the base64 decoder
+        * Leading / trailing blank lines — PEM expects the header on line 1
+        * Missing final newline — some paramiko versions require it
+
+        None of these issues appear when using ``ssh -i`` because the OpenSSH
+        client reads the file directly from disk.  The web UI is the source of
+        all four.
+        """
+        # Normalise all line endings to LF
+        text = raw.replace("\r\n", "\n").replace("\r", "\n")
+        # Strip trailing whitespace from every line (safe — base64 has no spaces)
+        lines = [line.rstrip() for line in text.splitlines()]
+        # Remove leading and trailing blank lines
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        # Ensure exactly one trailing newline (required by some paramiko versions)
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
     def _load_private_key(key_text: str):
         """
-        Auto-detect and load an OpenSSH/PEM private key.
+        Sanitise and auto-detect the type of an OpenSSH/PEM private key.
 
         Uses ``paramiko.key_classes`` — the canonical list of key types
         supported by the *installed* version of paramiko — so the code
@@ -181,10 +257,21 @@ class AnsibleService:
         DSA/DSS keys are not referenced here; DSSKey was removed from
         paramiko 3.x and must not be imported directly.
 
-        Raises AnsibleConnectionError with a sanitised message on failure.
-        Credentials and raw exception details are never surfaced.
+        Raises AnsibleConnectionError with a specific message on failure.
+        The key material itself is never logged.
         """
         import paramiko  # type: ignore
+
+        # Sanitise before parsing: strip CRLF, trailing whitespace, blank
+        # lines.  This is the most common reason a key that works with
+        # 'ssh -i' is rejected by paramiko when pasted through the UI.
+        clean = AnsibleService._sanitize_key_text(key_text)
+        logger.debug(
+            "_load_private_key: key length %d chars (raw %d), "
+            "first_line=%r",
+            len(clean), len(key_text),
+            clean.splitlines()[0] if clean.strip() else "(empty)",
+        )
 
         # key_classes is the authoritative list added in paramiko 3.x.
         # Fallback: build the list from individual attributes so older
@@ -200,30 +287,37 @@ class AnsibleService:
             if cls is not None
         ]
 
-        key_io = io.StringIO(key_text)
+        key_io = io.StringIO(clean)
         for key_cls in classes_to_try:
             key_io.seek(0)
             try:
-                return key_cls.from_private_key(key_io)
+                pkey = key_cls.from_private_key(key_io)
+                logger.debug(
+                    "_load_private_key: loaded as %s", key_cls.__name__
+                )
+                return pkey
             except paramiko.PasswordRequiredException:
-                # Raised by every key class when the key is passphrase-protected.
-                # No need to try the remaining classes — the key was recognised
-                # but needs a passphrase we don't have.
+                # The key was recognised but is passphrase-protected.
+                # No point trying the other classes.
                 raise AnsibleConnectionError(
                     "The SSH private key is passphrase-protected. "
                     "LOP does not currently support passphrase-protected keys. "
                     "Use an unencrypted key or switch to password authentication.",
                     status=_STATUS_AUTH_FAILED,
                 )
-            except Exception:
-                # This key class cannot parse the data — try the next one.
+            except Exception as exc:
+                logger.debug(
+                    "_load_private_key: %s rejected by %s — %s: %s",
+                    key_cls.__name__, key_cls.__name__,
+                    type(exc).__name__, exc,
+                )
                 continue
 
         # No key class could parse the key material.
         raise AnsibleConnectionError(
             "Unsupported or invalid SSH private key. "
             "Supported types: RSA, Ed25519, ECDSA. "
-            "Ensure the key is a valid OpenSSH or PEM private key.",
+            "Ensure the key is a valid unencrypted OpenSSH or PEM private key.",
             status=_STATUS_AUTH_FAILED,
         )
 
