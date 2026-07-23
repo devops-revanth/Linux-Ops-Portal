@@ -43,3 +43,22 @@ show it. Added:
 
 Reset to `Admin1234!` via Flask shell (`user.set_password(...)`) — committed
 to main, pushed to origin.
+
+## UI polish (login + responsive tables)
+
+Login: `login_manager.login_message = None` silences the automatic flash on
+protected-page redirect. Placeholder text changed from "admin" / "••••••••"
+to "Enter your username" / "Enter your password". `autocomplete="off"` on
+the form discourages browser memory without breaking password managers
+(`autocomplete="username"` / `"current-password"` preserved on fields).
+
+Responsive tables: Bootstrap `d-none d-{bp}-table-cell` classes added to
+th/td pairs in inventory, packages, and all four report tables. Column
+visibility breakpoints: md = IP/OS/Sync, lg = Location/Owner/Created,
+xl = Kernel/CPU/RAM/FQDN/vCenter. Tables remain readable on 390px mobile.
+
+CSS: `.lop-filter-bar` rule added (flex-wrap + row-gap .75rem); `.lop-main`
+gets `overflow-x: hidden`; breadcrumb gets `white-space: nowrap` + ellipsis.
+
+Push: use `gitPush({})` via CodeExecution (Replit git-remote skill), not
+`git push origin main` directly — the CLI always fails with 128 (no HTTPS token).
