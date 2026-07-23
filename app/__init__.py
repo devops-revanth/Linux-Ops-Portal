@@ -339,23 +339,45 @@ def _configure_logging(app: Flask) -> None:
 
 
 def _register_error_handlers(app: Flask) -> None:
-    """Register custom HTTP error pages."""
-    from flask import render_template
+    """Register custom HTTP error pages.
+
+    AJAX / XHR requests (identified by the ``X-Requested-With: XMLHttpRequest``
+    header) always receive a JSON error body so that fetch() callers never
+    accidentally parse an HTML error page as JSON.
+    """
+    from flask import jsonify, render_template, request
+
+    def _is_xhr() -> bool:
+        """True when the request was made via fetch/XHR and expects JSON back."""
+        return (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or "application/json" in request.accept_mimetypes.best_match(
+                ["application/json", "text/html"]
+            )
+        )
 
     @app.errorhandler(401)
     def unauthorized(exc):  # noqa: ANN001
+        if _is_xhr():
+            return jsonify({"success": False, "message": "Session expired — please reload the page and log in again."}), 401
         return render_template("errors/401.html"), 401
 
     @app.errorhandler(403)
     def forbidden(exc):  # noqa: ANN001
+        if _is_xhr():
+            return jsonify({"success": False, "message": "Permission denied."}), 403
         return render_template("errors/403.html"), 403
 
     @app.errorhandler(404)
     def not_found(exc):  # noqa: ANN001
         app.logger.warning("404  path=%s", exc)
+        if _is_xhr():
+            return jsonify({"success": False, "message": f"Endpoint not found: {request.path}"}), 404
         return render_template("errors/404.html"), 404
 
     @app.errorhandler(500)
     def server_error(exc):  # noqa: ANN001
         app.logger.error("500  error=%s", exc, exc_info=True)
+        if _is_xhr():
+            return jsonify({"success": False, "message": "Internal server error — check application logs."}), 500
         return render_template("errors/500.html"), 500

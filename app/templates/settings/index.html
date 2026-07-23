@@ -1218,9 +1218,37 @@
     var fd = new FormData(document.getElementById('ansible-config-form'));
     fd.append('csrf_token', '{{ csrf_token() }}');
 
-    fetch('{{ url_for("ansible.test_ansible") }}', { method: 'POST', body: fd })
-      .then(r => r.json())
-      .then(data => {
+    fetch('{{ url_for("ansible.test_ansible") }}', {
+      method: 'POST',
+      body: fd,
+      // X-Requested-With lets Flask error handlers return JSON instead of
+      // HTML error pages (401/403/404/500) when the session has expired or
+      // an unexpected server error occurs.
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(function(r) {
+        // Never call r.json() blindly — the server may return an HTML page
+        // (login redirect, error page) instead of JSON.  Inspect Content-Type
+        // first; surface a readable message rather than a SyntaxError.
+        var ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          // Session expired → redirected to login page (200 OK, text/html)
+          if (r.status === 401 || r.status === 403 || r.url.indexOf('/auth/login') !== -1) {
+            throw new Error('Session expired — please reload the page and log in again.');
+          }
+          return r.text().then(function(body) {
+            throw new Error(
+              'Server returned ' + r.status + ' ' + r.statusText +
+              ' (expected JSON). ' +
+              (r.status === 500 ? 'Check application logs for details.' :
+               r.status === 404 ? 'Endpoint not found — the portal may need to be restarted.' :
+               'The session may have expired; try reloading the page.')
+            );
+          });
+        }
+        return r.json();
+      })
+      .then(function(data) {
         resDiv.style.display = 'block';
         if (data.success) {
           msgDiv.className = 'small p-2 rounded border text-success border-success-subtle bg-success-subtle';
@@ -1231,22 +1259,22 @@
         }
         // Render per-check detail rows
         var checks = data.checks || [];
-        chkDiv.innerHTML = checks.map(c =>
-          '<div class="d-flex gap-2 mt-1">' +
-          '<span class="' + (c.ok ? 'text-success' : 'text-danger') + '">' +
-          '<i class="bi bi-' + (c.ok ? 'check' : 'x') + '"></i></span>' +
-          '<span class="text-secondary" style="min-width:160px;">' + c.label + '</span>' +
-          '<span class="lop-mono" style="font-size:.78rem;">' + (c.detail || '') + '</span>' +
-          '</div>'
-        ).join('');
+        chkDiv.innerHTML = checks.map(function(c) {
+          return '<div class="d-flex gap-2 mt-1">' +
+            '<span class="' + (c.ok ? 'text-success' : 'text-danger') + '">' +
+            '<i class="bi bi-' + (c.ok ? 'check' : 'x') + '"></i></span>' +
+            '<span class="text-secondary" style="min-width:160px;">' + c.label + '</span>' +
+            '<span class="lop-mono" style="font-size:.78rem;">' + (c.detail || '') + '</span>' +
+            '</div>';
+        }).join('');
       })
-      .catch(err => {
+      .catch(function(err) {
         resDiv.style.display = 'block';
-        msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle';
-        msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>Request failed: ' + err;
+        msgDiv.className = 'small p-2 rounded border text-danger border-danger-subtle bg-danger-subtle';
+        msgDiv.innerHTML = '<i class="bi bi-x-circle me-1"></i>' + (err.message || String(err));
         chkDiv.innerHTML = '';
       })
-      .finally(() => {
+      .finally(function() {
         btn.disabled = false;
         spinner.style.display = 'none';
       });

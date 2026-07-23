@@ -148,47 +148,65 @@ def save_ansible():
 @ansible_bp.route("/settings/ansible/test", methods=["POST"])
 @login_required
 def test_ansible():
-    """AJAX: test SSH connectivity and Ansible installation. Returns JSON."""
-    cfg = _get_cfg()
-    if cfg is None:
-        return jsonify({"success": False, "message": "No Ansible configuration found."})
-
-    host = (request.form.get("control_node") or cfg.control_node or "").strip()
-    if not host:
-        return jsonify({"success": False, "message": "Control node host is required."})
-
-    svc    = _build_service(cfg, form=request.form)
-    result = svc.test_connection()
-
-    # Persist status and version info — never the credentials
+    """AJAX: test SSH connectivity and Ansible installation. Always returns JSON."""
     try:
-        cfg.connection_status = result["status"]
-        cfg.last_test_at      = datetime.now(timezone.utc)
-        if result["success"]:
-            cfg.last_connected_at = datetime.now(timezone.utc)
-            if result.get("ansible_version"):
-                cfg.ansible_version = result["ansible_version"]
-            if result.get("python_version"):
-                cfg.python_version = result["python_version"]
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+        cfg = _get_cfg()
+        if cfg is None:
+            return jsonify({"success": False, "message": "No Ansible configuration found.", "checks": []})
 
-    commit_audit(
-        "ansible.connection.test",
-        target=host,
-        details=f"status={result['status']}",
-        result="success" if result["success"] else "failure",
-    )
+        host = (request.form.get("control_node") or cfg.control_node or "").strip()
+        if not host:
+            return jsonify({"success": False, "message": "Control node host is required.", "checks": []})
 
-    return jsonify({
-        "success": result["success"],
-        "status":  result["status"],
-        "message": result["message"],
-        "ansible_version": result.get("ansible_version"),
-        "python_version":  result.get("python_version"),
-        "checks":          result.get("checks", []),
-    })
+        svc    = _build_service(cfg, form=request.form)
+        result = svc.test_connection()
+
+        # Persist status and version info — never the credentials.
+        # Failures here must not prevent the JSON response from reaching the client.
+        try:
+            cfg.connection_status = result["status"]
+            cfg.last_test_at      = datetime.now(timezone.utc)
+            if result["success"]:
+                cfg.last_connected_at = datetime.now(timezone.utc)
+                if result.get("ansible_version"):
+                    cfg.ansible_version = result["ansible_version"]
+                if result.get("python_version"):
+                    cfg.python_version = result["python_version"]
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.warning("test_ansible: failed to persist connection status")
+
+        # Audit log — also non-fatal
+        try:
+            commit_audit(
+                "ansible.connection.test",
+                target=host,
+                details=f"status={result['status']}",
+                result="success" if result["success"] else "failure",
+            )
+        except Exception:
+            logger.warning("test_ansible: audit log failed")
+
+        return jsonify({
+            "success":         result["success"],
+            "status":          result["status"],
+            "message":         result["message"],
+            "ansible_version": result.get("ansible_version"),
+            "python_version":  result.get("python_version"),
+            "checks":          result.get("checks", []),
+        })
+
+    except Exception as exc:
+        # Catch-all: any unhandled exception (e.g. ValueError from bad form data,
+        # unexpected AnsibleService error) must still return JSON so the browser
+        # does not receive an HTML 500 error page.
+        logger.exception("test_ansible: unexpected error")
+        return jsonify({
+            "success": False,
+            "message": f"Unexpected error: {exc}",
+            "checks":  [],
+        }), 500
 
 
 # ── Validate inventory (AJAX) ─────────────────────────────────────────────── #
