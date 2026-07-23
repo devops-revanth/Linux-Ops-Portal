@@ -141,12 +141,6 @@ APP_BASE_URL=http://$(hostname -f 2>/dev/null || hostname):5000
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=${admin_pass}
 
-# ── Runtime paths ───────────────────────────────────────────────────────────
-# LOP_LOG_DIR tells the application where to write rotating log files.
-# The application installation tree (/opt/lop) is read-only in the systemd
-# unit (ProtectSystem=strict); all log output must go here instead.
-LOP_LOG_DIR=/var/log/lop
-
 # ── FreeIPA / LDAP Authentication (optional) ───────────────────────────────
 # Set FREEIPA_ENABLED=true and fill in the remaining vars to activate.
 # See docs/FREEIPA.md for details.
