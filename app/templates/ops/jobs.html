@@ -16,12 +16,15 @@
   .ops-nav-tabs .nav-link { color: var(--lop-muted); border-bottom: 2px solid transparent; padding: .45rem .9rem; font-size: .85rem; }
   .ops-nav-tabs .nav-link:hover { color: var(--lop-text); }
   .ops-nav-tabs .nav-link.active { color: var(--lop-text); border-bottom-color: var(--bs-primary); background: transparent; }
+
+  /* Status colours */
   .job-status-running   { color: #58a6ff; }
   .job-status-pending   { color: #8b949e; }
   .job-status-completed { color: #3fb950; }
   .job-status-failed    { color: #f85149; }
   .job-status-cancelled { color: #8b949e; }
 
+  /* ── Wizard ─────────────────────────────────────────────────────────────── */
   .wizard-step { display: none; }
   .wizard-step.active { display: block; }
   .wizard-header-step { display: flex; align-items: center; gap: .35rem; font-size: .78rem; color: var(--lop-muted); }
@@ -33,25 +36,58 @@
   .wizard-header-step.done .wizard-step-num { border-color: #3fb950; background: rgba(63,185,80,.15); color: #3fb950; }
   .wizard-divider { flex: 1; height: 1px; background: var(--lop-border); min-width: 12px; }
 
-  .host-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .5rem; background: rgba(var(--bs-primary-rgb),.12);
-    border: 1px solid rgba(var(--bs-primary-rgb),.25); border-radius: 20px; font-size: .73rem; cursor: pointer; }
+  /* Playbook picker */
+  .pb-picker-item { padding: .4rem .6rem; cursor: pointer; border-radius: 4px; }
+  .pb-picker-item:hover { background: rgba(var(--bs-primary-rgb),.08); }
+  .pb-picker-item.selected { background: rgba(var(--bs-primary-rgb),.15); border: 1px solid rgba(var(--bs-primary-rgb),.3); }
+
+  /* Target mode buttons */
+  .target-mode-btn { display: flex; flex-direction: column; align-items: center; gap: .3rem; padding: .8rem 1.2rem;
+    border: 1px solid var(--lop-border); border-radius: 8px; cursor: pointer; background: transparent;
+    color: var(--lop-muted); font-size: .82rem; transition: all .15s; flex: 1; }
+  .target-mode-btn:hover { border-color: rgba(var(--bs-primary-rgb),.4); color: var(--lop-text); }
+  .target-mode-btn.active { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.08); color: var(--bs-primary); font-weight: 600; }
+  .target-mode-btn i { font-size: 1.4rem; }
+
+  /* Host chip */
+  .host-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .5rem;
+    background: rgba(var(--bs-primary-rgb),.12); border: 1px solid rgba(var(--bs-primary-rgb),.25);
+    border-radius: 20px; font-size: .73rem; cursor: pointer; }
   .host-chip:hover { background: rgba(var(--bs-danger-rgb),.12); border-color: rgba(var(--bs-danger-rgb),.25); }
 
+  /* Output terminal */
   .output-terminal { background: #0d1117; border: 1px solid var(--lop-border); border-radius: 6px; padding: 1rem;
     font-family: ui-monospace,'SFMono-Regular',Menlo,monospace; font-size: .78rem; line-height: 1.6; color: #c9d1d9;
     min-height: 120px; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
 
-  .pb-picker-item { padding: .4rem .6rem; cursor: pointer; border-radius: 4px; }
-  .pb-picker-item:hover { background: rgba(var(--bs-primary-rgb),.08); }
-  .pb-picker-item.selected { background: rgba(var(--bs-primary-rgb),.15); border: 1px solid rgba(var(--bs-primary-rgb),.3); }
-  .pb-picker-item.selected:hover { background: rgba(var(--bs-primary-rgb),.2); }
+  /* Task selection chips */
+  .tag-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .3rem .7rem;
+    border: 1px solid var(--lop-border); border-radius: 20px; cursor: pointer; font-size: .8rem;
+    background: transparent; color: var(--lop-muted); user-select: none; transition: all .12s; }
+  .tag-chip.checked { background: rgba(var(--bs-primary-rgb),.12); border-color: rgba(var(--bs-primary-rgb),.4); color: var(--bs-primary); }
+  .tag-chip input[type=checkbox] { display: none; }
+
+  /* Advanced collapsible */
+  .advanced-toggle { background: none; border: none; color: var(--lop-muted); font-size: .82rem;
+    padding: .2rem .4rem; cursor: pointer; display: flex; align-items: center; gap: .35rem; }
+  .advanced-toggle:hover { color: var(--lop-text); }
+
+  /* ── Re-run modal ───────────────────────────────────────────────────────── */
+  .rerun-option-card { border: 1px solid var(--lop-border); border-radius: 8px; padding: .9rem 1.1rem;
+    cursor: pointer; transition: all .15s; background: transparent; }
+  .rerun-option-card:hover { border-color: rgba(var(--bs-primary-rgb),.4); background: rgba(var(--bs-primary-rgb),.04); }
+  .rerun-option-card.selected { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.08); }
+  .rerun-option-card .roc-title { font-weight: 600; font-size: .9rem; margin-bottom: .15rem; }
+  .rerun-option-card .roc-desc { font-size: .8rem; color: var(--lop-muted); }
+  .rerun-option-card .roc-icon { font-size: 1.25rem; color: var(--lop-muted); flex-shrink: 0; }
+  .rerun-option-card.selected .roc-icon { color: var(--bs-primary); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4 pb-4">
 
-  {# ── Module tab bar ────────────────────────────────────────────────────── #}
+  {# ── Module tab bar ──────────────────────────────────────────────────────── #}
   <div class="d-flex align-items-center justify-content-between mb-3">
     <ul class="nav ops-nav-tabs">
       <li class="nav-item"><a class="nav-link" href="{{ url_for('ops.catalog') }}"><i class="bi bi-grid-3x3-gap me-1"></i>Playbooks</a></li>
@@ -74,7 +110,7 @@
     </div>
   </div>
 
-  {# ── Status filter tabs ─────────────────────────────────────────────────── #}
+  {# ── Status filter tabs ──────────────────────────────────────────────────── #}
   <div class="card lop-card mb-3">
     <div class="card-body py-2">
       <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -98,9 +134,9 @@
         </div>
         <form method="GET" class="d-flex gap-2 ms-auto">
           <input type="hidden" name="status" value="{{ status_filter }}">
-          <div class="input-group input-group-sm" style="max-width:220px;">
+          <div class="input-group input-group-sm" style="max-width:240px;">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input type="search" name="q" class="form-control" placeholder="Search jobs…" value="{{ search }}">
+            <input type="search" name="q" class="form-control" placeholder="ID, playbook, host, user…" value="{{ search }}">
           </div>
           <button class="btn btn-sm btn-outline-secondary" type="submit">Go</button>
           {% if search or status_filter %}
@@ -111,7 +147,7 @@
     </div>
   </div>
 
-  {# ── Jobs table ─────────────────────────────────────────────────────────── #}
+  {# ── Jobs table ──────────────────────────────────────────────────────────── #}
   <div class="card lop-card">
     {% if not jobs %}
     <div class="card-body text-center py-5 text-secondary">
@@ -177,19 +213,17 @@
             <td class="text-end pe-3">
               <div class="d-flex gap-1 justify-content-end">
                 <a href="{{ url_for('ops.job_detail', job_id=job.id) }}"
-                   class="btn btn-xs btn-outline-secondary" title="View">
+                   class="btn btn-xs btn-outline-secondary" title="View details">
                   <i class="bi bi-eye"></i>
                 </a>
                 {% if job.status in ('running', 'pending') %}
-                <button class="btn btn-xs btn-outline-danger" title="Stop"
-                        aria-label="Stop job"
+                <button class="btn btn-xs btn-outline-danger" title="Stop job"
                         onclick="cancelJob({{ job.id }}, this)">
                   <i class="bi bi-stop-circle"></i>
                 </button>
                 {% elif job.status in ('completed', 'failed', 'cancelled') %}
-                <button class="btn btn-xs btn-outline-primary" title="Rerun"
-                        aria-label="Rerun job"
-                        onclick="rerunJob({{ job.id }}, this)">
+                <button class="btn btn-xs btn-outline-primary" title="Re-run"
+                        onclick="openRerunModal({{ job.id }}, {{ (job.playbook_name or job.playbook_path.rsplit('/', 1)[-1]) | tojson }}, this)">
                   <i class="bi bi-arrow-repeat"></i>
                 </button>
                 {% endif %}
@@ -205,7 +239,6 @@
       </table>
     </div>
 
-    {# Pagination #}
     {% if total_pages > 1 %}
     <div class="card-footer border-top border-secondary d-flex align-items-center justify-content-between py-2 px-3">
       <span class="text-secondary small">{{ total }} jobs</span>
@@ -235,12 +268,134 @@
   </div>
 </div>
 
-{# ══ NEW JOB WIZARD MODAL ════════════════════════════════════════════════════ #}
+{# ══════════════════════════════════════════════════════════════════════════════
+   RE-RUN MODAL
+   ════════════════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="rerunModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable" style="max-width:520px;">
+    <div class="modal-content" style="background:var(--lop-surface);border:1px solid var(--lop-border);">
+
+      <div class="modal-header border-bottom border-secondary py-3">
+        <div>
+          <h6 class="modal-title fw-semibold mb-0"><i class="bi bi-arrow-repeat me-2 text-primary"></i>Re-run Job</h6>
+          <div class="text-secondary small" id="rr-subtitle">—</div>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body p-3">
+
+        {# Loading spinner while fetching config #}
+        <div id="rr-loading" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-secondary mb-2" role="status"></div>
+          <div class="text-secondary small">Loading job configuration…</div>
+        </div>
+
+        {# Options (shown after config loads) #}
+        <div id="rr-options" style="display:none;">
+
+          {# ── Option 1: Same Configuration ── #}
+          <div class="rerun-option-card selected mb-2" id="rr-opt-same" onclick="selectRerunOption('same')">
+            <div class="d-flex align-items-start gap-3">
+              <i class="bi bi-arrow-clockwise roc-icon mt-1"></i>
+              <div>
+                <div class="roc-title">Same Configuration</div>
+                <div class="roc-desc">Run exactly as before — same playbook, same target, same settings.</div>
+                <div class="text-secondary small mt-1 lop-mono" id="rr-same-summary">—</div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Option 2: Different Target ── #}
+          <div class="rerun-option-card mb-2" id="rr-opt-target" onclick="selectRerunOption('target')">
+            <div class="d-flex align-items-start gap-3">
+              <i class="bi bi-diagram-3 roc-icon mt-1"></i>
+              <div class="flex-grow-1">
+                <div class="roc-title">Different Target</div>
+                <div class="roc-desc">Keep the same playbook and settings — change where it runs.</div>
+                {# Inline target selector (shown when this option is active) #}
+                <div id="rr-target-form" class="mt-3" style="display:none;">
+                  <div class="d-flex gap-2 mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary active" id="rr-tgt-single-btn"
+                            onclick="setRerunTargetMode('single',event)">
+                      <i class="bi bi-hdd me-1"></i>Single Server
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="rr-tgt-group-btn"
+                            onclick="setRerunTargetMode('group',event)">
+                      <i class="bi bi-collection me-1"></i>Inventory Group
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="rr-tgt-expr-btn"
+                            onclick="setRerunTargetMode('expr',event)">
+                      <i class="bi bi-code me-1"></i>Limit Expression
+                    </button>
+                  </div>
+
+                  <div id="rr-tgt-single" class="">
+                    <label class="form-label small fw-medium">Hostname or IP</label>
+                    <div class="input-group input-group-sm mb-1">
+                      <span class="input-group-text"><i class="bi bi-search"></i></span>
+                      <input type="text" id="rr-single-input" class="form-control lop-mono"
+                             placeholder="web01 or 10.0.0.1" oninput="rrSingleSearch(this.value)">
+                    </div>
+                    <div id="rr-single-results" class="border border-secondary rounded"
+                         style="max-height:120px;overflow-y:auto;font-size:.82rem;display:none;"></div>
+                  </div>
+
+                  <div id="rr-tgt-group" style="display:none;">
+                    <label class="form-label small fw-medium">Inventory Group</label>
+                    <select id="rr-group-select" class="form-select form-select-sm">
+                      <option value="">— Select group —</option>
+                    </select>
+                  </div>
+
+                  <div id="rr-tgt-expr" style="display:none;">
+                    <label class="form-label small fw-medium">Limit Expression</label>
+                    <input type="text" id="rr-expr-input" class="form-control form-control-sm lop-mono"
+                           placeholder="webservers:&amp;production">
+                    <div class="form-text">Ansible host pattern — same as <code>--limit</code></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# ── Option 3: Edit Configuration ── #}
+          <div class="rerun-option-card" id="rr-opt-edit" onclick="selectRerunOption('edit')">
+            <div class="d-flex align-items-start gap-3">
+              <i class="bi bi-pencil-square roc-icon mt-1"></i>
+              <div>
+                <div class="roc-title">Edit Configuration</div>
+                <div class="roc-desc">Open the job wizard with all previous settings pre-loaded. Change anything before running.</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="rr-error" class="text-danger small mt-2" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer border-top border-secondary">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" id="rr-action-btn" onclick="doRerun()" style="display:none;">
+          <i class="bi bi-play-fill me-1"></i>Run Job
+        </button>
+        <button class="btn btn-sm btn-outline-primary" id="rr-edit-btn" onclick="doRerunEdit()" style="display:none;">
+          <i class="bi bi-pencil me-1"></i>Open Wizard
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════════
+   NEW JOB WIZARD MODAL  (4-step: Playbook → Target → Execution → Review)
+   ════════════════════════════════════════════════════════════════════════════ #}
 <div class="modal fade" id="launchModal" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content" style="background:var(--lop-surface);border:1px solid var(--lop-border);">
 
-      {# ── Wizard header ── #}
+      {# Wizard header #}
       <div class="modal-header border-bottom border-secondary py-3">
         <div class="d-flex gap-2 align-items-center flex-grow-1 me-3">
           <span class="wizard-header-step active" id="ws-label-1">
@@ -248,23 +403,15 @@
           </span>
           <span class="wizard-divider"></span>
           <span class="wizard-header-step" id="ws-label-2">
-            <span class="wizard-step-num">2</span>Inventory
+            <span class="wizard-step-num">2</span>Target
           </span>
           <span class="wizard-divider"></span>
           <span class="wizard-header-step" id="ws-label-3">
-            <span class="wizard-step-num">3</span>Targets
+            <span class="wizard-step-num">3</span>Execution
           </span>
           <span class="wizard-divider"></span>
           <span class="wizard-header-step" id="ws-label-4">
-            <span class="wizard-step-num">4</span>Options
-          </span>
-          <span class="wizard-divider"></span>
-          <span class="wizard-header-step" id="ws-label-5">
-            <span class="wizard-step-num">5</span>Variables
-          </span>
-          <span class="wizard-divider"></span>
-          <span class="wizard-header-step" id="ws-label-6">
-            <span class="wizard-step-num">6</span>Review
+            <span class="wizard-step-num">4</span>Review
           </span>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -272,7 +419,9 @@
 
       <div class="modal-body p-4">
 
-        {# ── Step 1 — Select Playbook ── #}
+        {# ─────────────────────────────────────────────────────────────────────
+           Step 1 — Select Playbook
+           ──────────────────────────────────────────────────────────────────── #}
         <div class="wizard-step active" id="ws-1">
           <h6 class="fw-semibold mb-3"><i class="bi bi-grid-3x3-gap me-2"></i>Select Playbook</h6>
           <div class="input-group input-group-sm mb-2">
@@ -281,18 +430,17 @@
                    oninput="filterPlaybooks(this.value)">
           </div>
           <div id="pb-list" class="border border-secondary rounded mb-3"
-               style="max-height:180px;overflow-y:auto;font-size:.83rem;padding:.25rem;">
+               style="max-height:200px;overflow-y:auto;font-size:.83rem;padding:.25rem;">
             <div class="text-secondary text-center py-3 small">Loading…</div>
           </div>
-
           <div id="pb-info" style="display:none;">
             <hr class="border-secondary my-2">
             <table class="table table-sm lop-table mb-0">
               <tr><th style="width:150px;" class="text-secondary">Name</th><td id="wi-name">—</td></tr>
               <tr><th class="text-secondary">Path</th><td id="wi-path" class="lop-mono small">—</td></tr>
               <tr><th class="text-secondary">Category</th><td id="wi-cat">—</td></tr>
-              <tr><th class="text-secondary">Tags</th><td id="wi-tags">—</td></tr>
               <tr><th class="text-secondary">Requires Become</th><td id="wi-become">—</td></tr>
+              <tr id="wi-tags-row"><th class="text-secondary">Tags</th><td id="wi-tags">—</td></tr>
             </table>
           </div>
           <div id="pb-empty-msg" class="text-secondary small text-center py-3" style="display:none;">
@@ -303,46 +451,67 @@
           </div>
         </div>
 
-        {# ── Step 2 — Inventory ── #}
+        {# ─────────────────────────────────────────────────────────────────────
+           Step 2 — Select Target
+           ──────────────────────────────────────────────────────────────────── #}
         <div class="wizard-step" id="ws-2">
-          <h6 class="fw-semibold mb-3"><i class="bi bi-archive me-2"></i>Inventory Source</h6>
-          <div class="mb-3">
-            <div class="form-check mb-2">
-              <input class="form-check-input" type="radio" name="w-inv-type" id="inv-default" value="default" checked>
-              <label class="form-check-label" for="inv-default">
-                <strong>Default Inventory</strong>
-                <span class="text-secondary small d-block">Use the inventory configured on the control node</span>
-              </label>
+          <h6 class="fw-semibold mb-3"><i class="bi bi-diagram-3 me-2"></i>Select Target</h6>
+
+          {# 3-way mode selector #}
+          <div class="d-flex gap-2 mb-4">
+            <button type="button" class="target-mode-btn active" id="tgt-btn-single" onclick="setTargetMode('single')">
+              <i class="bi bi-hdd"></i>
+              <span>Single Server</span>
+            </button>
+            <button type="button" class="target-mode-btn" id="tgt-btn-static" onclick="setTargetMode('static')">
+              <i class="bi bi-collection"></i>
+              <span>Static Inventory</span>
+            </button>
+            <button type="button" class="target-mode-btn" id="tgt-btn-dynamic" onclick="setTargetMode('dynamic')">
+              <i class="bi bi-funnel"></i>
+              <span>Dynamic Inventory</span>
+            </button>
+          </div>
+
+          {# ── Single Server ── #}
+          <div id="tgt-single">
+            <label class="form-label small fw-medium">Search hostname or enter IP address</label>
+            <div class="input-group input-group-sm mb-2">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" id="w-single-input" class="form-control lop-mono"
+                     placeholder="web01.example.com or 10.0.0.1"
+                     oninput="singleServerSearch(this.value)">
             </div>
-            <div class="form-check mb-2">
-              <input class="form-check-input" type="radio" name="w-inv-type" id="inv-file" value="file">
-              <label class="form-check-label" for="inv-file">
-                <strong>Inventory File</strong>
-                <span class="text-secondary small d-block">Specify a path on the control node</span>
-              </label>
+            <div id="single-results" class="border border-secondary rounded mb-2"
+                 style="max-height:140px;overflow-y:auto;font-size:.82rem;display:none;"></div>
+            <div id="single-selected" class="mb-2" style="display:none;">
+              <label class="form-label small fw-medium text-success">Selected server:</label>
+              <div id="single-chip"></div>
             </div>
-            <div id="inv-file-group" class="ms-4 mt-2" style="display:none;">
-              <input type="text" id="w-inv-value" class="form-control form-control-sm lop-mono"
-                     placeholder="/etc/ansible/inventory/hosts">
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="w-inv-type" id="inv-dynamic" value="dynamic">
-              <label class="form-check-label" for="inv-dynamic">
-                <strong>Dynamic Inventory Script</strong>
-                <span class="text-secondary small d-block">Path to a dynamic inventory script</span>
-              </label>
-            </div>
-            <div id="inv-dynamic-group" class="ms-4 mt-2" style="display:none;">
-              <input type="text" id="w-inv-dynamic" class="form-control form-control-sm lop-mono"
-                     placeholder="/etc/ansible/inventory/dynamic.py">
+            <div class="form-text">
+              If the hostname is not in LOP's inventory, type it directly and press
+              <kbd>Enter</kbd> to use it as a manual limit.
             </div>
           </div>
-        </div>
 
-        {# ── Step 3 — Target Hosts ── #}
-        <div class="wizard-step" id="ws-3">
-          <h6 class="fw-semibold mb-3"><i class="bi bi-diagram-3 me-2"></i>Target Hosts</h6>
-          <div class="mb-3">
+          {# ── Static Inventory ── #}
+          <div id="tgt-static" style="display:none;">
+            <label class="form-label small fw-medium">Select an inventory group</label>
+            <div id="static-groups-list" class="border border-secondary rounded p-2 mb-2"
+                 style="max-height:200px;overflow-y:auto;font-size:.83rem;">
+              <div class="text-secondary small text-center py-2">Loading groups…</div>
+            </div>
+            <div id="static-selected-badge" class="d-none">
+              Selected: <span class="badge bg-primary" id="static-group-name-badge">—</span>
+            </div>
+            <div class="form-text mt-2">
+              Groups are discovered from your Ansible inventory.
+              The playbook will run against all hosts in the selected group.
+            </div>
+          </div>
+
+          {# ── Dynamic Inventory ── #}
+          <div id="tgt-dynamic" style="display:none;">
             <div class="row g-2 mb-3">
               <div class="col-sm-6">
                 <label class="form-label small fw-medium">Environment</label>
@@ -357,8 +526,7 @@
                 </select>
               </div>
             </div>
-
-            <label class="form-label small fw-medium">Search &amp; Select Servers</label>
+            <label class="form-label small fw-medium">Select servers</label>
             <div class="input-group input-group-sm mb-2">
               <span class="input-group-text"><i class="bi bi-search"></i></span>
               <input type="text" id="w-host-search" class="form-control" placeholder="Search hostname or IP…"
@@ -368,102 +536,132 @@
                  style="max-height:160px;overflow-y:auto;font-size:.82rem;">
               <div class="text-secondary text-center py-2">Loading hosts…</div>
             </div>
-
-            <label class="form-label small fw-medium">Selected Hosts
+            <label class="form-label small fw-medium">
+              Selected
               <span class="badge bg-secondary ms-1" id="host-count-badge">0</span>
             </label>
-            <div id="selected-hosts" class="d-flex flex-wrap gap-1 mb-3 p-2 border border-secondary rounded"
-                 style="min-height:36px;"></div>
-
-            <div class="border-top border-secondary pt-3 mt-1">
-              <label class="form-label small fw-medium">Or enter a Host Limit Expression directly</label>
+            <div id="selected-hosts" class="d-flex flex-wrap gap-1 p-2 border border-secondary rounded"
+                 style="min-height:34px;">
+              <span class="text-secondary small">No servers selected — all inventory hosts will be targeted</span>
+            </div>
+            <div class="border-top border-secondary pt-3 mt-3">
+              <label class="form-label small fw-medium">Or enter a limit expression directly</label>
               <input type="text" id="w-limit" class="form-control form-control-sm lop-mono"
                      placeholder="webservers:&amp;production,!staging">
-              <div class="form-text">Ansible limit expression — overrides selected servers above</div>
+              <div class="form-text">Overrides the server selection above</div>
             </div>
           </div>
+
+          <div id="tgt-error" class="text-danger small mt-2" style="display:none;"></div>
         </div>
 
-        {# ── Step 4 — Execution Options ── #}
-        <div class="wizard-step" id="ws-4">
-          <h6 class="fw-semibold mb-3"><i class="bi bi-sliders me-2"></i>Execution Options</h6>
-          <div class="row g-3">
-            <div class="col-sm-6">
-              <div class="d-flex flex-column gap-2">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="w-become">
-                  <label class="form-check-label" for="w-become">Become (sudo)</label>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="w-check">
-                  <label class="form-check-label" for="w-check">Check Mode (dry run)</label>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="w-diff">
-                  <label class="form-check-label" for="w-diff">Diff Mode</label>
-                </div>
+        {# ─────────────────────────────────────────────────────────────────────
+           Step 3 — Execution
+           ──────────────────────────────────────────────────────────────────── #}
+        <div class="wizard-step" id="ws-3">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-sliders me-2"></i>Execution</h6>
+
+          {# Become #}
+          <div class="mb-4">
+            <label class="form-label small fw-medium">Run as sudo (Become)</label>
+            <div class="d-flex align-items-center gap-3">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="w-become" role="switch">
+                <label class="form-check-label" for="w-become">
+                  Enable <code>--become</code>
+                </label>
               </div>
-            </div>
-            <div class="col-sm-6">
-              <div class="mb-3">
-                <label class="form-label small fw-medium">Forks <span class="text-secondary">(parallel)</span></label>
-                <input type="number" id="w-forks" class="form-control form-control-sm" value="5" min="1" max="50">
-              </div>
-              <div class="mb-3">
-                <label class="form-label small fw-medium">Verbosity</label>
-                <select id="w-verbosity" class="form-select form-select-sm">
-                  <option value="0">Normal</option>
-                  <option value="1">-v (verbose)</option>
-                  <option value="2">-vv (more verbose)</option>
-                  <option value="3">-vvv (connection debugging)</option>
-                  <option value="4">-vvvv (full debug)</option>
-                </select>
-              </div>
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label small fw-medium">Tags</label>
-              <input type="text" id="w-tags" class="form-control form-control-sm" placeholder="security,updates">
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label small fw-medium">Skip Tags</label>
-              <input type="text" id="w-skip-tags" class="form-control form-control-sm" placeholder="slow,optional">
             </div>
           </div>
-        </div>
 
-        {# ── Step 5 — Extra Variables ── #}
-        <div class="wizard-step" id="ws-5">
-          <h6 class="fw-semibold mb-3"><i class="bi bi-braces me-2"></i>Extra Variables</h6>
-          <div class="d-flex gap-2 mb-2">
-            <button class="btn btn-sm btn-outline-secondary active" id="ev-yaml-btn"
-                    onclick="setEvMode('yaml')">YAML</button>
-            <button class="btn btn-sm btn-outline-secondary" id="ev-json-btn"
-                    onclick="setEvMode('json')">JSON</button>
-            <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="clearEv()">
-              <i class="bi bi-x me-1"></i>Clear
+          {# Task Selection — shown only if playbook has tags #}
+          <div id="task-sel-block" class="mb-4" style="display:none;">
+            <label class="form-label small fw-medium">Task Selection</label>
+            <p class="text-secondary small mb-2">
+              Select which tasks to run. Uncheck a task to skip it.
+              Leave all checked to run the full playbook.
+            </p>
+            <div id="task-chips" class="d-flex flex-wrap gap-2"></div>
+            <div class="form-text mt-1">
+              Selected tasks map to <code>--tags</code>; unselected tasks map to <code>--skip-tags</code>.
+            </div>
+          </div>
+
+          {# Advanced (collapsed) #}
+          <div class="border-top border-secondary pt-3">
+            <button type="button" class="advanced-toggle" onclick="toggleAdvanced(this)" aria-expanded="false">
+              <i class="bi bi-chevron-right" id="adv-chevron"></i>
+              <span>Advanced Options</span>
             </button>
+            <div id="adv-section" style="display:none;" class="mt-3">
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <div class="d-flex flex-column gap-2">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="w-check">
+                      <label class="form-check-label" for="w-check">Check Mode <span class="text-secondary small">(dry run)</span></label>
+                    </div>
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="w-diff">
+                      <label class="form-check-label" for="w-diff">Diff Mode</label>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="mb-2">
+                    <label class="form-label small fw-medium">Forks <span class="text-secondary">(parallel)</span></label>
+                    <input type="number" id="w-forks" class="form-control form-control-sm" value="5" min="1" max="50">
+                  </div>
+                  <div>
+                    <label class="form-label small fw-medium">Verbosity</label>
+                    <select id="w-verbosity" class="form-select form-select-sm">
+                      <option value="0">Normal</option>
+                      <option value="1">-v (verbose)</option>
+                      <option value="2">-vv (more verbose)</option>
+                      <option value="3">-vvv (connection debugging)</option>
+                      <option value="4">-vvvv (full debug)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label small fw-medium">Tags override</label>
+                  <input type="text" id="w-tags" class="form-control form-control-sm"
+                         placeholder="security,updates">
+                  <div class="form-text">Overrides Task Selection above</div>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label small fw-medium">Skip Tags</label>
+                  <input type="text" id="w-skip-tags" class="form-control form-control-sm"
+                         placeholder="slow,optional">
+                </div>
+                <div class="col-12">
+                  <label class="form-label small fw-medium">Extra Variables</label>
+                  <textarea id="w-extra-vars" class="form-control lop-mono" rows="5"
+                            placeholder="# YAML format&#10;reboot: true&#10;target_release: 9.3"></textarea>
+                  <div id="ev-error" class="text-danger small mt-1" style="display:none;"></div>
+                  <div class="form-text">Passed as <code>--extra-vars</code></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <textarea id="w-extra-vars" class="form-control lop-mono" rows="10"
-                    placeholder="# YAML format (default)&#10;reboot: true&#10;target_release: 9.3"></textarea>
-          <div id="ev-error" class="text-danger small mt-1" style="display:none;"></div>
-          <div class="form-text">Variables passed as <code>--extra-vars</code> to ansible-playbook</div>
         </div>
 
-        {# ── Step 6 — Review ── #}
-        <div class="wizard-step" id="ws-6">
+        {# ─────────────────────────────────────────────────────────────────────
+           Step 4 — Review & Run
+           ──────────────────────────────────────────────────────────────────── #}
+        <div class="wizard-step" id="ws-4">
           <h6 class="fw-semibold mb-3"><i class="bi bi-check-circle me-2"></i>Review &amp; Run</h6>
-          <table class="table table-sm lop-table mb-3" id="review-table">
+          <table class="table table-sm lop-table mb-3">
             <tr><th style="width:160px;" class="text-secondary">Playbook</th><td id="rv-playbook">—</td></tr>
-            <tr><th class="text-secondary">Inventory</th><td id="rv-inventory">—</td></tr>
-            <tr><th class="text-secondary">Target Hosts</th><td id="rv-hosts">—</td></tr>
-            <tr><th class="text-secondary">Host Count</th><td id="rv-count">—</td></tr>
-            <tr><th class="text-secondary">Execution Mode</th><td id="rv-mode">—</td></tr>
+            <tr><th class="text-secondary">Target</th><td id="rv-target">—</td></tr>
             <tr><th class="text-secondary">Become</th><td id="rv-become">—</td></tr>
-            <tr><th class="text-secondary">Tags</th><td id="rv-tags">—</td></tr>
-            <tr><th class="text-secondary">Extra Variables</th><td id="rv-vars" class="lop-mono small">—</td></tr>
+            <tr><th class="text-secondary">Tasks</th><td id="rv-tasks">—</td></tr>
+            <tr id="rv-mode-row"><th class="text-secondary">Execution Mode</th><td id="rv-mode">Live Run</td></tr>
+            <tr id="rv-tags-row"><th class="text-secondary">Tags</th><td id="rv-tags">—</td></tr>
+            <tr id="rv-vars-row"><th class="text-secondary">Extra Variables</th><td id="rv-vars" class="lop-mono small">—</td></tr>
           </table>
 
-          <div id="prod-confirm-block" class="alert alert-warning d-flex align-items-start gap-2 py-2 px-3" style="display:none !important;">
+          <div id="prod-confirm-block" class="alert alert-warning d-flex align-items-start gap-2 py-2 px-3" style="display:none;">
             <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
             <div>
               <strong>Production Environment Detected</strong>
@@ -501,78 +699,126 @@
 </div>
 
 <script>
-// ── Playbook data (from route context) ───────────────────────────────────── //
-var _allPlaybooks = {{ playbooks_json | safe }};
-
-// ── Globals ─────────────────────────────────────────────────────────────── //
-var _currentPlaybook = null;
-var _wizardStep      = 1;
-var _selectedHosts   = [];
-var _allHosts        = [];
-var _hostDebounce    = null;
+// ── Playbook data injected from route ──────────────────────────────────────── //
+var _allPlaybooks     = {{ playbooks_json | safe }};
 var _filteredPlaybooks = _allPlaybooks.slice();
 
-// ── Open wizard ──────────────────────────────────────────────────────────── //
-function openWizard(preselect) {
-  _currentPlaybook = preselect || null;
-  _wizardStep      = 1;
-  _selectedHosts   = [];
-  _resetWizard();
+// ── Wizard globals ────────────────────────────────────────────────────────── //
+var _currentPlaybook = null;
+var _wizardStep      = 1;
+var _targetMode      = 'single';    // 'single' | 'static' | 'dynamic'
+var _singleHost      = null;        // {id, hostname} or null
+var _singleManual    = '';          // raw typed value when id==null
+var _staticGroup     = '';          // selected inventory group name
+var _selectedHosts   = [];          // [{id, hostname}] for dynamic
+var _allHosts        = [];
+var _allGroups       = [];          // inventory groups
+var _tagStates       = {};          // {tagName: true/false} for task selection
+var _hostDebounce    = null;
+var _singleDebounce  = null;
+var _allHostsLoaded  = false;
 
-  if (preselect) {
-    _applyPlaybookSelection(preselect);
+// ── Re-run globals ────────────────────────────────────────────────────────── //
+var _rerunJobId   = null;
+var _rerunJobData = null;          // fetched job config
+var _rerunMode    = 'same';        // 'same' | 'target' | 'edit'
+var _rrTargetMode = 'single';      // inline target mode for Option 2
+var _rrGroups     = [];
+var _rrSingleDebounce = null;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WIZARD
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openWizard(preConfig) {
+  _currentPlaybook = null;
+  _wizardStep      = 1;
+  _targetMode      = 'single';
+  _singleHost      = null;
+  _singleManual    = '';
+  _staticGroup     = '';
+  _selectedHosts   = [];
+  _tagStates       = {};
+  _resetWizardUI();
+
+  if (preConfig) {
+    // Pre-populate from a job config (re-run Edit option)
+    _prefillWizard(preConfig);
   }
 
   new bootstrap.Modal(document.getElementById('launchModal')).show();
 }
 
-function _applyPlaybookSelection(pb) {
-  _currentPlaybook = pb;
-  document.getElementById('wi-name').textContent  = pb.name || '—';
-  document.getElementById('wi-path').textContent  = pb.relative_path || '—';
-  document.getElementById('wi-cat').textContent   = pb.category || '—';
-  document.getElementById('wi-tags').textContent  = (pb.tags || []).join(', ') || '—';
-  document.getElementById('wi-become').innerHTML  = pb.requires_become ?
-    '<i class="bi bi-check-circle-fill text-warning me-1"></i>Yes' :
-    '<i class="bi bi-dash-circle me-1 text-secondary"></i>No';
-  document.getElementById('pb-info').style.display = '';
-  document.getElementById('pb-select-hint').style.display = 'none';
-  document.getElementById('w-become').checked = pb.requires_become || false;
-  renderPlaybookList(_filteredPlaybooks);  // re-render to highlight selection
-}
-
-// ── Wizard reset ─────────────────────────────────────────────────────────── //
-function _resetWizard() {
+function _resetWizardUI() {
   _setStep(1);
-  document.getElementById('pb-filter').value      = '';
-  document.getElementById('w-become').checked     = false;
-  document.getElementById('w-check').checked      = false;
-  document.getElementById('w-diff').checked       = false;
-  document.getElementById('w-forks').value        = 5;
-  document.getElementById('w-verbosity').value    = '0';
-  document.getElementById('w-tags').value         = '';
-  document.getElementById('w-skip-tags').value    = '';
-  document.getElementById('w-extra-vars').value   = '';
-  document.getElementById('w-limit').value        = '';
-  document.getElementById('w-host-search').value  = '';
-  document.getElementById('ev-error').style.display     = 'none';
+  document.getElementById('pb-filter').value     = '';
+  document.getElementById('w-become').checked    = false;
+  document.getElementById('w-check').checked     = false;
+  document.getElementById('w-diff').checked      = false;
+  document.getElementById('w-forks').value       = 5;
+  document.getElementById('w-verbosity').value   = '0';
+  document.getElementById('w-tags').value        = '';
+  document.getElementById('w-skip-tags').value   = '';
+  document.getElementById('w-extra-vars').value  = '';
+  document.getElementById('w-limit').value       = '';
+  document.getElementById('w-host-search').value = '';
+  document.getElementById('w-single-input').value = '';
+  document.getElementById('ev-error').style.display    = 'none';
   document.getElementById('launch-error').style.display = 'none';
-  document.getElementById('inv-default').checked         = true;
-  document.getElementById('inv-file-group').style.display    = 'none';
-  document.getElementById('inv-dynamic-group').style.display = 'none';
-  document.getElementById('pb-info').style.display = _currentPlaybook ? '' : 'none';
-  updateSelectedHostsDisplay();
+  document.getElementById('prod-confirm-block').style.display = 'none';
+  document.getElementById('single-results').style.display = 'none';
+  document.getElementById('single-selected').style.display = 'none';
+  document.getElementById('adv-section').style.display = 'none';
+  document.getElementById('adv-chevron').className = 'bi bi-chevron-right';
   _filteredPlaybooks = _allPlaybooks.slice();
+  setTargetMode('single');
   renderPlaybookList(_filteredPlaybooks);
 }
 
-// ── Step navigation ──────────────────────────────────────────────────────── //
+function _prefillWizard(cfg) {
+  // Find the playbook in the list
+  if (cfg.playbook_id) {
+    var pb = _allPlaybooks.find(p => p.id == cfg.playbook_id);
+    if (pb) _applyPlaybookSelection(pb);
+  }
+  // Target mode
+  var inv = cfg.inventory_type || 'default';
+  if (cfg.limit_expression && cfg.target_type === 'hosts' && cfg.host_count === 1) {
+    setTargetMode('single');
+    document.getElementById('w-single-input').value = cfg.limit_expression;
+    _singleManual = cfg.limit_expression;
+    _showSingleManualChip(cfg.limit_expression);
+  } else if (cfg.target_type === 'group' || inv === 'group') {
+    setTargetMode('static');
+    _staticGroup = cfg.limit_expression || cfg.inventory_value || '';
+  } else {
+    setTargetMode('dynamic');
+    if (cfg.limit_expression) {
+      document.getElementById('w-limit').value = cfg.limit_expression;
+    }
+  }
+  // Execution options
+  document.getElementById('w-become').checked   = !!cfg.become;
+  document.getElementById('w-check').checked    = !!cfg.check_mode;
+  document.getElementById('w-diff').checked     = !!cfg.diff_mode;
+  document.getElementById('w-forks').value      = cfg.forks || 5;
+  document.getElementById('w-verbosity').value  = String(cfg.verbosity || 0);
+  document.getElementById('w-tags').value       = cfg.tags || '';
+  document.getElementById('w-skip-tags').value  = cfg.skip_tags || '';
+  document.getElementById('w-extra-vars').value = cfg.extra_vars || '';
+  if (cfg.check_mode || cfg.diff_mode || cfg.tags || cfg.skip_tags || cfg.extra_vars) {
+    document.getElementById('adv-section').style.display = '';
+    document.getElementById('adv-chevron').className = 'bi bi-chevron-down';
+  }
+}
+
+// ── Step navigation ───────────────────────────────────────────────────────── //
 function _setStep(n) {
   _wizardStep = n;
-  for (var i = 1; i <= 6; i++) {
+  for (var i = 1; i <= 4; i++) {
     var el  = document.getElementById('ws-' + i);
     var lbl = document.getElementById('ws-label-' + i);
-    if (el)  { el.classList.toggle('active', i === n); }
+    if (el)  el.classList.toggle('active', i === n);
     if (lbl) {
       lbl.classList.remove('active', 'done');
       if (i === n) lbl.classList.add('active');
@@ -580,10 +826,11 @@ function _setStep(n) {
     }
   }
   document.getElementById('wizard-back').style.display   = n > 1 ? '' : 'none';
-  document.getElementById('wizard-next').style.display   = n < 6 ? '' : 'none';
-  document.getElementById('wizard-launch').style.display = n === 6 ? '' : 'none';
-  if (n === 3) loadHosts(document.getElementById('w-host-search').value);
-  if (n === 6) populateReview();
+  document.getElementById('wizard-next').style.display   = n < 4 ? '' : 'none';
+  document.getElementById('wizard-launch').style.display = n === 4 ? '' : 'none';
+  if (n === 2 && !_allHostsLoaded) loadHostData();
+  if (n === 2 && _targetMode === 'static') renderStaticGroups();
+  if (n === 4) populateReview();
 }
 
 function wizardNext() {
@@ -604,12 +851,21 @@ function validateStep(n) {
     document.getElementById('pb-select-hint').style.display = 'none';
   }
   if (n === 2) {
-    var type = document.querySelector('[name="w-inv-type"]:checked')?.value;
-    if (type === 'file' && !document.getElementById('w-inv-value').value.trim()) {
-      alert('Please enter an inventory file path.'); return false;
+    document.getElementById('tgt-error').style.display = 'none';
+    if (_targetMode === 'single') {
+      if (!_singleHost && !_singleManual.trim()) {
+        document.getElementById('tgt-error').textContent = 'Please enter or select a server.';
+        document.getElementById('tgt-error').style.display = '';
+        return false;
+      }
+    }
+    if (_targetMode === 'static' && !_staticGroup) {
+      document.getElementById('tgt-error').textContent = 'Please select an inventory group.';
+      document.getElementById('tgt-error').style.display = '';
+      return false;
     }
   }
-  if (n === 5) {
+  if (n === 3) {
     var ev = document.getElementById('w-extra-vars').value.trim();
     if (ev) {
       var err = validateExtraVars(ev);
@@ -624,7 +880,7 @@ function validateStep(n) {
   return true;
 }
 
-// ── Playbook picker ──────────────────────────────────────────────────────── //
+// ── Playbook picker ───────────────────────────────────────────────────────── //
 function renderPlaybookList(pbs) {
   var el = document.getElementById('pb-list');
   if (!pbs.length) {
@@ -641,7 +897,7 @@ function renderPlaybookList(pbs) {
   var selId = _currentPlaybook ? _currentPlaybook.id : null;
   el.innerHTML = pbs.map(pb => {
     var isSel = pb.id === selId;
-    return '<div class="pb-picker-item' + (isSel ? ' selected' : '') + '" onclick="selectPlaybook(' + JSON.stringify(pb).replace(/"/g, '&quot;') + ')">' +
+    return '<div class="pb-picker-item' + (isSel ? ' selected' : '') + '" onclick="selectPlaybook(' + JSON.stringify(pb).replace(/"/g,'&quot;') + ')">' +
       '<div class="d-flex align-items-center gap-2">' +
       '<span class="fw-medium">' + escHtml(pb.name) + '</span>' +
       (pb.category ? '<span class="badge bg-secondary" style="font-size:.6rem;">' + escHtml(pb.category) + '</span>' : '') +
@@ -650,10 +906,6 @@ function renderPlaybookList(pbs) {
       '<div class="text-secondary lop-mono" style="font-size:.7rem;">' + escHtml(pb.relative_path || '') + '</div>' +
       '</div>';
   }).join('');
-}
-
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function filterPlaybooks(q) {
@@ -666,32 +918,113 @@ function filterPlaybooks(q) {
   renderPlaybookList(_filteredPlaybooks);
 }
 
-function selectPlaybook(pb) {
-  _applyPlaybookSelection(pb);
+function selectPlaybook(pb) { _applyPlaybookSelection(pb); }
+
+function _applyPlaybookSelection(pb) {
+  _currentPlaybook = pb;
+  document.getElementById('wi-name').textContent  = pb.name || '—';
+  document.getElementById('wi-path').textContent  = pb.relative_path || '—';
+  document.getElementById('wi-cat').textContent   = pb.category || '—';
+  document.getElementById('wi-become').innerHTML  = pb.requires_become
+    ? '<i class="bi bi-check-circle-fill text-warning me-1"></i>Yes'
+    : '<i class="bi bi-dash-circle me-1 text-secondary"></i>No';
+  document.getElementById('pb-info').style.display = '';
+  document.getElementById('pb-select-hint').style.display = 'none';
+  document.getElementById('w-become').checked = pb.requires_become || false;
+  // Tags display
+  var tags = pb.tags || [];
+  var tagsEl = document.getElementById('wi-tags');
+  tagsEl.textContent = tags.length ? tags.join(', ') : '—';
+  renderPlaybookList(_filteredPlaybooks);
+  // Build task selection chips
+  buildTaskChips(tags);
 }
 
-// ── Host loading ─────────────────────────────────────────────────────────── //
+function buildTaskChips(tags) {
+  var block = document.getElementById('task-sel-block');
+  if (!tags || !tags.length) { block.style.display = 'none'; return; }
+  block.style.display = '';
+  _tagStates = {};
+  tags.forEach(t => { _tagStates[t] = true; });
+  renderTaskChips();
+}
+
+function renderTaskChips() {
+  var el = document.getElementById('task-chips');
+  var tags = Object.keys(_tagStates);
+  el.innerHTML = tags.map(t =>
+    '<label class="tag-chip' + (_tagStates[t] ? ' checked' : '') + '" onclick="toggleTag(\'' + escAttr(t) + '\')">' +
+    '<input type="checkbox" ' + (_tagStates[t] ? 'checked' : '') + '>' +
+    '<i class="bi ' + (_tagStates[t] ? 'bi-check-circle-fill' : 'bi-circle') + '"></i>' +
+    escHtml(t) + '</label>'
+  ).join('');
+}
+
+function toggleTag(t) {
+  _tagStates[t] = !_tagStates[t];
+  renderTaskChips();
+}
+
+function toggleAdvanced(btn) {
+  var sec = document.getElementById('adv-section');
+  var chev = document.getElementById('adv-chevron');
+  var open = sec.style.display === '';
+  sec.style.display = open ? 'none' : '';
+  chev.className = open ? 'bi bi-chevron-right' : 'bi bi-chevron-down';
+  btn.setAttribute('aria-expanded', !open);
+}
+
+// ── Target mode ───────────────────────────────────────────────────────────── //
+function setTargetMode(mode) {
+  _targetMode = mode;
+  ['single','static','dynamic'].forEach(m => {
+    document.getElementById('tgt-' + m).style.display = m === mode ? '' : 'none';
+    document.getElementById('tgt-btn-' + m).classList.toggle('active', m === mode);
+  });
+  if (mode === 'static' && _allHostsLoaded) renderStaticGroups();
+  if (mode === 'dynamic' && _allHostsLoaded) {
+    renderHostList(_allHosts);
+    updateSelectedHostsDisplay();
+  }
+}
+
+// ── Host data loading ─────────────────────────────────────────────────────── //
+function loadHostData() {
+  fetch('{{ url_for("ops.api_hosts") }}')
+    .then(r => r.json())
+    .then(data => {
+      _allHostsLoaded = true;
+      _allHosts  = data.servers;
+      _allGroups = data.groups || [];
+
+      // Populate env/loc selects
+      var envSel = document.getElementById('w-env');
+      var locSel = document.getElementById('w-loc');
+      if (envSel.children.length === 1) {
+        data.environments.forEach(e => envSel.add(new Option(e.name, e.id)));
+      }
+      if (locSel.children.length === 1) {
+        data.locations.forEach(l => locSel.add(new Option(l.name, l.id)));
+      }
+
+      if (_targetMode === 'dynamic') renderHostList(_allHosts);
+      if (_targetMode === 'static')  renderStaticGroups();
+    })
+    .catch(() => {
+      document.getElementById('host-list').innerHTML =
+        '<div class="text-danger small text-center py-2">Failed to load hosts</div>';
+    });
+}
+
 function loadHosts(search) {
   var envId = document.getElementById('w-env').value;
   var locId = document.getElementById('w-loc').value;
   var url   = '{{ url_for("ops.api_hosts") }}?q=' + encodeURIComponent(search || '');
   if (envId) url += '&env_id=' + envId;
   if (locId) url += '&location_id=' + locId;
-
   fetch(url).then(r => r.json()).then(data => {
-    var envSel = document.getElementById('w-env');
-    var locSel = document.getElementById('w-loc');
-    if (envSel.children.length === 1) {
-      data.environments.forEach(e => envSel.add(new Option(e.name, e.id)));
-    }
-    if (locSel.children.length === 1) {
-      data.locations.forEach(l => locSel.add(new Option(l.name, l.id)));
-    }
     _allHosts = data.servers;
     renderHostList(_allHosts);
-  }).catch(() => {
-    document.getElementById('host-list').innerHTML =
-      '<div class="text-danger small text-center py-2">Failed to load hosts</div>';
   });
 }
 
@@ -706,7 +1039,7 @@ function renderHostList(hosts) {
     var checked = selIds.has(h.id);
     return '<div class="form-check mb-1">' +
       '<input class="form-check-input" type="checkbox" id="hc-' + h.id + '" ' +
-      (checked ? 'checked' : '') + ' onchange="toggleHost(' + h.id + ', ' + JSON.stringify(h.hostname) + ', this)">' +
+      (checked ? 'checked' : '') + ' onchange="toggleHost(' + h.id + ',' + JSON.stringify(h.hostname) + ',this)">' +
       '<label class="form-check-label" for="hc-' + h.id + '">' +
       '<span class="lop-mono">' + escHtml(h.hostname) + '</span>' +
       (h.env ? ' <span class="text-secondary small">(' + escHtml(h.env) + ')</span>' : '') +
@@ -714,6 +1047,37 @@ function renderHostList(hosts) {
   }).join('');
   if (hosts.length > 100) {
     el.innerHTML += '<div class="text-secondary small text-center">…and ' + (hosts.length - 100) + ' more (refine search)</div>';
+  }
+}
+
+function renderStaticGroups() {
+  var el = document.getElementById('static-groups-list');
+  if (!_allGroups.length) {
+    el.innerHTML = '<div class="text-secondary small text-center py-2">No inventory groups found.<br>Run Ansible discovery to populate groups.</div>';
+    return;
+  }
+  el.innerHTML = _allGroups.map(g => {
+    var isSel = g === _staticGroup;
+    return '<div class="pb-picker-item' + (isSel ? ' selected' : '') + '" onclick="selectStaticGroup(\'' + escAttr(g) + '\')">' +
+      '<i class="bi bi-collection me-2 text-secondary"></i>' + escHtml(g) + '</div>';
+  }).join('');
+  _refreshStaticBadge();
+}
+
+function selectStaticGroup(g) {
+  _staticGroup = g;
+  renderStaticGroups();
+  _refreshStaticBadge();
+}
+
+function _refreshStaticBadge() {
+  var badge = document.getElementById('static-selected-badge');
+  var nameBadge = document.getElementById('static-group-name-badge');
+  if (_staticGroup) {
+    badge.classList.remove('d-none');
+    nameBadge.textContent = _staticGroup;
+  } else {
+    badge.classList.add('d-none');
   }
 }
 
@@ -732,7 +1096,7 @@ function updateSelectedHostsDisplay() {
   if (badge) badge.textContent = _selectedHosts.length;
   if (!el) return;
   if (!_selectedHosts.length) {
-    el.innerHTML = '<span class="text-secondary small">No hosts selected — all hosts in the inventory will be targeted</span>';
+    el.innerHTML = '<span class="text-secondary small">No servers selected — all inventory hosts will be targeted</span>';
     return;
   }
   el.innerHTML = _selectedHosts.map(h =>
@@ -754,20 +1118,94 @@ function hostSearchChanged(v) {
   _hostDebounce = setTimeout(() => loadHosts(v), 300);
 }
 
-// ── Inventory radio show/hide ─────────────────────────────────────────────── //
-document.addEventListener('change', function(e) {
-  if (e.target.name === 'w-inv-type') {
-    document.getElementById('inv-file-group').style.display    = e.target.value === 'file'    ? '' : 'none';
-    document.getElementById('inv-dynamic-group').style.display = e.target.value === 'dynamic' ? '' : 'none';
+// ── Single Server ──────────────────────────────────────────────────────────── //
+function singleServerSearch(v) {
+  clearTimeout(_singleDebounce);
+  document.getElementById('single-results').style.display = 'none';
+  if (!v.trim()) return;
+  _singleDebounce = setTimeout(() => {
+    fetch('{{ url_for("ops.api_hosts") }}?q=' + encodeURIComponent(v))
+      .then(r => r.json())
+      .then(data => {
+        _showSingleResults(data.servers, v);
+      });
+  }, 300);
+}
+
+function _showSingleResults(servers, typed) {
+  var el = document.getElementById('single-results');
+  var items = servers.slice(0, 20);
+  var html = items.map(s =>
+    '<div class="pb-picker-item" onclick="selectSingleServer(' + s.id + ',' + JSON.stringify(s.hostname) + ')">' +
+    '<span class="lop-mono fw-medium">' + escHtml(s.hostname) + '</span>' +
+    (s.env ? ' <span class="text-secondary small">(' + escHtml(s.env) + ')</span>' : '') +
+    (s.ip ? ' <span class="text-secondary lop-mono small">' + escHtml(s.ip) + '</span>' : '') +
+    '</div>'
+  ).join('');
+  // Manual entry option
+  html += '<div class="pb-picker-item border-top border-secondary mt-1" onclick="useSingleManual(\'' + escAttr(typed) + '\')">' +
+    '<i class="bi bi-keyboard me-2 text-secondary"></i>' +
+    'Use <strong class="lop-mono">' + escHtml(typed) + '</strong> as limit expression' +
+    '</div>';
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+function selectSingleServer(id, hostname) {
+  _singleHost   = {id, hostname};
+  _singleManual = '';
+  document.getElementById('w-single-input').value = hostname;
+  document.getElementById('single-results').style.display = 'none';
+  _showSingleSelectedChip(hostname);
+}
+
+function useSingleManual(val) {
+  _singleHost   = null;
+  _singleManual = val;
+  document.getElementById('single-results').style.display = 'none';
+  _showSingleManualChip(val);
+}
+
+function _showSingleSelectedChip(hostname) {
+  document.getElementById('single-chip').innerHTML =
+    '<span class="host-chip">' +
+    '<i class="bi bi-check-circle-fill text-success me-1"></i>' +
+    '<span class="lop-mono">' + escHtml(hostname) + '</span>' +
+    '<i class="bi bi-x ms-1" style="font-size:.6rem;" onclick="clearSingleServer()"></i></span>';
+  document.getElementById('single-selected').style.display = '';
+}
+
+function _showSingleManualChip(val) {
+  document.getElementById('single-chip').innerHTML =
+    '<span class="host-chip">' +
+    '<i class="bi bi-keyboard me-1 text-secondary"></i>' +
+    '<span class="lop-mono">' + escHtml(val) + '</span>' +
+    '<i class="bi bi-x ms-1" style="font-size:.6rem;" onclick="clearSingleServer()"></i></span>';
+  document.getElementById('single-selected').style.display = '';
+}
+
+function clearSingleServer() {
+  _singleHost   = null;
+  _singleManual = '';
+  document.getElementById('w-single-input').value = '';
+  document.getElementById('single-selected').style.display = 'none';
+}
+
+// Handle Enter key in single-server input for manual limit
+document.addEventListener('DOMContentLoaded', function() {
+  var inp = document.getElementById('w-single-input');
+  if (inp) {
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var v = this.value.trim();
+        if (v) useSingleManual(v);
+      }
+    });
   }
 });
 
-// ── Extra vars ────────────────────────────────────────────────────────────── //
-function setEvMode(mode) {
-  document.getElementById('ev-yaml-btn').classList.toggle('active', mode === 'yaml');
-  document.getElementById('ev-json-btn').classList.toggle('active', mode === 'json');
-}
-function clearEv() { document.getElementById('w-extra-vars').value = ''; }
+// ── Extra vars validation ─────────────────────────────────────────────────── //
 function validateExtraVars(text) {
   if (text.trim().startsWith('{')) {
     try { JSON.parse(text); return null; }
@@ -778,69 +1216,133 @@ function validateExtraVars(text) {
 
 // ── Review step ───────────────────────────────────────────────────────────── //
 function populateReview() {
-  var invType = document.querySelector('[name="w-inv-type"]:checked')?.value || 'default';
-  var invVal  = invType === 'file'    ? document.getElementById('w-inv-value').value :
-                invType === 'dynamic' ? document.getElementById('w-inv-dynamic').value : 'default';
-  var limit   = document.getElementById('w-limit').value.trim();
-  var hostStr = limit ? limit :
-    (_selectedHosts.length ? _selectedHosts.map(h => h.hostname).join(', ') : 'All hosts in inventory');
-  var tags = document.getElementById('w-tags').value.trim();
-  var ev   = document.getElementById('w-extra-vars').value.trim();
+  // Target summary
+  var targetStr = '';
+  if (_targetMode === 'single') {
+    targetStr = _singleHost ? _singleHost.hostname : (_singleManual || 'Not set');
+    targetStr = 'Single server: ' + targetStr;
+  } else if (_targetMode === 'static') {
+    targetStr = _staticGroup ? 'Inventory group: ' + _staticGroup : 'No group selected';
+  } else {
+    var limit = document.getElementById('w-limit').value.trim();
+    if (limit) {
+      targetStr = 'Limit: ' + limit;
+    } else if (_selectedHosts.length) {
+      targetStr = _selectedHosts.length + ' server' + (_selectedHosts.length > 1 ? 's' : '') + ': ' +
+        _selectedHosts.slice(0, 3).map(h => h.hostname).join(', ') + (_selectedHosts.length > 3 ? '…' : '');
+    } else {
+      targetStr = 'All inventory hosts';
+    }
+  }
 
+  // Task selection summary
+  var allTags = Object.keys(_tagStates);
+  var checkedTags = allTags.filter(t => _tagStates[t]);
+  var skippedTags = allTags.filter(t => !_tagStates[t]);
+  var tasksStr = '—';
+  if (allTags.length) {
+    if (checkedTags.length === allTags.length) tasksStr = 'All tasks';
+    else if (!checkedTags.length) tasksStr = 'No tasks selected (nothing will run)';
+    else tasksStr = 'Run: ' + checkedTags.join(', ') + (skippedTags.length ? ' | Skip: ' + skippedTags.join(', ') : '');
+  } else {
+    // No tag-based selection — check manual tags field
+    var manualTags = document.getElementById('w-tags').value.trim();
+    tasksStr = manualTags ? 'Tags: ' + manualTags : 'All tasks (no tags defined)';
+  }
+
+  // Mode
   var modes = [];
-  if (document.getElementById('w-check').checked) modes.push('Check Mode');
+  if (document.getElementById('w-check').checked) modes.push('Check Mode (dry run)');
   if (document.getElementById('w-diff').checked)  modes.push('Diff Mode');
-  if (!modes.length) modes.push('Live Run');
+  var modeStr = modes.join(', ') || 'Live Run';
 
-  document.getElementById('rv-playbook').textContent  = _currentPlaybook?.name || '—';
-  document.getElementById('rv-inventory').textContent = invType + (invVal && invVal !== 'default' ? ' → ' + invVal : '');
-  document.getElementById('rv-hosts').textContent     = hostStr;
-  document.getElementById('rv-count').textContent     = limit ? 'Expression (count unknown)' : (_selectedHosts.length || 'All');
-  document.getElementById('rv-mode').textContent      = modes.join(', ');
-  document.getElementById('rv-become').innerHTML      = document.getElementById('w-become').checked ?
-    '<i class="bi bi-check-circle-fill text-warning me-1"></i>Yes' : 'No';
-  document.getElementById('rv-tags').textContent      = tags || '—';
-  document.getElementById('rv-vars').textContent      = ev ? ev.slice(0,200) + (ev.length > 200 ? '…' : '') : '—';
+  var ev = document.getElementById('w-extra-vars').value.trim();
+
+  document.getElementById('rv-playbook').textContent = _currentPlaybook?.name || '—';
+  document.getElementById('rv-target').textContent   = targetStr;
+  document.getElementById('rv-become').innerHTML     = document.getElementById('w-become').checked
+    ? '<i class="bi bi-check-circle-fill text-warning me-1"></i>Yes' : 'No';
+  document.getElementById('rv-tasks').textContent   = tasksStr;
+  document.getElementById('rv-mode').textContent    = modeStr;
+
+  var tagsOver = document.getElementById('w-tags').value.trim();
+  document.getElementById('rv-tags-row').style.display = (tagsOver || Object.keys(_tagStates).length) ? '' : 'none';
+  document.getElementById('rv-tags').textContent = tagsOver || (checkedTags.length ? checkedTags.join(', ') : '—');
+  document.getElementById('rv-vars').textContent  = ev ? ev.slice(0, 200) + (ev.length > 200 ? '…' : '') : '—';
+  document.getElementById('rv-vars-row').style.display = ev ? '' : 'none';
 }
 
-// ── Launch (Run Job) ──────────────────────────────────────────────────────── //
+// ── Build launch payload ──────────────────────────────────────────────────── //
+function _buildPayload() {
+  var allTags    = Object.keys(_tagStates);
+  var checkedTags = allTags.filter(t => _tagStates[t]);
+  var skippedTags = allTags.filter(t => !_tagStates[t]);
+
+  // Tags: prefer manual override if filled, else derive from task selection
+  var tagsOverride  = document.getElementById('w-tags').value.trim();
+  var skipOverride  = document.getElementById('w-skip-tags').value.trim();
+  var finalTags     = tagsOverride  || (allTags.length && checkedTags.length < allTags.length ? checkedTags.join(',') : '') || null;
+  var finalSkipTags = skipOverride  || (skippedTags.length ? skippedTags.join(',') : null);
+
+  // Target
+  var inventory_type, inventory_value, target_type, target_value, limit_expression, host_count;
+  if (_targetMode === 'single') {
+    inventory_type   = 'default';
+    inventory_value  = null;
+    target_type      = 'hosts';
+    target_value     = _singleHost ? String(_singleHost.id) : null;
+    limit_expression = _singleHost ? _singleHost.hostname : _singleManual;
+    host_count       = 1;
+  } else if (_targetMode === 'static') {
+    inventory_type   = 'default';
+    inventory_value  = null;
+    target_type      = 'group';
+    target_value     = _staticGroup;
+    limit_expression = _staticGroup;
+    host_count       = null;
+  } else {
+    var limitExpr = document.getElementById('w-limit').value.trim();
+    inventory_type   = 'default';
+    inventory_value  = null;
+    target_type      = limitExpr ? 'limit' : (_selectedHosts.length ? 'hosts' : 'all');
+    target_value     = _selectedHosts.map(h => h.id).join(',') || null;
+    limit_expression = limitExpr || (_selectedHosts.length ? _selectedHosts.map(h => h.hostname).join(',') : null);
+    host_count       = limitExpr ? null : _selectedHosts.length || null;
+  }
+
+  return {
+    playbook_id:          _currentPlaybook?.id,
+    playbook_path:        _currentPlaybook?.relative_path,
+    playbook_name:        _currentPlaybook?.name,
+    inventory_type,
+    inventory_value,
+    target_type,
+    target_value,
+    limit_expression,
+    host_count,
+    become:               document.getElementById('w-become').checked,
+    check_mode:           document.getElementById('w-check').checked,
+    diff_mode:            document.getElementById('w-diff').checked,
+    forks:                parseInt(document.getElementById('w-forks').value) || 5,
+    verbosity:            parseInt(document.getElementById('w-verbosity').value) || 0,
+    tags:                 finalTags,
+    skip_tags:            finalSkipTags,
+    extra_vars:           document.getElementById('w-extra-vars').value.trim() || null,
+    production_confirmed: document.getElementById('w-prod-confirm')?.checked || false,
+  };
+}
+
+// ── Launch ────────────────────────────────────────────────────────────────── //
 function doLaunch() {
   var launchBtn = document.getElementById('wizard-launch');
   var errEl     = document.getElementById('launch-error');
   errEl.style.display = 'none';
   launchBtn.disabled  = true;
 
-  var invType = document.querySelector('[name="w-inv-type"]:checked')?.value || 'default';
-  var invVal  = invType === 'file'    ? document.getElementById('w-inv-value').value :
-                invType === 'dynamic' ? document.getElementById('w-inv-dynamic').value : '';
-  var limit   = document.getElementById('w-limit').value.trim();
-  var hostStr = limit || _selectedHosts.map(h => h.hostname).join(',');
-
-  var payload = {
-    playbook_id:          _currentPlaybook?.id,
-    playbook_path:        _currentPlaybook?.relative_path,
-    playbook_name:        _currentPlaybook?.name,
-    inventory_type:       invType,
-    inventory_value:      invVal,
-    target_type:          limit ? 'limit' : (_selectedHosts.length ? 'hosts' : 'all'),
-    target_value:         _selectedHosts.map(h => h.id).join(','),
-    limit_expression:     hostStr || null,
-    host_count:           limit ? null : _selectedHosts.length,
-    become:               document.getElementById('w-become').checked,
-    check_mode:           document.getElementById('w-check').checked,
-    diff_mode:            document.getElementById('w-diff').checked,
-    forks:                parseInt(document.getElementById('w-forks').value) || 5,
-    verbosity:            parseInt(document.getElementById('w-verbosity').value) || 0,
-    tags:                 document.getElementById('w-tags').value.trim(),
-    skip_tags:            document.getElementById('w-skip-tags').value.trim(),
-    extra_vars:           document.getElementById('w-extra-vars').value.trim(),
-    production_confirmed: document.getElementById('w-prod-confirm')?.checked || false,
-  };
-
   fetch('{{ url_for("ops.launch") }}', {
-    method: 'POST',
+    method:  'POST',
     headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
-    body: JSON.stringify(payload),
+    body:    JSON.stringify(_buildPayload()),
   }).then(r => r.json()).then(data => {
     if (data.requires_confirm) {
       document.getElementById('prod-confirm-block').style.display = '';
@@ -862,7 +1364,174 @@ function doLaunch() {
   });
 }
 
-// ── Cancel job ────────────────────────────────────────────────────────────── //
+// ══════════════════════════════════════════════════════════════════════════════
+// RE-RUN MODAL
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openRerunModal(jobId, jobName, _btn) {
+  _rerunJobId   = jobId;
+  _rerunJobData = null;
+  _rerunMode    = 'same';
+  _rrTargetMode = 'single';
+
+  document.getElementById('rr-subtitle').textContent = '#' + jobId + ' — ' + jobName;
+  document.getElementById('rr-loading').style.display  = '';
+  document.getElementById('rr-options').style.display  = 'none';
+  document.getElementById('rr-action-btn').style.display = 'none';
+  document.getElementById('rr-edit-btn').style.display   = 'none';
+  document.getElementById('rr-error').style.display      = 'none';
+  document.getElementById('rr-target-form').style.display = 'none';
+  selectRerunOption('same');
+
+  new bootstrap.Modal(document.getElementById('rerunModal')).show();
+
+  // Fetch job config
+  fetch('/ansible/jobs/' + jobId + '/config')
+    .then(r => r.json())
+    .then(cfg => {
+      _rerunJobData = cfg;
+      document.getElementById('rr-loading').style.display  = 'none';
+      document.getElementById('rr-options').style.display  = '';
+      document.getElementById('rr-action-btn').style.display = '';
+
+      // Populate same-config summary
+      var limit = cfg.limit_expression || 'All hosts';
+      var modeHints = [];
+      if (cfg.become)     modeHints.push('Become');
+      if (cfg.check_mode) modeHints.push('Check Mode');
+      document.getElementById('rr-same-summary').textContent =
+        'Target: ' + limit + (modeHints.length ? ' · ' + modeHints.join(', ') : '');
+
+      // Populate inventory groups in Option 2 group selector
+      fetch('{{ url_for("ops.api_hosts") }}')
+        .then(r => r.json())
+        .then(data => {
+          _rrGroups = data.groups || [];
+          var sel = document.getElementById('rr-group-select');
+          sel.innerHTML = '<option value="">— Select group —</option>';
+          _rrGroups.forEach(g => sel.add(new Option(g, g)));
+        })
+        .catch(() => {});
+    })
+    .catch(() => {
+      document.getElementById('rr-loading').innerHTML =
+        '<div class="text-danger small">Failed to load job configuration.</div>';
+    });
+}
+
+function selectRerunOption(mode) {
+  _rerunMode = mode;
+  ['same','target','edit'].forEach(m => {
+    document.getElementById('rr-opt-' + m).classList.toggle('selected', m === mode);
+  });
+  document.getElementById('rr-target-form').style.display = mode === 'target' ? '' : 'none';
+  document.getElementById('rr-action-btn').style.display  = mode !== 'edit' ? '' : 'none';
+  document.getElementById('rr-edit-btn').style.display    = mode === 'edit' ? '' : 'none';
+  if (mode === 'target') setRerunTargetMode('single', null);
+}
+
+function setRerunTargetMode(mode, evt) {
+  if (evt) evt.stopPropagation();
+  _rrTargetMode = mode;
+  ['single','group','expr'].forEach(m => {
+    document.getElementById('rr-tgt-' + m).style.display     = m === mode ? '' : 'none';
+    document.getElementById('rr-tgt-' + m + '-btn').classList.toggle('active', m === mode);
+  });
+}
+
+function rrSingleSearch(v) {
+  clearTimeout(_rrSingleDebounce);
+  document.getElementById('rr-single-results').style.display = 'none';
+  if (!v.trim()) return;
+  _rrSingleDebounce = setTimeout(() => {
+    fetch('{{ url_for("ops.api_hosts") }}?q=' + encodeURIComponent(v))
+      .then(r => r.json())
+      .then(data => {
+        var el = document.getElementById('rr-single-results');
+        el.innerHTML = data.servers.slice(0, 10).map(s =>
+          '<div class="pb-picker-item" onclick="selectRrServer(' + JSON.stringify(s.hostname) + ')">' +
+          '<span class="lop-mono">' + escHtml(s.hostname) + '</span>' +
+          (s.env ? ' <span class="text-secondary small">(' + escHtml(s.env) + ')</span>' : '') +
+          '</div>'
+        ).join('');
+        el.style.display = data.servers.length ? '' : 'none';
+      });
+  }, 300);
+}
+
+function selectRrServer(hostname) {
+  document.getElementById('rr-single-input').value = hostname;
+  document.getElementById('rr-single-results').style.display = 'none';
+}
+
+function doRerun() {
+  if (!_rerunJobId) return;
+  var btn = document.getElementById('rr-action-btn');
+  var err = document.getElementById('rr-error');
+  btn.disabled = true;
+  err.style.display = 'none';
+
+  var payload = { mode: _rerunMode, csrf_token: '{{ csrf_token() }}' };
+
+  if (_rerunMode === 'target') {
+    var limit = '';
+    if (_rrTargetMode === 'single') {
+      limit = document.getElementById('rr-single-input').value.trim();
+      if (!limit) {
+        err.textContent = 'Please enter a hostname or IP.';
+        err.style.display = '';
+        btn.disabled = false;
+        return;
+      }
+    } else if (_rrTargetMode === 'group') {
+      limit = document.getElementById('rr-group-select').value;
+      if (!limit) {
+        err.textContent = 'Please select an inventory group.';
+        err.style.display = '';
+        btn.disabled = false;
+        return;
+      }
+    } else {
+      limit = document.getElementById('rr-expr-input').value.trim();
+      if (!limit) {
+        err.textContent = 'Please enter a limit expression.';
+        err.style.display = '';
+        btn.disabled = false;
+        return;
+      }
+    }
+    payload.limit_expression = limit;
+    payload.inventory_type   = _rerunJobData?.inventory_type || 'default';
+    payload.target_type      = _rrTargetMode === 'group' ? 'group' : 'limit';
+    payload.target_value     = limit;
+  }
+
+  fetch('/ansible/jobs/' + _rerunJobId + '/rerun', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+    body:    JSON.stringify(payload),
+  }).then(r => r.json()).then(data => {
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('rerunModal')).hide();
+      window.location.href = data.redirect;
+    } else {
+      err.textContent   = data.message;
+      err.style.display = '';
+      btn.disabled      = false;
+    }
+  }).catch(e => {
+    err.textContent   = 'Request failed: ' + e;
+    err.style.display = '';
+    btn.disabled      = false;
+  });
+}
+
+function doRerunEdit() {
+  bootstrap.Modal.getInstance(document.getElementById('rerunModal')).hide();
+  setTimeout(() => openWizard(_rerunJobData), 200);
+}
+
+// ── Cancel running job ────────────────────────────────────────────────────── //
 function cancelJob(id, btn) {
   if (!confirm('Stop job #' + id + '?')) return;
   btn.disabled = true;
@@ -880,47 +1549,28 @@ function cancelJob(id, btn) {
   }).catch(err => { btn.disabled = false; alert(err); });
 }
 
-// ── Rerun job ─────────────────────────────────────────────────────────────── //
-function rerunJob(id, btn) {
-  if (!confirm('Re-run job #' + id + ' with the same settings?')) return;
-  btn.disabled = true;
-  fetch('/ansible/jobs/' + id + '/rerun', {
-    method: 'POST',
-    body: new URLSearchParams({ csrf_token: '{{ csrf_token() }}' })
-  }).then(r => r.json()).then(data => {
-    var t = new bootstrap.Toast(document.getElementById('jobToast'), {delay:3000});
-    document.getElementById('jobToastMsg').textContent = data.message;
-    document.getElementById('jobToast').className =
-      'toast align-items-center border-0 text-bg-' + (data.success ? 'success' : 'danger');
-    t.show();
-    if (data.success) {
-      setTimeout(() => window.location.href = data.redirect, 1000);
-    } else {
-      btn.disabled = false;
-    }
-  }).catch(err => { btn.disabled = false; alert(err); });
-}
-
-// ── Auto-refresh page if jobs are active ─────────────────────────────────── //
+// ── Auto-refresh when jobs are active ─────────────────────────────────────── //
 {% if status_counts.running > 0 or status_counts.pending > 0 %}
 setTimeout(() => location.reload(), 10000);
 {% endif %}
 
-// ── Auto-open wizard when ?playbook_id=N is in URL ───────────────────────── //
+// ── Utility ───────────────────────────────────────────────────────────────── //
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(str) { return String(str).replace(/'/g,'\\\''); }
+
+// ── On load ───────────────────────────────────────────────────────────────── //
 document.addEventListener('DOMContentLoaded', function() {
-  // Render the picker list
   renderPlaybookList(_allPlaybooks);
-  if (_allPlaybooks.length === 0) {
+  if (!_allPlaybooks.length) {
     document.getElementById('pb-empty-msg').style.display = '';
   }
-
+  // Auto-open wizard if ?playbook_id=N is in URL
   var pbId = new URLSearchParams(location.search).get('playbook_id');
-  if (!pbId) return;
-
-  var pb = _allPlaybooks.find(p => String(p.id) === String(pbId));
-  if (pb) {
-    // Small delay so Bootstrap modal JS has time to initialise
-    setTimeout(() => openWizard(pb), 150);
+  if (pbId) {
+    var pb = _allPlaybooks.find(p => String(p.id) === String(pbId));
+    if (pb) setTimeout(() => openWizard({ playbook_id: pb.id }), 150);
   }
 });
 </script>

@@ -990,10 +990,21 @@ def jobs():
         q = q.filter(PlaybookJob.status == status)
     if search:
         like = f"%{search}%"
+        # Smart search: if the term is numeric, also match by Job ID
+        id_clauses = []
+        try:
+            job_id_int = int(search)
+            id_clauses = [PlaybookJob.id == job_id_int]
+        except ValueError:
+            pass
         q = q.filter(
-            db.or_(PlaybookJob.playbook_name.ilike(like),
-                   PlaybookJob.playbook_path.ilike(like),
-                   PlaybookJob.limit_expression.ilike(like))
+            db.or_(
+                *id_clauses,
+                PlaybookJob.playbook_name.ilike(like),
+                PlaybookJob.playbook_path.ilike(like),
+                PlaybookJob.limit_expression.ilike(like),
+                PlaybookJob.triggered_by.ilike(like),
+            )
         )
     if user:
         q = q.filter(PlaybookJob.triggered_by.ilike(f"%{user}%"))
@@ -1086,10 +1097,46 @@ def catalog_json(pb_id: int):
     return jsonify(pb.to_dict())
 
 
+@ops_bp.route("/ansible/jobs/<int:job_id>/config")
+@login_required
+def job_config(job_id: int):
+    """AJAX: return a job's execution config as JSON (used by the re-run modal)."""
+    from ...models.playbook import PlaybookJob
+    job = PlaybookJob.query.get_or_404(job_id)
+    return jsonify({
+        "id":              job.id,
+        "playbook_id":     job.playbook_id,
+        "playbook_path":   job.playbook_path,
+        "playbook_name":   job.playbook_name,
+        "inventory_type":  job.inventory_type,
+        "inventory_value": job.inventory_value,
+        "target_type":     job.target_type,
+        "target_value":    job.target_value,
+        "limit_expression": job.limit_expression,
+        "host_count":      job.host_count,
+        "become":          job.become,
+        "check_mode":      job.check_mode,
+        "diff_mode":       job.diff_mode,
+        "forks":           job.forks,
+        "verbosity":       job.verbosity,
+        "tags":            job.tags,
+        "skip_tags":       job.skip_tags,
+        "extra_vars":      job.extra_vars,
+    })
+
+
 @ops_bp.route("/ansible/jobs/<int:job_id>/rerun", methods=["POST"])
 @login_required
 def job_rerun(job_id: int):
-    """AJAX: clone a completed/failed/cancelled job and re-run it."""
+    """
+    AJAX: clone a completed/failed/cancelled job and re-run it.
+
+    Accepts an optional ``mode`` field:
+      same   — (default) run with the exact same configuration.
+      target — keep all options but override target/inventory fields.
+               The caller must supply inventory_type, inventory_value,
+               target_type, target_value, limit_expression, host_count.
+    """
     from ...models.playbook import PlaybookJob
 
     orig = PlaybookJob.query.get_or_404(job_id)
@@ -1100,6 +1147,25 @@ def job_rerun(job_id: int):
     if cfg is None or not cfg.enabled or cfg.connection_status != "Connected":
         return jsonify({"success": False, "message": "Control node not connected."})
 
+    data = request.get_json(silent=True) or request.form
+    mode = (data.get("mode") or "same").strip()
+
+    # Target fields — use provided values for "target" mode, original for "same"
+    if mode == "target":
+        inventory_type   = (data.get("inventory_type") or orig.inventory_type or "default").strip()
+        inventory_value  = (data.get("inventory_value") or "").strip() or None
+        target_type      = (data.get("target_type")  or orig.target_type or "all").strip()
+        target_value     = (data.get("target_value") or "").strip() or None
+        limit_expression = (data.get("limit_expression") or "").strip() or None
+        host_count       = _int_or_none(data.get("host_count"))
+    else:
+        inventory_type   = orig.inventory_type
+        inventory_value  = orig.inventory_value
+        target_type      = orig.target_type
+        target_value     = orig.target_value
+        limit_expression = orig.limit_expression
+        host_count       = orig.host_count
+
     now = datetime.now(timezone.utc)
     job = PlaybookJob(
         playbook_id      = orig.playbook_id,
@@ -1108,12 +1174,12 @@ def job_rerun(job_id: int):
         template_id      = orig.template_id,
         triggered_by     = _username(),
         status           = "pending",
-        target_type      = orig.target_type,
-        target_value     = orig.target_value,
-        limit_expression = orig.limit_expression,
-        host_count       = orig.host_count,
-        inventory_type   = orig.inventory_type,
-        inventory_value  = orig.inventory_value,
+        target_type      = target_type,
+        target_value     = target_value,
+        limit_expression = limit_expression,
+        host_count       = host_count,
+        inventory_type   = inventory_type,
+        inventory_value  = inventory_value,
         become           = orig.become,
         check_mode       = orig.check_mode,
         diff_mode        = orig.diff_mode,
@@ -1561,11 +1627,21 @@ def api_hosts():
     envs    = Environment.query.filter_by(is_active=True).order_by(Environment.name).all()
     locs    = Location.query.filter_by(is_active=True).order_by(Location.name).all()
 
+    # Inventory groups from the Ansible inventory host table (for Static Inventory)
+    from ...models.ansible_config import AnsibleInventoryHost
+    inv_groups: list[str] = sorted({
+        g.strip()
+        for h in AnsibleInventoryHost.query.with_entities(AnsibleInventoryHost.groups).all()
+        for g in (h.groups or "").split(",")
+        if g.strip()
+    })
+
     return jsonify({
         "servers":      [{"id": s.id, "hostname": s.hostname, "fqdn": s.fqdn,
                           "ip": s.ip_address, "env": s.environment.name if s.environment else ""} for s in servers],
         "environments": [{"id": e.id, "name": e.name, "label": e.label} for e in envs],
         "locations":    [{"id": l.id, "name": l.name} for l in locs],
+        "groups":       inv_groups,
         "total":        q.count(),
     })
 
