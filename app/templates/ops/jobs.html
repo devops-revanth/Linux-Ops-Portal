@@ -717,6 +717,7 @@ var _tagStates       = {};          // {tagName: true/false} for task selection
 var _hostDebounce    = null;
 var _singleDebounce  = null;
 var _allHostsLoaded  = false;
+var _loadingHosts    = false;       // prevents duplicate loadHostData() calls
 
 // ── Re-run globals ────────────────────────────────────────────────────────── //
 var _rerunJobId   = null;
@@ -978,41 +979,60 @@ function toggleAdvanced(btn) {
 function setTargetMode(mode) {
   _targetMode = mode;
   ['single','static','dynamic'].forEach(m => {
-    document.getElementById('tgt-' + m).style.display = m === mode ? '' : 'none';
-    document.getElementById('tgt-btn-' + m).classList.toggle('active', m === mode);
+    var el = document.getElementById('tgt-' + m);
+    var btn = document.getElementById('tgt-btn-' + m);
+    if (el)  el.style.display = m === mode ? '' : 'none';
+    if (btn) btn.classList.toggle('active', m === mode);
   });
-  if (mode === 'static' && _allHostsLoaded) renderStaticGroups();
-  if (mode === 'dynamic' && _allHostsLoaded) {
-    renderHostList(_allHosts);
-    updateSelectedHostsDisplay();
+  if (mode === 'static') {
+    if (_allHostsLoaded) renderStaticGroups();
+    else loadHostData();   // kick off loading if not started yet
+  }
+  if (mode === 'dynamic') {
+    if (_allHostsLoaded) { renderHostList(_allHosts); updateSelectedHostsDisplay(); }
+    else loadHostData();
   }
 }
 
 // ── Host data loading ─────────────────────────────────────────────────────── //
 function loadHostData() {
+  // Guard: don't fire a second concurrent request
+  if (_allHostsLoaded || _loadingHosts) return;
+  _loadingHosts = true;
+
+  // Show loading state in the static panel right away
+  var sgList = document.getElementById('static-groups-list');
+  if (sgList) sgList.innerHTML =
+    '<div class="text-secondary small text-center py-2"><i class="bi bi-arrow-repeat lop-spin me-1"></i>Loading groups…</div>';
+
   fetch('{{ url_for("ops.api_hosts") }}')
     .then(r => r.json())
     .then(data => {
       _allHostsLoaded = true;
-      _allHosts  = data.servers;
-      _allGroups = data.groups || [];
+      _loadingHosts   = false;
+      _allHosts  = data.servers  || [];
+      _allGroups = data.groups   || [];
 
-      // Populate env/loc selects
+      // Populate env/loc selects (idempotent — only adds if not already populated)
       var envSel = document.getElementById('w-env');
       var locSel = document.getElementById('w-loc');
-      if (envSel.children.length === 1) {
-        data.environments.forEach(e => envSel.add(new Option(e.name, e.id)));
+      if (envSel && envSel.children.length === 1) {
+        (data.environments || []).forEach(e => envSel.add(new Option(e.name, e.id)));
       }
-      if (locSel.children.length === 1) {
-        data.locations.forEach(l => locSel.add(new Option(l.name, l.id)));
+      if (locSel && locSel.children.length === 1) {
+        (data.locations || []).forEach(l => locSel.add(new Option(l.name, l.id)));
       }
 
       if (_targetMode === 'dynamic') renderHostList(_allHosts);
       if (_targetMode === 'static')  renderStaticGroups();
     })
-    .catch(() => {
-      document.getElementById('host-list').innerHTML =
-        '<div class="text-danger small text-center py-2">Failed to load hosts</div>';
+    .catch(err => {
+      _loadingHosts = false;
+      console.error('loadHostData failed:', err);
+      var hl  = document.getElementById('host-list');
+      var sgl = document.getElementById('static-groups-list');
+      if (hl)  hl.innerHTML  = '<div class="text-danger small text-center py-2">Failed to load hosts</div>';
+      if (sgl) sgl.innerHTML = '<div class="text-danger small text-center py-2">Failed to load inventory groups</div>';
     });
 }
 
@@ -1052,15 +1072,24 @@ function renderHostList(hosts) {
 
 function renderStaticGroups() {
   var el = document.getElementById('static-groups-list');
+  if (!el) return;   // panel not in DOM yet
   if (!_allGroups.length) {
-    el.innerHTML = '<div class="text-secondary small text-center py-2">No inventory groups found.<br>Run Ansible discovery to populate groups.</div>';
+    el.innerHTML = '<div class="text-secondary small text-center py-2">' +
+      '<i class="bi bi-info-circle me-1"></i>No inventory groups found. ' +
+      'Run <strong>Ansible → Inventory → Refresh</strong> to discover groups.</div>';
     return;
   }
-  el.innerHTML = _allGroups.map(g => {
-    var isSel = g === _staticGroup;
-    return '<div class="pb-picker-item' + (isSel ? ' selected' : '') + '" onclick="selectStaticGroup(\'' + escAttr(g) + '\')">' +
-      '<i class="bi bi-collection me-2 text-secondary"></i>' + escHtml(g) + '</div>';
-  }).join('');
+  // Use data attributes to avoid onclick string-escaping issues with special characters
+  el.innerHTML = _allGroups.map((g, i) =>
+    '<div class="pb-picker-item' + (g === _staticGroup ? ' selected' : '') + '" data-gidx="' + i + '">' +
+    '<i class="bi bi-collection me-2 text-secondary"></i>' + escHtml(g) + '</div>'
+  ).join('');
+  // Attach click handlers via event delegation on the container
+  el.onclick = function(e) {
+    var item = e.target.closest('[data-gidx]');
+    if (!item) return;
+    selectStaticGroup(_allGroups[parseInt(item.dataset.gidx, 10)]);
+  };
   _refreshStaticBadge();
 }
 

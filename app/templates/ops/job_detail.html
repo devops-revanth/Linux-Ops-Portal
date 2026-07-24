@@ -161,7 +161,11 @@
       <span class="fw-medium small"><i class="bi bi-terminal me-2"></i>Console Output</span>
       <div class="d-flex gap-2 align-items-center">
         <span class="text-secondary small" id="output-status">
-          {% if job.is_running %}<i class="bi bi-circle-fill text-success lop-pulse me-1" style="font-size:.5rem;"></i>Live{% endif %}
+          {% if job.is_running %}
+            <i class="bi bi-circle-fill text-success lop-pulse me-1" style="font-size:.5rem;"></i>Live
+          {% elif job.status == 'pending' %}
+            <i class="bi bi-hourglass me-1"></i>Waiting…
+          {% endif %}
         </span>
         <div class="form-check form-switch mb-0">
           <input class="form-check-input" type="checkbox" id="auto-scroll-toggle" checked>
@@ -185,7 +189,7 @@
         </button>
       </div>
     </div>
-    <div class="output-terminal" id="output-terminal">{{ job.log_output or '' }}</div>
+    <div class="output-terminal" id="output-terminal">{% if job.log_output %}{{ job.log_output }}{% elif job.status == 'pending' %}<span class="ansi-skipped" id="pending-placeholder">Waiting for executor to pick up job…</span>{% endif %}</div>
   </div>
 
   {# ── Options & Variables ────────────────────────────────────────────────── #}
@@ -489,6 +493,7 @@ var _outputOffset  = {{ (job.log_output | length) if job.log_output else 0 }};
 var _pollTimer     = null;
 var _autoScroll    = true;
 var _isRunning     = {{ 'true' if job.is_running else 'false' }};
+var _isPending     = {{ 'true' if job.status == 'pending' else 'false' }};
 
 // ── Colorize output ─────────────────────────────────────────────────────── //
 function colorizeOutput(text) {
@@ -532,17 +537,43 @@ function pollOutput() {
   fetch('/ansible/jobs/{{ job.id }}/output?offset=' + _outputOffset)
     .then(r => r.json())
     .then(data => {
+      // ── Transition: pending → running ─────────────────────────────────────
+      if (_isPending && data.status === 'running') {
+        _isPending  = false;
+        _isRunning  = true;
+        // Update Live indicator
+        document.getElementById('output-status').innerHTML =
+          '<i class="bi bi-circle-fill text-success lop-pulse me-1" style="font-size:.5rem;"></i>Live';
+        // Update status badge
+        document.getElementById('status-badge').className =
+          'badge bg-primary fs-6 ms-3 flex-shrink-0';
+        document.getElementById('status-icon').className =
+          'bi bi-arrow-repeat me-1 lop-spin';
+        document.getElementById('status-text').textContent = 'Running';
+        // Remove pending placeholder
+        var ph = document.getElementById('pending-placeholder');
+        if (ph) ph.remove();
+      }
+
+      // ── New output chunk ──────────────────────────────────────────────────
       if (data.output) {
         var t = document.getElementById('output-terminal');
+        // Remove placeholder if still present (e.g. first real output while still "pending")
+        var ph = document.getElementById('pending-placeholder');
+        if (ph) ph.remove();
         var chunk = document.createElement('span');
         chunk.innerHTML = colorizeOutput(data.output);
         t.appendChild(chunk);
         _outputOffset = data.offset;
         if (_autoScroll) t.scrollTop = t.scrollHeight;
       }
+
+      // ── Job finished ──────────────────────────────────────────────────────
       if (data.done) {
         clearInterval(_pollTimer);
         _pollTimer = null;
+        _isRunning = false;
+        _isPending = false;
         document.getElementById('output-status').innerHTML = '';
         // Update status badge
         var badge = document.getElementById('status-badge');
@@ -552,6 +583,17 @@ function pollOutput() {
         document.getElementById('status-icon').className = 'bi ' + (siMap[data.status] || 'bi-circle') + ' me-1';
         document.getElementById('status-text').textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
         document.getElementById('exit-code').textContent = data.exit_code != null ? data.exit_code : '—';
+
+        // Show error message on the terminal if the job failed with no output
+        if (data.status === 'failed') {
+          var t = document.getElementById('output-terminal');
+          var ph = document.getElementById('pending-placeholder');
+          if (ph) {
+            ph.className = 'ansi-failed';
+            ph.textContent = 'Job failed — no output was captured. Check the Ansible control node and its SSH connectivity.';
+          }
+        }
+
         // Reload page to get final stats
         setTimeout(() => location.reload(), 2000);
       }
@@ -559,7 +601,7 @@ function pollOutput() {
     .catch(() => {/* keep trying */});
 }
 
-{% if job.is_running %}
+{% if job.is_running or job.status == 'pending' %}
 startPolling();
 {% endif %}
 
